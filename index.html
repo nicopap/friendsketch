@@ -1,0 +1,24 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Main</title>
+		<link rel="stylesheet" type="text/css" href="index.css">
+	</head>
+	<div id="main"></div>
+	<script src="main.js"></script>
+	<script>
+		var app = Elm.Main.fullscreen();
+		app.ports.checkPosition.subscribe(function(canvasId) {
+			var canvas = document.getElementById(canvasId);
+			var canvasBox = canvas.getBoundingClientRect();
+			var payload =
+				[ canvasBox.left
+				, canvasBox.right
+				, canvasBox.top
+				, canvasBox.bottom
+				]
+			app.ports.position.send(payload);
+		});
+	</script>
+</html>
