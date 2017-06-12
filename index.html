@@ -9,16 +9,16 @@
 	<script src="main.js"></script>
 	<script>
 		var app = Elm.Main.fullscreen();
-		app.ports.checkPosition.subscribe(function(canvasId) {
-			var canvas = document.getElementById(canvasId);
+		app.ports.checkCanvasBox.subscribe(function() {
+			var canvas = document.getElementById("drawingspace");
 			var canvasBox = canvas.getBoundingClientRect();
 			var payload =
-				[ canvasBox.left
-				, canvasBox.right
-				, canvasBox.top
-				, canvasBox.bottom
+				[ canvasBox.left + canvasBox.right / 2
+				, canvasBox.top + canvasBox.bottom / 2
+				, canvasBox.width
+				, canvasBox.height
 				]
-			app.ports.position.send(payload);
+			app.ports.listenCanvasBox.send(payload);
 		});
 	</script>
 </html>

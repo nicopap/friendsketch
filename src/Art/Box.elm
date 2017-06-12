@@ -1,39 +1,31 @@
-port module Art.Box exposing (Box, Position, checkPosition, readPosition, readBox, subPosition, sub)
+port module Art.Box exposing (Point, Box, checkCanvasBox, sub)
 
 {-| Helper functions to deal with various input types.
 -}
 
 
+{-| sends outgoing message that will eventually trigger the listenCanvasBox
+port subsription.
+-}
+port checkCanvasBox : () -> Cmd msg
+
+
 {-| Fetch the position of the element with the id that was last
-given with the "checkPosition" Command. The input type is a four
-element list formated as follow: [left, right, top, bottom].
+given with the "checkCanvasBox" Command. The input type is a four
+element list formated as follow: [x, y, width, height].
 -}
-port position : (List Float -> msg) -> Sub msg
-
-
-{-| Commands javascript to resend the bounding box of the element
-with String #id.
--}
-port checkPosition : String -> Cmd msg
-
-
-{-| Sometimes you just need the top left point of a box to judge
-where an element is.
--}
-type alias Position =
-    { x : Float
-    , y : Float
-    }
+port listenCanvasBox : (List Float -> msg) -> Sub msg
 
 
 {-| The bounding box of an html element.
+Centered in {x,y} and with a certain width and height.
 -}
+type alias Point =
+    { x : Float, y : Float }
+
+
 type alias Box =
-    { left : Float
-    , right : Float
-    , top : Float
-    , bottom : Float
-    }
+    { x : Float, y : Float, width : Float, height : Float }
 
 
 {-| Wrapper around the checkPosition port to provide a simpler
@@ -42,28 +34,15 @@ api
 readBox : List Float -> Box
 readBox jslist =
     case jslist of
-        [ left, right, top, bottom ] ->
-            Box left right top bottom
+        [ x, y, width, height ] ->
+            { x = x, y = y, width = width, height = height }
 
         _ ->
-            Box 0 0 0 0
+            { x = 0, y = 0, width = 0, height = 0 }
 
 
-readPosition : List Float -> Position
-readPosition jslist =
-    case jslist of
-        [ left, _, top, _ ] ->
-            { x = left, y = top }
-
-        _ ->
-            { x = 0, y = 0 }
-
-
+{-| Calls callback with the given Position offset so it is centered on Box
+-}
 sub : (Box -> msg) -> Sub msg
 sub callback =
-    position (readBox >> callback)
-
-
-subPosition : (Position -> msg) -> Sub msg
-subPosition callback =
-    position (readPosition >> callback)
+    listenCanvasBox (readBox >> callback)

@@ -6,17 +6,7 @@ import Art.Canvas as Canvas
 import Art.RenderedCanvas as RenderedCanvas
 import Art.Pen.Mouse as Mouse
 import Art.Pen.Remote as Remote
-
-
-type alias Art =
-    { canvas : Canvas.Canvas
-    , state : ArtState
-    }
-
-
-new : Art
-new =
-    Art Canvas.new (Painting (MouseIn Mouse.newState))
+import Art.Pen as Pen
 
 
 type alias ThumbState =
@@ -39,9 +29,21 @@ type ArtState
     | Invisible
 
 
+type alias Art =
+    { canvas : Canvas.Canvas
+    , state : ArtState
+    }
+
+
 type Msg
     = MouseMsg Mouse.Msg
+    | PenMsg Pen.Msg
     | RemoteMsg Never
+
+
+new : Art
+new =
+    Art Canvas.new (Painting (MouseIn Mouse.newState))
 
 
 subs : Art -> Sub Msg
@@ -52,7 +54,10 @@ subs art =
             Sub.none
 
         Painting (MouseIn state) ->
-            Sub.map MouseMsg (Mouse.subs state)
+            Sub.batch
+                [ Sub.map MouseMsg (Mouse.subs state)
+                , Sub.map PenMsg (Pen.subs)
+                ]
 
         Painting (ThumbIn _) ->
             Sub.none
@@ -74,25 +79,33 @@ view { canvas } =
 update : Msg -> Art -> ( Art, Cmd Msg )
 update msg art =
     let
-        artmap ( ( mousestate, canvas ), mousemsg ) =
-            ( { art
-                | canvas = canvas
-                , state = Painting (MouseIn mousestate)
-              }
-            , Cmd.map MouseMsg mousemsg
+        oldmousestate =
+            case art.state of
+                Painting (MouseIn state) ->
+                    state
+
+                _ ->
+                    Mouse.newState
+
+        mousemap mousemsg ( mousestate, penmsg ) =
+            ( { art | state = Painting (MouseIn mousestate) }
+            , Cmd.map PenMsg penmsg
             )
 
-        remotemap ( ( remotestate, canvas ), remotemsg ) =
-            ( { art
-                | canvas = canvas
-                , state = Viewing remotestate
-              }
+        remotemap ( remotestate, remotemsg ) =
+            ( { art | state = Viewing remotestate }
             , Cmd.map RemoteMsg remotemsg
             )
+
+        penmap ( canvas, penmsg ) =
+            ( { art | canvas = canvas }, Cmd.map PenMsg penmsg )
     in
         case msg of
             MouseMsg drawmsg ->
-                artmap (Mouse.update drawmsg art.canvas)
+                mousemap drawmsg (Mouse.update drawmsg oldmousestate)
 
             RemoteMsg remotemsg ->
                 remotemap (Remote.update remotemsg art.canvas)
+
+            PenMsg penmsg ->
+                penmap (Pen.update penmsg art.canvas)
