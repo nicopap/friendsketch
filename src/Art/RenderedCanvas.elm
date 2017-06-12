@@ -55,7 +55,9 @@ strokeToForm { points, color, size } =
 
 canvasToForm : Canvas -> List Collage.Form
 canvasToForm canvas =
-    List.map strokeToForm (Canvas.strokes canvas)
+    Canvas.strokes canvas
+        |> List.reverse
+        |> List.map strokeToForm
 
 
 htmlCanvas : Canvas -> Html msg

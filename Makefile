@@ -1,4 +1,4 @@
-cc = elm-make
+cc = elm-make --warn
 BROWSER ?= chrome
 BUILD_DIR = build
 DOC_FILE = elm-docs.json

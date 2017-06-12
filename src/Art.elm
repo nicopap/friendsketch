@@ -7,6 +7,8 @@ import Art.RenderedCanvas as RenderedCanvas
 import Art.Pen.Mouse as Mouse
 import Art.Pen.Remote as Remote
 import Art.Pen as Pen
+import Art.Toolbox as Toolbox
+import Art.ToolboxMsg as TBM
 
 
 type alias ThumbState =
@@ -32,6 +34,7 @@ type ArtState
 type alias Art =
     { canvas : Canvas.Canvas
     , state : ArtState
+    , toolbox : Toolbox.Toolbox
     }
 
 
@@ -39,11 +42,12 @@ type Msg
     = MouseMsg Mouse.Msg
     | PenMsg Pen.Msg
     | RemoteMsg Never
+    | ToolboxMsg TBM.ToolboxMsg
 
 
 new : Art
 new =
-    Art Canvas.new (Painting (MouseIn Mouse.newState))
+    Art Canvas.new (Painting (MouseIn Mouse.newState)) (Toolbox.new)
 
 
 subs : Art -> Sub Msg
@@ -69,10 +73,11 @@ subs art =
             Sub.none
 
 
-view : Art -> Html msg
-view { canvas } =
+view : Art -> Html Msg
+view { canvas, toolbox } =
     div []
         [ div [ id Canvas.id ] [ RenderedCanvas.htmlCanvas canvas ]
+        , div [ id "toolbox" ] [ Html.map ToolboxMsg (Toolbox.view toolbox) ]
         ]
 
 
@@ -99,13 +104,22 @@ update msg art =
 
         penmap ( canvas, penmsg ) =
             ( { art | canvas = canvas }, Cmd.map PenMsg penmsg )
+
+        toolboxmap : Toolbox.ToolboxAnswer -> ( Art, Cmd Msg )
+        toolboxmap { canvas, msg, toolbox } =
+            ( { art | canvas = canvas, toolbox = toolbox }
+            , Cmd.map ToolboxMsg msg
+            )
     in
         case msg of
-            MouseMsg drawmsg ->
-                mousemap drawmsg (Mouse.update drawmsg oldmousestate)
+            MouseMsg mousemsg ->
+                Mouse.update mousemsg oldmousestate |> mousemap mousemsg
 
             RemoteMsg remotemsg ->
-                remotemap (Remote.update remotemsg art.canvas)
+                Remote.update remotemsg art.canvas |> remotemap
 
             PenMsg penmsg ->
-                penmap (Pen.update penmsg art.canvas)
+                Pen.update penmsg art.canvas |> penmap
+
+            ToolboxMsg toolboxmsg ->
+                Toolbox.update toolboxmsg art.canvas art.toolbox |> toolboxmap
