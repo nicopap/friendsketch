@@ -1,6 +1,5 @@
 module Main exposing (main)
 
-import Json.Decode exposing (Decoder)
 import Html exposing (..)
 import Chat
 import Art

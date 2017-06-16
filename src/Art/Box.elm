@@ -17,13 +17,13 @@ element list formated as follow: [x, y, width, height].
 port listenCanvasBox : (List Float -> msg) -> Sub msg
 
 
-{-| The bounding box of an html element.
-Centered in {x,y} and with a certain width and height.
--}
 type alias Point =
     { x : Float, y : Float }
 
 
+{-| The bounding box of an html element.
+Centered in {x,y} and with a certain width and height.
+-}
 type alias Box =
     { x : Float, y : Float, width : Float, height : Float }
 

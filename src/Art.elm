@@ -1,5 +1,12 @@
 module Art exposing (view, update, subs, Msg, Art, new)
 
+{-| Module to handle the drawing area in the PictoMe application.
+
+This modules exposes the standard elm architecture functions to handle a
+client component.
+
+-}
+
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Art.Canvas as Canvas
@@ -19,12 +26,25 @@ type alias TabletState =
     Never
 
 
+{-| A user input for drawing.
+-}
 type Input
     = MouseIn Mouse.State
     | ThumbIn ThumbState
     | TabletIn TabletState
 
 
+{-| The state of Art, operations on the Art element depends on its state.
+
+    Viewing Remote.State
+
+Is for when operations are sent from the remote server.
+
+    Painting Input
+
+Is for when you want to draw using a Pen emitter.
+
+-}
 type ArtState
     = Viewing Remote.State
     | Painting Input

@@ -1,8 +1,6 @@
 module Art.RenderedCanvas exposing (htmlCanvas)
 
-import Color
 import Html exposing (..)
-import Html.Attributes exposing (..)
 import Collage exposing (traced, path, toForm, filled)
 import Element as GraphElement
 import List.Nonempty as NE exposing (Nonempty)
@@ -37,7 +35,7 @@ strokeToForm { points, color, size } =
     if NE.isSingleton points then
         Collage.circle (size / 2)
             |> filled color
-            |> Collage.move (NE.head points |> pointToTuple)
+            |> (Collage.move <| pointToTuple <| NE.head points)
     else
         points
             |> NE.map pointToTuple

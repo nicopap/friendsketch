@@ -33,5 +33,3 @@ agregate: $(OUTPUT) index.html
 debug: build_db agregate
 	$(BROWSER) $(FINAL_PAGE)
 
-gendoc:
-	$(cc) src/Main.elm --docs $(DOC_FILE)

@@ -1,21 +1,34 @@
 module Art.Stroke exposing (Stroke, new, draw)
 
+{-| Represents a simple paint stroke.
+
+
+# Definition
+
+@docs Stroke, new
+
+
+# Modyfing a stroke
+
+@docs draw
+
+-}
+
 import Color
 import Color exposing (Color)
-import List.Nonempty as NE exposing (Nonempty, (:::))
+import List.Nonempty as NE exposing (Nonempty)
 import Art.Box exposing (Point)
 
 
--- draw : Point -> Stroke -> Stroke
--- draw =
---     drawatthreashold 10.0
-
-
+{-| Expand a stroke to include a new point.
+-}
 draw : Point -> Stroke -> Stroke
-draw newpoint oldstroke =
-    { oldstroke | points = NE.cons newpoint oldstroke.points }
+draw point stroke =
+    drawatthreashold (stroke.size / 2) point stroke
 
 
+{-| A Stroke, can be of any Color and has a given size.
+-}
 type alias Stroke =
     { points : Nonempty Point
     , color : Color
@@ -23,9 +36,11 @@ type alias Stroke =
     }
 
 
-new : { a | x : Float, y : Float } -> Color -> Float -> Stroke
-new { x, y } color size =
-    Stroke (NE.fromElement (Point x y)) color size
+{-| A stroke starting at a given Point, with given color and size.
+-}
+new : Point -> Color -> Float -> Stroke
+new point color size =
+    Stroke (NE.fromElement point) color size
 
 
 dist : Point -> Point -> Float

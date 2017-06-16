@@ -13,8 +13,8 @@
 			var canvas = document.getElementById("drawingspace");
 			var canvasBox = canvas.getBoundingClientRect();
 			var payload =
-				[ canvasBox.left + canvasBox.right / 2
-				, canvasBox.top + canvasBox.bottom / 2
+				[ canvasBox.left + canvasBox.width / 2
+				, canvasBox.top + canvasBox.height / 2
 				, canvasBox.width
 				, canvasBox.height
 				]
