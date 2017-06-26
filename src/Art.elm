@@ -1,145 +1,139 @@
-module Art exposing (view, update, subs, Msg, Art, new)
+module Art exposing (new, update, view, subs, Art, Msg)
 
-{-| Module to handle the drawing area in the PictoMe application.
+{-| Provides an interface to the GenericArt construct.
 
-This modules exposes the standard elm architecture functions to handle a
-client component.
+It exposes only Concrete types. It also defines initialization and
+transformation functions tied to those types.
 
 -}
 
-import Html exposing (..)
-import Html.Attributes exposing (..)
+import Html exposing (button, text, Html)
+import Html.Events exposing (onClick)
+import Art.GenericArt as GArt
 import Art.Canvas as Canvas
-import Art.RenderedCanvas as RenderedCanvas
-import Art.Pen.Mouse as Mouse
-import Art.Pen.Remote as Remote
-import Art.Pen as Pen
 import Art.Toolbox as Toolbox
-import Art.ToolboxMsg as TBM
+import Art.Pen.Mouse as Mouse
+import Art.Pen.Remote as RemotePen
 
 
-type alias ThumbState =
-    Never
+type alias Remote = GArt.Art RemotePen.State RemotePen.Msg
+type alias Local = GArt.Art Mouse.State Mouse.Msg
+type alias RemoteMsg = GArt.Msg RemotePen.Msg
+type alias LocalMsg = GArt.Msg Mouse.Msg
 
 
-type alias TabletState =
-    Never
-
-
-{-| A user input for drawing.
--}
-type Input
-    = MouseIn Mouse.State
-    | ThumbIn ThumbState
-    | TabletIn TabletState
-
-
-{-| The state of Art, operations on the Art element depends on its state.
-
-    Viewing Remote.State
-
-Is for when operations are sent from the remote server.
-
-    Painting Input
-
-Is for when you want to draw using a Pen emitter.
-
--}
-type ArtState
-    = Viewing Remote.State
-    | Painting Input
-    | Invisible
-
-
-type alias Art =
-    { canvas : Canvas.Canvas
-    , state : ArtState
-    , toolbox : Toolbox.Toolbox
-    }
+type Art
+    = Sremote Remote
+    | Slocal Local
+    | None
 
 
 type Msg
-    = MouseMsg Mouse.Msg
-    | PenMsg Pen.Msg
-    | RemoteMsg Never
-    | ToolboxMsg TBM.ToolboxMsg
+    = StartRemote
+    | StartLocal
+    | Hide
+    | RMsg RemoteMsg
+    | LMsg LocalMsg
+
+
+newRemote : Art
+newRemote =
+    Sremote <|
+        GArt.Art
+            { canvas = Canvas.new
+            , toolbox = Toolbox.new
+            , input = RemotePen.newInput
+            }
+
+
+newLocal : Art
+newLocal =
+    Slocal <|
+        GArt.Art
+            { canvas = Canvas.new
+            , toolbox = Toolbox.new
+            , input = Mouse.newInput
+            }
 
 
 new : Art
-new =
-    Art Canvas.new (Painting (MouseIn Mouse.newState)) (Toolbox.new)
+new = newLocal
 
 
-subs : Art -> Sub Msg
-subs art =
-    case art.state of
-        --Sub.map RemoteMsg (remote.subs art.canvas)
-        Viewing remote ->
-            Sub.none
+rupdate : RemoteMsg -> Art -> ( Art, Cmd Msg )
+rupdate msg art =
+    case art of
+        Sremote remote ->
+            let
+                map ( art_, cmd ) =
+                    ( Sremote art_, Cmd.map RMsg cmd )
+            in
+                map <| GArt.update msg remote
 
-        Painting (MouseIn state) ->
-            Sub.batch
-                [ Sub.map MouseMsg (Mouse.subs state)
-                , Sub.map PenMsg (Pen.subs)
-                ]
+        Slocal _ ->
+            Debug.crash "Local art in Remote update"
 
-        Painting (ThumbIn _) ->
-            Sub.none
-
-        Painting (TabletIn _) ->
-            Sub.none
-
-        Invisible ->
-            Sub.none
+        None ->
+            Debug.crash "Invisible art in Remote update"
 
 
-view : Art -> Html Msg
-view { canvas, toolbox } =
-    div []
-        [ div [ id Canvas.id ] [ RenderedCanvas.htmlCanvas canvas ]
-        , div [ id "toolbox" ] [ Html.map ToolboxMsg (Toolbox.view toolbox) ]
-        ]
+lupdate : LocalMsg -> Art -> ( Art, Cmd Msg )
+lupdate msg art =
+    case art of
+        Slocal local ->
+            let
+                map ( art_, cmd ) =
+                    ( Slocal art_, Cmd.map LMsg cmd )
+            in
+                map <| GArt.update msg local
+
+        Sremote _ ->
+            Debug.crash "Remote art in Local update"
+
+        None ->
+            Debug.crash "Invisible art in Local update"
 
 
 update : Msg -> Art -> ( Art, Cmd Msg )
 update msg art =
-    let
-        oldmousestate =
-            case art.state of
-                Painting (MouseIn state) ->
-                    state
+    case msg of
+        StartRemote ->
+            ( newRemote, Cmd.none )
 
-                _ ->
-                    Mouse.newState
+        StartLocal ->
+            ( newLocal, Cmd.none )
 
-        mousemap mousemsg ( mousestate, penmsg ) =
-            ( { art | state = Painting (MouseIn mousestate) }
-            , Cmd.map PenMsg penmsg
-            )
+        Hide ->
+            ( None, Cmd.none )
 
-        remotemap ( remotestate, remotemsg ) =
-            ( { art | state = Viewing remotestate }
-            , Cmd.map RemoteMsg remotemsg
-            )
+        RMsg msg_ ->
+            rupdate msg_ art
 
-        penmap ( canvas, penmsg ) =
-            ( { art | canvas = canvas }, Cmd.map PenMsg penmsg )
+        LMsg msg_ ->
+            lupdate msg_ art
 
-        toolboxmap : Toolbox.ToolboxAnswer -> ( Art, Cmd Msg )
-        toolboxmap { canvas, msg, toolbox } =
-            ( { art | canvas = canvas, toolbox = toolbox }
-            , Cmd.map ToolboxMsg msg
-            )
-    in
-        case msg of
-            MouseMsg mousemsg ->
-                Mouse.update mousemsg oldmousestate |> mousemap mousemsg
 
-            RemoteMsg remotemsg ->
-                Remote.update remotemsg art.canvas |> remotemap
+view : Art -> Html Msg
+view art =
+    case art of
+        Sremote art ->
+            Html.map RMsg <| GArt.view art
 
-            PenMsg penmsg ->
-                Pen.update penmsg art.canvas |> penmap
+        Slocal art ->
+            Html.map LMsg <| GArt.view art
 
-            ToolboxMsg toolboxmsg ->
-                Toolbox.update toolboxmsg art.canvas art.toolbox |> toolboxmap
+        None ->
+            button [ onClick StartLocal ] [ text "Open Canvas" ]
+
+
+subs : Art -> Sub Msg
+subs art =
+    case art of
+        Sremote art ->
+            Sub.map RMsg <| GArt.subs art
+
+        Slocal art ->
+            Sub.map LMsg <| GArt.subs art
+
+        None ->
+            Sub.none

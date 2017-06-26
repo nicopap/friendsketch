@@ -8,6 +8,7 @@ module Art.Canvas
         , lift
         , selectColor
         , selectSize
+        , setLocation
         , strokes
         )
 
@@ -165,6 +166,13 @@ selectSize newsize canvas =
     { canvas | strokeSize = newsize }
 
 
+{-| Change the location of the canavs
+-}
+setLocation : Box -> Canvas -> Canvas
+setLocation newloc canvas =
+    { canvas | box = newloc }
+
+
 {-| Get various states about a canvas.
 -}
 height : Canvas -> Float
@@ -191,4 +199,4 @@ ycenter =
 -}
 new : Canvas
 new =
-    Canvas [] Selecting Color.black 20 { x = 0, y = 0, width = 600, height = 400 }
+    Canvas [] Selecting Color.black 20 { x = 355, y = 303, width = 600, height = 400 }

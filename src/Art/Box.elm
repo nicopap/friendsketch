@@ -1,4 +1,4 @@
-port module Art.Box exposing (Point, Box, checkCanvasBox, sub)
+port module Art.Box exposing (Point, Box, checkCanvas, sub)
 
 {-| Helper functions to deal with various input types.
 -}
@@ -7,14 +7,14 @@ port module Art.Box exposing (Point, Box, checkCanvasBox, sub)
 {-| sends outgoing message that will eventually trigger the listenCanvasBox
 port subsription.
 -}
-port checkCanvasBox : () -> Cmd msg
+port checkCanvas : () -> Cmd msg
 
 
 {-| Fetch the position of the element with the id that was last
-given with the "checkCanvasBox" Command. The input type is a four
+given with the "checkCanvas" Command. The input type is a four
 element list formated as follow: [x, y, width, height].
 -}
-port listenCanvasBox : (List Float -> msg) -> Sub msg
+port listenCanvas : (List Float -> msg) -> Sub msg
 
 
 type alias Point =
@@ -31,8 +31,8 @@ type alias Box =
 {-| Wrapper around the checkPosition port to provide a simpler
 api
 -}
-readBox : List Float -> Box
-readBox jslist =
+read : List Float -> Box
+read jslist =
     case jslist of
         [ x, y, width, height ] ->
             { x = x, y = y, width = width, height = height }
@@ -45,4 +45,4 @@ readBox jslist =
 -}
 sub : (Box -> msg) -> Sub msg
 sub callback =
-    listenCanvasBox (readBox >> callback)
+    listenCanvas (read >> callback)

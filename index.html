@@ -9,7 +9,7 @@
 	<script src="main.js"></script>
 	<script>
 		var app = Elm.Main.fullscreen();
-		app.ports.checkCanvasBox.subscribe(function() {
+		app.ports.checkCanvas.subscribe(function() {
 			var canvas = document.getElementById("drawingspace");
 			var canvasBox = canvas.getBoundingClientRect();
 			var payload =
@@ -18,7 +18,7 @@
 				, canvasBox.width
 				, canvasBox.height
 				]
-			app.ports.listenCanvasBox.send(payload);
+			app.ports.listenCanvas.send(payload);
 		});
 	</script>
 </html>

@@ -1,54 +1,70 @@
 module Art.Pen
     exposing
-        ( Msg(DrawAt, DrawAbsolute, Lift, UpdatePosition)
-        , update
-        , subs
+        ( update
+        , updateInput
+        , Input
+        , Msg
+        , lift
+        , drawAt
+        , drawAbsolute
         )
 
 {-| Specifications that something must follow in order to be a Pen for drawing
 on a Canvas.
-
-
-# Messages
-
-@docs Msg
-
-
-# Update
-
-@docs update
-
 -}
 
+import Task
 import Art.Box as Box
-import Art.Canvas as Canvas
-import Art.Canvas exposing (Canvas)
+import Art.Canvas as Canvas exposing (Canvas)
 
 
-{-| The messages that a Pen must emit.
-
-This is then captured by the update function to dispatch the canvas operation.
-
-    type Msg
-        = DrawAt Box.Point
-        | DrawAbsolute Box.Point
-        | Lift
-        | UpdatePosition
-
-Each message but UpdatePosition has a corresponding function in the Canvas
-module.
-
-UpdatePosition refreshes the knowledge the location of the Canvas on the
-webpage. This is done to avoid overhead when drawing a bunch of points at
-the same time.
-
--}
 type Msg
     = DrawAt Box.Point
     | DrawAbsolute Box.Point
     | Lift
-    | UpdatePosition
-    | UpdatePosition_ Box.Box
+
+
+emit : Msg -> Cmd Msg
+emit msg =
+    Task.perform identity (Task.succeed msg)
+
+
+{-| Lift the pen from the Canvas.
+-}
+lift : Cmd Msg
+lift =
+    emit Lift
+
+
+{-| Draw on the Canvas on the given Point.
+-}
+drawAt : Box.Point -> Cmd Msg
+drawAt point =
+    emit (DrawAt point)
+
+
+{-| Draw on the Canvas on the given Point.
+-}
+drawAbsolute : Box.Point -> Cmd Msg
+drawAbsolute point =
+    emit (DrawAbsolute point)
+
+
+{-| The pen implementation.
+-}
+type alias Input s m =
+    { state : s
+    , update : m -> s -> ( s, Cmd Msg )
+    , subs : s -> Sub m
+    }
+
+
+{-| Run the input's update function and transforms its state
+-}
+updateInput : m -> Input s m -> ( Input s m, Cmd Msg )
+updateInput msg input =
+    input.update msg input.state
+        |> \( state, cmd ) -> ( { input | state = state }, cmd )
 
 
 {-| The update to apply effects in the elm runtime.
@@ -56,32 +72,14 @@ type Msg
 This should only be used once, in the Art.elm module.
 
 -}
-update : Msg -> Canvas -> ( Canvas, Cmd Msg )
+update : Msg -> Canvas -> Canvas
 update msg canvas =
     case msg of
         DrawAt point ->
-            ( Canvas.draw point canvas, Cmd.none )
+            Canvas.draw point canvas
 
         DrawAbsolute point ->
-            ( Canvas.drawAbsolute point canvas, Cmd.none )
+            Canvas.drawAbsolute point canvas
 
         Lift ->
-            ( Canvas.lift canvas, Cmd.none )
-
-        UpdatePosition ->
-            ( canvas, Box.checkCanvasBox () )
-
-        UpdatePosition_ newbox ->
-            let
-                oldbox =
-                    canvas.box
-
-                newbox_ =
-                    Box.Box newbox.x newbox.y oldbox.width oldbox.height
-            in
-                ( { canvas | box = newbox_ }, Cmd.none )
-
-
-subs : Sub Msg
-subs =
-    Box.sub UpdatePosition_
+            Canvas.lift canvas
