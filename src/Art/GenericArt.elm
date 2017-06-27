@@ -20,7 +20,6 @@ import Html exposing (button, div, text, Html)
 import Html.Attributes exposing (id)
 import Art.Canvas as Canvas exposing (Canvas)
 import Art.Box as Box exposing (Box)
-import Art.Pen as Pen
 import Art.Toolbox as Toolbox exposing (Toolbox)
 import Art.ToolboxMsg as TBM
 
@@ -28,7 +27,7 @@ import Art.ToolboxMsg as TBM
 type alias PaintingArea s m =
     { canvas : Canvas
     , toolbox : Toolbox
-    , input : Pen.Input s m
+    , input : Canvas.Input s m
     }
 
 
@@ -38,7 +37,7 @@ type Art s m
 
 type Msg m
     = InputMsg m
-    | PenMsg Pen.Msg
+    | CanvasMsg Canvas.Msg
     | ToolboxMsg TBM.ToolboxMsg
     | UpdatePosition Box
 
@@ -56,16 +55,16 @@ update msg (Art pa) =
         InputMsg msg ->
             let
                 map ( input, cmd ) =
-                    ( Art { pa | input = input }, Cmd.map PenMsg cmd )
+                    ( Art { pa | input = input }, Cmd.map CanvasMsg cmd )
             in
-                map <| Pen.updateInput msg pa.input
+                map <| Canvas.updateInput msg pa.input
 
-        PenMsg msg ->
+        CanvasMsg msg ->
             let
                 map canvas =
                     ( Art { pa | canvas = canvas }, Cmd.none )
             in
-                map <| Pen.update msg pa.canvas
+                map <| Canvas.update msg pa.canvas
 
         ToolboxMsg msg ->
             let

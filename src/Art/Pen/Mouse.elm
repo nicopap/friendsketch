@@ -1,7 +1,7 @@
 module Art.Pen.Mouse exposing (newInput, State, Msg)
 
 import Mouse
-import Art.Pen as Pen
+import Art.Canvas as Canvas
 
 
 type Msg
@@ -13,15 +13,15 @@ type alias State =
     Msg
 
 
-update : Msg -> State -> ( State, Cmd Pen.Msg )
+update : Msg -> State -> ( State, Cmd Canvas.Msg )
 update msg _ =
     ( msg
     , case msg of
         DrawAt { x, y } ->
-            Pen.drawAbsolute { x = toFloat x, y = toFloat y }
+            Canvas.drawAbsolute { x = toFloat x, y = toFloat y }
 
         LiftMouse ->
-            Pen.lift
+            Canvas.lift
     )
 
 
@@ -38,12 +38,12 @@ subs state =
     in
         Sub.batch
             [ movementSub
-            , Mouse.ups (\x -> LiftMouse)
+            , Mouse.ups <| always LiftMouse
             , Mouse.downs DrawAt
             ]
 
 
-newInput : Pen.Input State Msg
+newInput : Canvas.Input State Msg
 newInput =
     { state = LiftMouse
     , update = update

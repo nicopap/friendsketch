@@ -1,7 +1,6 @@
 module Art.Pen.Remote exposing (newInput, State, Msg)
 
-import Art.Pen as Pen
-
+import Art.Canvas as Canvas
 
 type Msg
     = Hi
@@ -11,9 +10,9 @@ type State
     = Hello
 
 
-newInput : Pen.Input State Msg
+newInput : Canvas.Input State Msg
 newInput =
     { state = Hello
-    , update = (\m s -> ( s, Pen.lift ))
+    , update = (\m s -> ( s, Canvas.lift ))
     , subs = (\m -> Sub.none)
     }

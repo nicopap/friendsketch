@@ -1,9 +1,5 @@
 port module Art.Box exposing (Point, Box, checkCanvas, sub)
 
-{-| Helper functions to deal with various input types.
--}
-
-
 {-| sends outgoing message that will eventually trigger the listenCanvasBox
 port subsription.
 -}
