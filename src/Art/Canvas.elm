@@ -2,70 +2,31 @@ module Art.Canvas
     exposing
         ( Canvas
         , new
-        , id
+        , view
         , draw
         , drawAbsolute
         , lift
         , selectColor
         , selectSize
         , setLocation
-        , strokes
         )
 
-{-| The data structure and functions related to drawing on a surface. This
-module only exposes very basic operations in order to let other implement
-the actual way of drawing or how to display the drawing.
 
-
-# Definition
-
-@docs Canvas, new
-
-
-# Constants
-
-@docs id
-
-
-# Operations on Canvas
-
-@docs draw, drawAbsolute, lift, selectColor, selectSize
-
-
-# Informations on the Canvas
-
-@docs strokes
-
--}
-
-import Color
+import Html exposing (Html, div)
+import Html.Attributes exposing (id)
+import Collage
+import Element as GraphElement
+import List.Nonempty as NE exposing (Nonempty)
 import Color exposing (Color)
-import Art.Stroke as Stroke
-import Art.Stroke exposing (Stroke)
-import Art.Box exposing (Box, Point)
-import Art.Box as Box
+import Art.Stroke as Stroke exposing (Stroke)
+import Art.Box as Box exposing (Box,Point)
 
 
-{-| The html id of the canvas. ideally this gets abstracted away for a more
-flexible solution
--}
-id : String
-id =
-    "drawingspace"
-
-
-{-| The internal state of the Canvas: Or the user is drawing physically,
-which means it is using the Canvas. Or it uses some other tools, maybe to
-select a pen.
--}
 type State
     = Drawing Stroke
     | Selecting
 
 
-{-| Describes a Canvas. It only agregates operations on it, do not have any
-"concrete" representation.
--}
 type alias Canvas =
     { strokes : List Stroke
     , state : State
@@ -140,8 +101,7 @@ lift canvas =
             }
 
 
-{-| Get A list of all the strokes on the canvas.
--}
+{-| Get A list of all the strokes on the canvas -}
 strokes : Canvas -> List Stroke
 strokes canvas =
     case canvas.state of
@@ -152,51 +112,70 @@ strokes canvas =
             canvas.strokes
 
 
-{-| Change the selected color of the canvas
--}
+{-| Change the selected color of the canvas -}
 selectColor : Color -> Canvas -> Canvas
 selectColor newcolor canvas =
     { canvas | color = newcolor }
 
 
-{-| Change the pen size of the canvas
--}
+{-| Change the pen size of the canvas -}
 selectSize : Float -> Canvas -> Canvas
 selectSize newsize canvas =
     { canvas | strokeSize = newsize }
 
 
-{-| Change the location of the canavs
--}
+{-| Change the location of the canavs -}
 setLocation : Box -> Canvas -> Canvas
 setLocation newloc canvas =
     { canvas | box = newloc }
 
 
-{-| Get various states about a canvas.
--}
-height : Canvas -> Float
-height =
-    .box >> .height >> (*) 0.5
+{-| Get various stats about a canvas -}
+height = .box >> .height >> (*) 0.5
+width = .box >> .width >> (*) 0.5
+rheight = .box >> .height >> round
+rwidth = .box >> .width >> round
+xcenter = .box >> .x
+ycenter = .box >> .y
 
 
-width : Canvas -> Float
-width =
-    .box >> .width >> (*) 0.5
-
-
-xcenter : Canvas -> Float
-xcenter =
-    .box >> .x
-
-
-ycenter : Canvas -> Float
-ycenter =
-    .box >> .y
-
-
-{-| A default canvas.
--}
+{-| A default canvas -}
 new : Canvas
 new =
     Canvas [] Selecting Color.black 20 { x = 355, y = 303, width = 600, height = 400 }
+
+
+strokeToForm : Stroke -> Collage.Form
+strokeToForm { points, color, size } =
+    if NE.isSingleton points then
+        Collage.circle (size / 2)
+            |> Collage.filled color
+            |> (Collage.move <| (\{x,y} -> (x,y)) <| NE.head points)
+    else
+        points
+            |> NE.map (\{x,y} -> (x,y))
+            |> NE.toList
+            |> Collage.path
+            |> Collage.traced
+                { color = color
+                , width = size
+                , cap = Collage.Round
+                , join = Collage.Smooth
+                , dashing = []
+                , dashOffset = 0
+                }
+
+
+canvasToForm : Canvas -> List Collage.Form
+canvasToForm canvas =
+    strokes canvas
+        |> List.reverse
+        |> List.map strokeToForm
+
+
+view : Canvas -> Html msg
+view canvas =
+    canvasToForm canvas
+        |> Collage.collage (rwidth canvas) (rheight canvas)
+        |> GraphElement.toHtml
+        |> (\x -> div [ id "drawingarea" ] [x])

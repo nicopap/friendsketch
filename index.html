@@ -10,7 +10,7 @@
 	<script>
 		var app = Elm.Main.fullscreen();
 		app.ports.checkCanvas.subscribe(function() {
-			var canvas = document.getElementById("drawingspace");
+			var canvas = document.getElementById("drawingarea");
 			var canvasBox = canvas.getBoundingClientRect();
 			var payload =
 				[ canvasBox.left + canvasBox.width / 2

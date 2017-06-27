@@ -19,7 +19,6 @@ defining functions that translates from one concrete type to the other.
 import Html exposing (button, div, text, Html)
 import Html.Attributes exposing (id)
 import Art.Canvas as Canvas exposing (Canvas)
-import Art.RenderedCanvas as RenderedCanvas
 import Art.Box as Box exposing (Box)
 import Art.Pen as Pen
 import Art.Toolbox as Toolbox exposing (Toolbox)
@@ -72,7 +71,10 @@ update msg (Art pa) =
             let
                 map { msg, canvas, toolbox } =
                     ( Art { pa | canvas = canvas, toolbox = toolbox }
-                    , Cmd.none --TODO: take into account msg
+                    , Cmd.batch
+                        [ Cmd.map ToolboxMsg msg
+                        , Box.checkCanvas ()
+                        ]
                     )
             in
                 map <| Toolbox.update msg pa.canvas pa.toolbox
@@ -81,7 +83,7 @@ update msg (Art pa) =
 view : Art s m -> Html (Msg m)
 view (Art { canvas, toolbox }) =
     div []
-        [ div [ id Canvas.id ] [ RenderedCanvas.htmlCanvas canvas ]
+        [ div [ id "drawingcontainer" ] [ Canvas.view canvas ]
         , div [ id "toolbox" ] [ Html.map ToolboxMsg <| Toolbox.view toolbox ]
         ]
 
