@@ -2,10 +2,11 @@ cc = elm-make --warn
 BROWSER ?= chrome
 BUILD_DIR = build
 DOC_FILE = elm-docs.json
-CSS_DIR = css
+NET_DIR = net
 OUTPUT = $(BUILD_DIR)/main.js
-INPUT_HTML = index.html
-FINAL_PAGE = $(BUILD_DIR)/$(INPUT_HTML)
+INPUT_HTML = $(NET_DIR)/index.html
+FAVICON = $(NET_DIR)/favicon.png
+FINAL_PAGE = $(BUILD_DIR)/index.html
 
 .PHONY: build run debug gendoc agregate build_db update clean update_db
 
@@ -25,9 +26,8 @@ build_db: src
 build: src
 	$(cc) src/Main.elm --output $(OUTPUT)
 
-agregate: $(OUTPUT) index.html
-	cp $(INPUT_HTML) $(BUILD_DIR)
-	cp $(CSS_DIR)/* $(BUILD_DIR)
+agregate: $(OUTPUT) $(NET_DIR)
+	cp $(NET_DIR)/* $(BUILD_DIR)
 
 
 debug: build_db agregate
