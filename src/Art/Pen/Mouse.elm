@@ -5,47 +5,45 @@ import Art.Canvas as Canvas
 
 
 type Msg
-    = DrawAt Mouse.Position
-    | LiftMouse
+    = Hover Mouse.Position
+    | Lift
+    | Press Mouse.Position
 
 
-type alias State =
-    Msg
+type State
+    = Sleeping
+    | Activated
 
 
 update : Msg -> State -> ( State, Cmd Canvas.Msg )
-update msg _ =
-    ( msg
-    , case msg of
-        DrawAt { x, y } ->
-            Canvas.drawAbsolute { x = toFloat x, y = toFloat y }
+update msg state =
+    case msg of
+        Press { x, y } ->
+            ( Activated
+            , Canvas.press { x = toFloat x, y = toFloat y }
+            )
 
-        LiftMouse ->
-            Canvas.lift
-    )
+        Lift ->
+            ( Sleeping, Canvas.lift )
+
+        Hover { x, y } ->
+            ( state
+            , Canvas.hover { x = toFloat x, y = toFloat y }
+            )
 
 
 subs : State -> Sub Msg
 subs state =
-    let
-        movementSub =
-            case state of
-                DrawAt _ ->
-                    Mouse.moves DrawAt
-
-                LiftMouse ->
-                    Sub.none
-    in
-        Sub.batch
-            [ movementSub
-            , Mouse.ups <| always LiftMouse
-            , Mouse.downs DrawAt
-            ]
+    Sub.batch
+        [ Mouse.moves Hover
+        , Mouse.ups <| always Lift
+        , Mouse.downs Press
+        ]
 
 
 newInput : Canvas.Input State Msg
 newInput =
-    { state = LiftMouse
+    { state = Sleeping
     , update = update
     , subs = subs
     }
