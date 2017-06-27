@@ -17,7 +17,7 @@ module Art.Canvas
 
 import Task
 import Html exposing (Html, div)
-import Html.Attributes exposing (id, style)
+import Html.Attributes exposing (id)
 import Collage
 import Element as GraphElement
 import List.Nonempty as NE exposing (Nonempty)
@@ -39,17 +39,6 @@ type alias Canvas =
     , strokeSize : Float
     , box : Box
     }
-
-
-{-| Get A list of all the strokes on the canvas -}
-strokes : Canvas -> List Stroke
-strokes canvas =
-    case canvas.state of
-        Drawing (Just lastStroke) ->
-            lastStroke :: canvas.strokes
-
-        _ ->
-            canvas.strokes
 
 
 {-| Change the selected color of the canvas -}
@@ -102,10 +91,35 @@ strokeToForm { points, color, size } =
 
 
 canvasToForm : Canvas -> List Collage.Form
-canvasToForm canvas =
-    strokes canvas
-        |> List.reverse
-        |> List.map strokeToForm
+canvasToForm { state, strokeSize, strokes, color } =
+    let
+        cursorView =
+            case state of
+                Hovering { x, y } ->
+                    [ Collage.circle (strokeSize / 2)
+                        |> Collage.outlined
+                            { color = color
+                            , width = 1
+                            , cap = Collage.Flat
+                            , join = Collage.Smooth
+                            , dashing = [ 1, round <| strokeSize / 10 ]
+                            , dashOffset = 0
+                            }
+                        |> Collage.move ( x, y )
+                    ]
+
+                Drawing (Just stroke) ->
+                    [ strokeToForm stroke ]
+
+                Drawing Nothing ->
+                    []
+
+                Selecting ->
+                    []
+    in
+        strokes
+            |> List.map strokeToForm
+            |> (flip (++)) cursorView
 
 
 view : Canvas -> Html msg
@@ -113,29 +127,12 @@ view canvas =
     let
         rheight = .box >> .height >> round
         rwidth = .box >> .width >> round
-        borderStyle state =
-            style
-                [ ("borderColor", case state of
-                    Drawing (Just _) ->
-                        "green"
-                    Drawing Nothing ->
-                        "blue"
-                    Selecting ->
-                       "red"
-                    Hovering _ ->
-                        "black"
-                )
-                , ( "borderStyle", "solid")
-                , ( "width", "600px")
-                , ("margin", "auto")
-                , ("marginTop", "100px")
-                ]
     in
         canvasToForm canvas
             |> Collage.collage (rwidth canvas) (rheight canvas)
             |> GraphElement.toHtml
             |> List.singleton
-            >> div [borderStyle canvas.state, id "drawingarea" ]
+            >> div [ id "drawingarea" ]
 
 
 
@@ -147,8 +144,10 @@ lift_ : Canvas -> Canvas
 lift_ canvas =
     case canvas.state of
         Drawing (Just stroke) ->
-            { canvas | strokes = stroke :: canvas.strokes
-                     , state = Selecting }
+            { canvas
+                | strokes = canvas.strokes ++ [ stroke ]
+                , state = Selecting
+            }
 
         _ ->
             canvas
@@ -219,10 +218,11 @@ update msg canvas =
             (offset <| boxed <| hover_) point canvas
 
         Press point ->
-            (offset <| boxed <| hover_) point {canvas | state = Drawing Nothing}
+            (offset <| boxed <| hover_) point { canvas | state = Drawing Nothing }
 
         Lift ->
             lift_ canvas
+
 
 
 -- EMISSION functions to communicate with a Canvas.
