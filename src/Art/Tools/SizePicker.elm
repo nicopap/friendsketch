@@ -1,24 +1,27 @@
 module Art.Tools.SizePicker exposing (view)
 
-import Html
-import Html.Events exposing (onClick)
+import Html exposing (Html)
+import Html.Attributes exposing (type_)
+import Html.Events exposing (onInput)
+import Json.Decode as Json
 import Art.ToolboxMsg exposing (ToolboxMsg(..))
 
 
-sizes =
-    [ 5, 10, 15, 20, 30, 50, 110 ]
+decodeString : String -> Float
+decodeString input =
+    case Json.decodeString Json.float input of
+        Ok val ->
+            val
+
+        _ ->
+            10
 
 
-labels =
-    [ "tiny", "small", "medium", "large", "huge", "humongus" ]
+slider : Html ToolboxMsg
+slider =
+    Html.input [ type_ "range", onInput (ChangeSize << decodeString) ] []
 
 
-sizeButton : Float -> String -> Html.Html ToolboxMsg
-sizeButton size text =
-    Html.button [ onClick (ChangeSize size) ] [ Html.text text ]
-
-
-view : Html.Html ToolboxMsg
+view : Html ToolboxMsg
 view =
-    Html.div []
-        (List.map2 sizeButton sizes labels)
+    slider
