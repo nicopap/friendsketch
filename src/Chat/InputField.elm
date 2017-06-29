@@ -8,7 +8,6 @@ import Time exposing (Time)
 import Time
 import Task
 import Json.Encode exposing (encode, float, string, object)
-import WebSocket
 
 
 {-| Translates the request into a machine-readable request.

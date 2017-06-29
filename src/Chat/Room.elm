@@ -10,20 +10,10 @@ import Chat.Message exposing (Message)
 import Chat.InputField as InputField
 
 
-host =
-    "localhost:8080"
-
-
-protocol =
-    "http"
-
-
-basename =
-    "/chat"
-
-
-prefix =
-    protocol ++ "://" ++ host ++ basename
+host = "127.0.0.1:9260"
+protocol = "ws"
+basename = "/chat"
+prefix = protocol ++ "://" ++ host ++ basename
 
 
 getUrl : String -> String
