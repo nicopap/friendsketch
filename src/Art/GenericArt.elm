@@ -20,13 +20,12 @@ import Html exposing (button, div, text, Html)
 import Html.Attributes exposing (id)
 import Art.Canvas as Canvas exposing (Canvas)
 import Art.Box as Box exposing (Box)
-import Art.Toolbox as Toolbox exposing (Toolbox)
-import Art.ToolboxMsg as TBM
+import Art.Toolbox as Toolbox
 
 
 type alias PaintingArea s m =
     { canvas : Canvas
-    , toolbox : Toolbox
+    , toolbox : Canvas.Tool Toolbox.State Toolbox.Msg
     , input : Canvas.Input s m
     }
 
@@ -38,7 +37,7 @@ type Art s m
 type Msg m
     = InputMsg m
     | CanvasMsg Canvas.Msg
-    | ToolboxMsg TBM.ToolboxMsg
+    | ToolboxMsg Toolbox.Msg
     | UpdatePosition Box
 
 
@@ -53,11 +52,7 @@ update msg (Art pa) =
                 map <| Canvas.setLocation box pa.canvas
 
         InputMsg msg ->
-            let
-                map ( input, cmd ) =
-                    ( Art { pa | input = input }, Cmd.map CanvasMsg cmd )
-            in
-                map <| Canvas.updateInput msg pa.input
+            Canvas.mapInput (\x -> Art { pa | input = x }) CanvasMsg msg pa.input
 
         CanvasMsg msg ->
             let
@@ -67,29 +62,20 @@ update msg (Art pa) =
                 map <| Canvas.update msg pa.canvas
 
         ToolboxMsg msg ->
-            let
-                map { msg, canvas, toolbox } =
-                    ( Art { pa | canvas = canvas, toolbox = toolbox }
-                    , Cmd.batch
-                        [ Cmd.map ToolboxMsg msg
-                        , Box.checkCanvas ()
-                        ]
-                    )
-            in
-                map <| Toolbox.update msg pa.canvas pa.toolbox
+            Canvas.mapInput (\x -> Art { pa | toolbox = x }) CanvasMsg msg pa.toolbox
 
 
 view : Art s m -> Html (Msg m)
 view (Art { canvas, toolbox }) =
     div []
         [ div [ id "drawingcontainer" ] [ Canvas.view canvas ]
-        , div [ id "toolbox" ] [ Html.map ToolboxMsg <| Toolbox.view toolbox ]
+        , div [ id "toolbox" ] [ Canvas.viewTool ToolboxMsg toolbox ]
         ]
 
 
 subs : Art s m -> Sub (Msg m)
 subs (Art { input }) =
     Sub.batch
-        [ Sub.map InputMsg <| input.subs input.state
+        [ Canvas.subInput InputMsg input
         , Box.sub UpdatePosition
         ]

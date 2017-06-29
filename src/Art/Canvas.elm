@@ -4,14 +4,17 @@ module Art.Canvas
         , new
         , view
         , update
-        , Msg(..)
+        , Msg
         , Input
-        , updateInput
+        , Tool
+        , mapInput
+        , viewTool
+        , subInput
         , lift
         , press
         , hover
-        , selectColor
-        , selectSize
+        , changeColor
+        , changePenSize
         , setLocation
         )
 
@@ -41,16 +44,6 @@ type alias Canvas =
     }
 
 
-{-| Change the selected color of the canvas -}
-selectColor : Color -> Canvas -> Canvas
-selectColor newcolor canvas =
-    { canvas | color = newcolor }
-
-
-{-| Change the pen size of the canvas -}
-selectSize : Float -> Canvas -> Canvas
-selectSize newsize canvas =
-    { canvas | strokeSize = newsize }
 
 
 {-| Change the location of the canvas -}
@@ -209,6 +202,8 @@ type Msg
     = Hover Point
     | Lift
     | Press Point
+    | ChangeColor Color
+    | ChangePenSize Float
 
 
 update : Msg -> Canvas -> Canvas
@@ -223,33 +218,51 @@ update msg canvas =
         Lift ->
             lift_ canvas
 
+        ChangeColor newcolor ->
+            { canvas | color = newcolor }
+
+        ChangePenSize newsize ->
+            { canvas | strokeSize = newsize }
+
 
 
 -- EMISSION functions to communicate with a Canvas.
+{-| A generic Canvas modification tool -}
+type alias CanvasTool a s m =
+    { a
+        | state : s
+        , update : m -> s -> ( s, Cmd Msg )
+    }
 
 
 emit = Task.succeed >> Task.perform identity
 
-lift : Cmd Msg
 lift = emit Lift
-
-press : Point -> Cmd Msg
 press = emit << Press
-
-hover : Point -> Cmd Msg
 hover = emit << Hover
+changePenSize = emit << ChangePenSize
+changeColor = emit << ChangeColor
 
 
-{-| The pen implementation -}
+{-| An input that can modify the Canvas -}
 type alias Input s m =
-    { state : s
-    , update : m -> s -> ( s, Cmd Msg )
-    , subs : s -> Sub m
-    }
+    CanvasTool {subs : s -> Sub m} s m
+
+{-| A Canvas modification tool that is visible -}
+type alias Tool s m =
+    CanvasTool { view : s -> Html m } s m
 
 
-{-| Run the input's update function and transforms its state -}
-updateInput : m -> Input s m -> ( Input s m, Cmd Msg )
-updateInput msg input =
-    input.update msg input.state
-        |> \( state, cmd ) -> ( { input | state = state }, cmd )
+mapInput : (CanvasTool a s m -> x) -> (Msg -> y) -> m -> CanvasTool a s m -> (x, Cmd y)
+mapInput maptool mapcmd msg tool =
+    tool.update msg tool.state
+        |> \(state, cmd) -> ( maptool { tool | state = state }, Cmd.map mapcmd cmd )
+
+viewTool : (m -> x) -> Tool s m -> Html x
+viewTool mapf tool =
+    Html.map mapf (tool.view tool.state)
+
+subInput : (m -> x) -> Input s m -> Sub x
+subInput mapf input =
+    Sub.map mapf (input.subs input.state)
+

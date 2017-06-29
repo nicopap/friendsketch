@@ -1,46 +1,41 @@
-module Art.Toolbox exposing (view, update, Toolbox, ToolboxAnswer, new)
+module Art.Toolbox exposing (newTool, State, Msg)
 
-import Html
-import Art.ToolboxMsg exposing (ToolboxMsg(..))
-import Art.Canvas as Canvas
-import Art.Tools.ColorPicker as ColorPicker
-import Art.Tools.SizePicker as SizePicker
-
-
-type alias ToolboxAnswer =
-    { msg : Cmd ToolboxMsg
-    , canvas : Canvas.Canvas
-    , toolbox : Toolbox
-    }
+import Html exposing (Html)
+import Art.Canvas as Canvas exposing (Canvas)
+import Art.Tools.ColorPicker as PColor
+import Art.Tools.SizePicker as PSize
 
 
-type alias Toolbox =
-    ()
+type Msg
+    = CMsg PColor.Msg
+    | SMsg PSize.Msg
 
 
-new : Toolbox
-new =
-    ()
+type State
+    = State (Canvas.Tool PColor.State PColor.Msg) (Canvas.Tool PSize.State PSize.Msg)
 
 
-update : ToolboxMsg -> Canvas.Canvas -> Toolbox -> ToolboxAnswer
-update msg canvas toolbox =
-    let
-        newcanvas : Canvas.Canvas
-        newcanvas =
-            case msg of
-                ChangeColor newcolor ->
-                    { canvas | color = newcolor }
+update : Msg -> State -> ( State, Cmd Canvas.Msg )
+update msg_ (State colorTool sizeTool) =
+    case msg_ of
+        CMsg msg ->
+            Canvas.mapInput (\x -> State x sizeTool) identity msg colorTool
 
-                ChangeSize newsize ->
-                    { canvas | strokeSize = newsize }
-    in
-        { msg = Cmd.none, toolbox = toolbox, canvas = newcanvas }
+        SMsg msg ->
+            Canvas.mapInput (State colorTool) identity msg sizeTool
 
 
-view : Toolbox -> Html.Html ToolboxMsg
-view _ =
+view : State -> Html Msg
+view (State colorTool sizeTool) =
     Html.div []
-        [ ColorPicker.view
-        , SizePicker.view
+        [ Html.map CMsg <| colorTool.view colorTool.state
+        , Html.map SMsg <| sizeTool.view sizeTool.state
         ]
+
+
+newTool : Canvas.Tool State Msg
+newTool =
+    { state = State PColor.newTool PSize.newTool
+    , update = update
+    , view = view
+    }

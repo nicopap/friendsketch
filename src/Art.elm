@@ -41,7 +41,7 @@ newRemote =
     Sremote <|
         GArt.Art
             { canvas = Canvas.new
-            , toolbox = Toolbox.new
+            , toolbox = Toolbox.newTool
             , input = RemotePen.newInput
             }
 
@@ -51,7 +51,7 @@ newLocal =
     Slocal <|
         GArt.Art
             { canvas = Canvas.new
-            , toolbox = Toolbox.new
+            , toolbox = Toolbox.newTool
             , input = Mouse.newInput
             }
 
