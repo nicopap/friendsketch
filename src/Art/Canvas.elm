@@ -15,7 +15,6 @@ module Art.Canvas
         , hover
         , changeColor
         , changePenSize
-        , setLocation
         )
 
 import Task
@@ -40,23 +39,14 @@ type alias Canvas =
     , state : State
     , color : Color
     , strokeSize : Float
-    , box : Box
+    , box : {width : Float, height : Float}
     }
-
-
-
-
-{-| Change the location of the canvas -}
-setLocation : Box -> Canvas -> Canvas
-setLocation newloc canvas =
-    { canvas | box = newloc }
 
 
 {-| A default canvas -}
 new : Canvas
 new =
-    Canvas [] Selecting Color.black 20 { x = 355, y = 303, width = 600, height = 400 }
-
+    Canvas [] Selecting Color.black 20 { width = 600, height = 400 }
 
 
 -- VIEW
@@ -128,7 +118,6 @@ view canvas =
             >> div [ id "drawingarea" ]
 
 
-
 -- UPDATE
 
 
@@ -181,23 +170,6 @@ boxed f point canvas =
             f point canvas
 
 
-{-| Wraps a function that takes a point and modifies a Canvas so the point
-is applied with the offset induced by that poisition of the canvas on the
-page.
--}
-offset : (Point -> Canvas -> Canvas) -> Point -> Canvas -> Canvas
-offset f point canvas =
-    let
-        xcenter = .box >> .x
-        ycenter = .box >> .y
-        offsetPosition =
-            { x = point.x - xcenter canvas
-            , y = ycenter canvas - point.y
-            }
-    in
-        f offsetPosition canvas
-
-
 type Msg
     = Hover Point
     | Lift
@@ -210,10 +182,10 @@ update : Msg -> Canvas -> Canvas
 update msg canvas =
     case msg of
         Hover point ->
-            (offset <| boxed <| hover_) point canvas
+            ( boxed <| hover_) point canvas
 
         Press point ->
-            (offset <| boxed <| hover_) point { canvas | state = Drawing Nothing }
+            ( boxed <| hover_) point { canvas | state = Drawing Nothing }
 
         Lift ->
             lift_ canvas
@@ -223,7 +195,6 @@ update msg canvas =
 
         ChangePenSize newsize ->
             { canvas | strokeSize = newsize }
-
 
 
 -- EMISSION functions to communicate with a Canvas.

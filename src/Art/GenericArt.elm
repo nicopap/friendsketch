@@ -38,19 +38,11 @@ type Msg m
     = InputMsg m
     | CanvasMsg Canvas.Msg
     | ToolboxMsg Toolbox.Msg
-    | UpdatePosition Box
 
 
 update : Msg m -> Art s m -> ( Art s m, Cmd (Msg m) )
 update msg (Art pa) =
     case msg of
-        UpdatePosition box ->
-            let
-                map canvas =
-                    ( Art { pa | canvas = canvas }, Cmd.none )
-            in
-                map <| Canvas.setLocation box pa.canvas
-
         InputMsg msg ->
             Canvas.mapInput (\x -> Art { pa | input = x }) CanvasMsg msg pa.input
 
@@ -77,5 +69,4 @@ subs : Art s m -> Sub (Msg m)
 subs (Art { input }) =
     Sub.batch
         [ Canvas.subInput InputMsg input
-        , Box.sub UpdatePosition
         ]

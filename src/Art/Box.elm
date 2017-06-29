@@ -3,6 +3,8 @@ port module Art.Box exposing (Point, Box, checkCanvas, sub)
 {-| sends outgoing message that will eventually trigger the listenCanvasBox
 port subsription.
 -}
+
+
 port checkCanvas : () -> Cmd msg
 
 
@@ -13,15 +15,23 @@ element list formated as follow: [x, y, width, height].
 port listenCanvas : (List Float -> msg) -> Sub msg
 
 
+type alias Located a =
+    { a | x : Float, y : Float }
+
+
+type alias Sized a =
+    { a | width : Float, height : Float }
+
+
 type alias Point =
-    { x : Float, y : Float }
+    Located {}
 
 
 {-| The bounding box of an html element.
 Centered in {x,y} and with a certain width and height.
 -}
 type alias Box =
-    { x : Float, y : Float, width : Float, height : Float }
+    Located (Sized {})
 
 
 {-| Wrapper around the checkPosition port to provide a simpler
