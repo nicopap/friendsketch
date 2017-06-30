@@ -7,9 +7,9 @@
 		<link rel="icon" type="image/png" href="favicon.png">
 	</head>
 	<div id="main"></div>
-	<script src="main.js"></script>
+	<script src="Index.js"></script>
 	<script>
-		var app = Elm.Main.fullscreen();
+		var app = Elm.Index.fullscreen();
 		app.ports.checkCanvas.subscribe(function() {
 			var canvas = document.getElementById("drawingarea");
 			var canvasBox = canvas.getBoundingClientRect();

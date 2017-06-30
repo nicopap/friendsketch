@@ -1,35 +1,28 @@
 cc = elm-make --warn
 BROWSER ?= chrome
 BUILD_DIR = build
-DOC_FILE = elm-docs.json
 NET_DIR = net
-OUTPUT = $(BUILD_DIR)/main.js
-INPUT_HTML = $(NET_DIR)/index.html
-FAVICON = $(NET_DIR)/favicon.png
-FINAL_PAGE = $(BUILD_DIR)/index.html
+SRC_DIR = src
 
-.PHONY: build run debug gendoc agregate build_db update clean update_db
+CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(filter-out %.html,$(wildcard $(NET_DIR)/*)))
+PAGES = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(wildcard $(NET_DIR)/*.html))
 
-run: build agregate
-	$(BROWSER) $(FINAL_PAGE)
 
-update: build agregate
+.PHONY: run clean build
 
-update_db: build_db agregate
+run : build
+	$(BROWSER) $(BUILD_DIR)/Index.html
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD_DIR)/*
 
-build_db: src
-	$(cc) src/Main.elm --output $(OUTPUT) --debug
+build : $(PAGES) $(CONTENT)
 
-build: src
-	$(cc) src/Main.elm --output $(OUTPUT)
+$(BUILD_DIR)/%.js : $(SRC_DIR)/%.elm
+	$(cc) $< --output $@
 
-agregate: $(OUTPUT) $(NET_DIR)
-	cp $(NET_DIR)/* $(BUILD_DIR)
+$(PAGES) : $(BUILD_DIR)/%.html : $(NET_DIR)/%.html $(BUILD_DIR)/%.js
+	cp $< $@
 
-
-debug: build_db agregate
-	$(BROWSER) $(FINAL_PAGE)
-
+$(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
+	cp $< $@

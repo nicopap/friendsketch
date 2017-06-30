@@ -1,4 +1,4 @@
-module Main exposing (main)
+module Index exposing (main)
 
 import Html exposing (span, Html)
 import Html.Events exposing (onClick)
