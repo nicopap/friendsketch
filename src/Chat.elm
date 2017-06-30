@@ -1,83 +1,91 @@
 module Chat exposing (Chat, subs, new, Msg, update, view)
 
+import Json.Decode as Json
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
-import Chat.Room as Room
-import Chat.Room exposing (Room)
+import WebSocket
+import Chat.Message as Message exposing (Message)
+import Chat.InputField as InputField
 
 
 type alias Chat =
-    { connection : Connection
+    { roomid : String
+    , baseurl : String
+    , history : List Message
+    , inputContent : String
     }
 
 
-type Connection
-    = UpIn Room
-    | Down
+type Msg
+    = NewMessage String
+    | UpdateInput String
+    | SubmitInput
+    | SendInput String
+
+
+chatUrl : Chat -> String
+chatUrl { roomid, baseurl } =
+    "ws://" ++ baseurl ++ roomid
 
 
 subs : Chat -> Sub Msg
 subs chat =
-    case chat.connection of
-        UpIn room ->
-            Sub.batch
-                [ Sub.map RoomMsg (Room.subs room)
-                ]
-
-        Down ->
-            Sub.none
+    Sub.batch
+        [ WebSocket.listen (chatUrl chat) NewMessage
+        ]
 
 
-type Msg
-    = RoomMsg Room.Msg
-    | OpenChat
-
-
-new : Chat
-new =
-    Chat Down
-
-
-
--- remotemap ( remotestate, remotemsg ) =
---     ( { art
---         | state = Viewing remotestate
---       }
---     , Cmd.map RemoteMsg remotemsg
---     )
--- RemoteMsg remotemsg ->
---     remotemap (Remote.update remotemsg )
+new : String -> String -> Chat
+new baseurl roomid =
+    { roomid = roomid
+    , baseurl = baseurl
+    , history = []
+    , inputContent = ""
+    }
 
 
 update : Msg -> Chat -> ( Chat, Cmd Msg )
 update msg chat =
     case msg of
-        RoomMsg roommsg ->
-            case chat.connection of
-                UpIn room ->
-                    let
-                        roommap ( room, roommsg ) =
-                            ( { chat | connection = UpIn room }
-                            , Cmd.map RoomMsg roommsg
-                            )
-                    in
-                        roommap (Room.update roommsg room)
+        NewMessage content ->
+            { chat | history = Message.decode content :: chat.history } ! []
 
-                Down ->
-                    Debug.crash "Oh noes, room message while no rooms"
+        UpdateInput newtext ->
+            { chat | inputContent = newtext } ! []
 
-        OpenChat ->
-            ( { chat | connection = UpIn Room.new }, Cmd.none )
+        SubmitInput ->
+            { chat | inputContent = "" }
+                ! [ InputField.prepareMessage chat.inputContent SendInput
+                  ]
+
+        SendInput tosend ->
+            chat ! [ WebSocket.send (chatUrl chat) tosend ]
+
+
+onEnter : Msg -> Attribute Msg
+onEnter msg =
+    let
+        isEnter code =
+            if code == 13 then
+                Json.succeed msg
+            else
+                Json.fail "not ENTER"
+    in
+        on "keydown" <| Json.andThen isEnter keyCode
 
 
 view : Chat -> Html Msg
 view chat =
-    case chat.connection of
-        UpIn room ->
-            div [ class "chat" ]
-                [ Html.map RoomMsg (Room.view room)
-                ]
-
-        Down ->
-            button [ onClick OpenChat, autofocus True ] [ text "Open chat" ]
+    div [ class "chat" ]
+        (List.map Message.view chat.history
+            ++ [ input
+                    [ placeholder "Input guess here"
+                    , autofocus True
+                    , value chat.inputContent
+                    , onEnter SubmitInput
+                    , onInput UpdateInput
+                    ]
+                    [ text chat.inputContent ]
+               ]
+        )

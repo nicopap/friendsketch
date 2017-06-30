@@ -24,6 +24,4 @@ prepareMessage message callback =
                     ]
                 )
     in
-        Cmd.map
-            callback
-            (Task.perform jsonWithmsg Time.now)
+        Cmd.map callback <| Task.perform jsonWithmsg Time.now
