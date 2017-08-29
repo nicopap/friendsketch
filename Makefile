@@ -8,20 +8,28 @@ CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(filter-out %.html,$(wildcard 
 PAGES = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(wildcard $(NET_DIR)/*.html))
 
 
-.PHONY: run clean build
+.PHONY: run debug clean build compile
 
 run : build
+	$(BROWSER) $(BUILD_DIR)/Index.html
+
+debug : build_db
 	$(BROWSER) $(BUILD_DIR)/Index.html
 
 clean:
 	rm -rf $(BUILD_DIR)/*
 
-build : $(PAGES) $(CONTENT)
+build : $(PAGES) $(CONTENT) compile
 
-$(BUILD_DIR)/%.js : $(SRC_DIR)/%.elm
-	$(cc) $< --output $@
+build_db : $(PAGES) $(CONTENT) compile_db
 
-$(PAGES) : $(BUILD_DIR)/%.html : $(NET_DIR)/%.html $(BUILD_DIR)/%.js
+compile : src
+	$(cc) src/Index.elm --output build/Index.js
+
+compile_db :
+	$(cc) src/Index.elm --output build/Index.js --debug
+
+$(PAGES) : $(BUILD_DIR)/%.html : $(NET_DIR)/%.html
 	cp $< $@
 
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
