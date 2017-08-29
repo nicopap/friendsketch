@@ -19,7 +19,7 @@ prepareMessage message callback =
         jsonWithmsg time =
             encode 0
                 (object
-                    [ ( "timestamp", float <| Time.inMilliseconds time )
+                    [ ( "timestamp", Time.inMilliseconds time |> toString |> string )
                     , ( "message", string message )
                     ]
                 )

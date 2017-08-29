@@ -16,9 +16,9 @@ type alias Message =
 decodeMessage : Decoder Message
 decodeMessage =
     map3 Message
-        (field "Author" string)
-        (field "Date" string)
-        (field "Content" string)
+        (field "author" string)
+        (field "date" string)
+        (field "content" string)
 
 
 decode : String -> Message

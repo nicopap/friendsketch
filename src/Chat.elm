@@ -49,7 +49,7 @@ update : Msg -> Chat -> ( Chat, Cmd Msg )
 update msg chat =
     case msg of
         NewMessage content ->
-            { chat | history = Message.decode content :: chat.history } ! []
+            { chat | history = chat.history ++ [ Message.decode content ] } ! []
 
         UpdateInput newtext ->
             { chat | inputContent = newtext } ! []
