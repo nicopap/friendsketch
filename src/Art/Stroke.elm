@@ -17,7 +17,7 @@ module Art.Stroke exposing (Stroke, new, draw)
 import Color
 import Color exposing (Color)
 import List.Nonempty as NE exposing (Nonempty)
-import Art.Box exposing (Point)
+import ElementRelativeMouseEvents exposing (Point)
 
 
 {-| Expand a stroke to include a new point.

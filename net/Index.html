@@ -10,16 +10,5 @@
 	<script src="Index.js"></script>
 	<script>
 		var app = Elm.Index.fullscreen();
-		app.ports.checkCanvas.subscribe(function() {
-			var canvas = document.getElementById("drawingarea");
-			var canvasBox = canvas.getBoundingClientRect();
-			var payload =
-				[ canvasBox.left + canvasBox.width / 2
-				, canvasBox.top + canvasBox.height / 2
-				, canvasBox.width
-				, canvasBox.height
-				]
-			app.ports.listenCanvas.send(payload);
-		});
 	</script>
 </html>

@@ -5,27 +5,17 @@ module Art.Canvas
         , view
         , update
         , Msg
-        , Input
-        , Tool
-        , mapInput
-        , viewTool
-        , subInput
-        , lift
-        , press
-        , hover
-        , changeColor
-        , changePenSize
         )
 
-import Task
+import Color exposing (Color)
 import Html exposing (Html, div)
 import Html.Attributes exposing (id)
 import Collage
 import Element as GraphElement
+import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
-import Color exposing (Color)
 import Art.Stroke as Stroke exposing (Stroke)
-import Art.Box as Box exposing (Box, Point)
+import Art.Toolbox as Toolbox
 
 
 type State
@@ -39,19 +29,24 @@ type alias Canvas =
     , state : State
     , color : Color
     , strokeSize : Float
-    , box : {width : Float, height : Float}
+    , width : Float
+    , height : Float
     }
 
 
-{-| A default canvas -}
+{-| A default canvas
+-}
 new : Canvas
 new =
-    Canvas [] Selecting Color.black 20 { width = 600, height = 400 }
+    Canvas [] Selecting Color.black 20 600 400
+
 
 
 -- VIEW
 
 
+{-| Displays a stroke
+-}
 strokeToForm : Stroke -> Collage.Form
 strokeToForm { points, color, size } =
     if NE.isSingleton points then
@@ -73,23 +68,31 @@ strokeToForm { points, color, size } =
                 }
 
 
-canvasToForm : Canvas -> List Collage.Form
-canvasToForm { state, strokeSize, strokes, color } =
+{-| Display the outline of the brush when howevering over the canvas
+-}
+brushOutline : Float -> Color -> ( Float, Float ) -> Collage.Form
+brushOutline strokeSize color position =
+    Collage.circle (strokeSize / 2)
+        |> Collage.outlined
+            { color = color
+            , width = 1
+            , cap = Collage.Flat
+            , join = Collage.Smooth
+            , dashing = [ 1, round <| strokeSize / 10 ]
+            , dashOffset = 0
+            }
+        |> Collage.move position
+
+
+{-| Displays the whole drawing including previous strokes
+-}
+toForms : Canvas -> List Collage.Form
+toForms { state, strokeSize, strokes, color } =
     let
-        cursorView =
+        drawingTip =
             case state of
                 Hovering { x, y } ->
-                    [ Collage.circle (strokeSize / 2)
-                        |> Collage.outlined
-                            { color = color
-                            , width = 1
-                            , cap = Collage.Flat
-                            , join = Collage.Smooth
-                            , dashing = [ 1, round <| strokeSize / 10 ]
-                            , dashOffset = 0
-                            }
-                        |> Collage.move ( x, y )
-                    ]
+                    [ brushOutline strokeSize color ( x, y ) ]
 
                 Drawing (Just stroke) ->
                     [ strokeToForm stroke ]
@@ -102,28 +105,39 @@ canvasToForm { state, strokeSize, strokes, color } =
     in
         strokes
             |> List.map strokeToForm
-            |> (flip (++)) cursorView
+            |> (flip (++)) drawingTip
 
 
-view : Canvas -> Html msg
+canvasView : Canvas -> Html Msg
+canvasView ({ width, height } as canvas) =
+    toForms canvas
+        |> Collage.collage (round width) (round height)
+        |> GraphElement.toHtml
+        |> List.singleton
+        |> div
+            [ MouseE.onMouseMove Hover
+            , MouseE.onMouseUp <| always Lift
+            , MouseE.onMouseDown Press
+            , id "drawingcontainer"
+            ]
+
+
+view : Canvas -> Html Msg
 view canvas =
-    let
-        rheight = .box >> .height >> round
-        rwidth = .box >> .width >> round
-    in
-        canvasToForm canvas
-            |> Collage.collage (rwidth canvas) (rheight canvas)
-            |> GraphElement.toHtml
-            |> List.singleton
-            >> div [ id "drawingarea" ]
+    div []
+        [ canvasView canvas
+        , div [ id "toolbox" ] [ Toolbox.view ChangeColor ChangePenSize ]
+        ]
+
 
 
 -- UPDATE
 
 
-{-| Lift the "pen" from the canvas, that means the stroke is finished -}
-lift_ : Canvas -> Canvas
-lift_ canvas =
+{-| Lift the "pen" from the canvas, that means the stroke is finished
+-}
+lift : Canvas -> Canvas
+lift canvas =
     case canvas.state of
         Drawing (Just stroke) ->
             { canvas
@@ -135,39 +149,24 @@ lift_ canvas =
             canvas
 
 
-hover_ : Point -> Canvas -> Canvas
-hover_ point canvas =
-    { canvas | state = case canvas.state of
-        Drawing Nothing ->
-            let
-                size = canvas.strokeSize
-                color = canvas.color
-            in
-                Drawing <| Just <| Stroke.new point color size
-
-        Drawing (Just stroke) ->
-            Drawing <| Just <| Stroke.draw point stroke
-
-        _ ->
-            Hovering point
-    }
-
-
-{-| Wraps a function that takes a Point and modifies a Canvas such as
-the result has the function applied only if the point is within bounds
-of the canvas.
--}
-boxed : (Point -> Canvas -> Canvas) -> Point -> Canvas -> Canvas
-boxed f point canvas =
+hover : Point -> Canvas -> Canvas
+hover { x, y } ({ state, strokeSize, color, width, height } as canvas) =
     let
-        height = .box >> .height >> (*) 0.5
-        width = .box >> .width >> (*) 0.5
-        outbound { x, y } cvs = abs x > width cvs || abs y > height cvs
+        point =
+            { x = x - width / 2, y = height / 2 - y }
+
+        newstate =
+            case state of
+                Drawing Nothing ->
+                    Drawing <| Just <| Stroke.new point color strokeSize
+
+                Drawing (Just stroke) ->
+                    Drawing <| Just <| Stroke.draw point stroke
+
+                _ ->
+                    Hovering point
     in
-        if outbound point canvas then
-            lift_ canvas
-        else
-            f point canvas
+        { canvas | state = newstate }
 
 
 type Msg
@@ -182,58 +181,16 @@ update : Msg -> Canvas -> Canvas
 update msg canvas =
     case msg of
         Hover point ->
-            ( boxed <| hover_) point canvas
+            hover point canvas
 
         Press point ->
-            ( boxed <| hover_) point { canvas | state = Drawing Nothing }
+            hover point { canvas | state = Drawing Nothing }
 
         Lift ->
-            lift_ canvas
+            lift canvas
 
         ChangeColor newcolor ->
             { canvas | color = newcolor }
 
         ChangePenSize newsize ->
             { canvas | strokeSize = newsize }
-
-
--- EMISSION functions to communicate with a Canvas.
-{-| A generic Canvas modification tool -}
-type alias CanvasTool a s m =
-    { a
-        | state : s
-        , update : m -> s -> ( s, Cmd Msg )
-    }
-
-
-emit = Task.succeed >> Task.perform identity
-
-lift = emit Lift
-press = emit << Press
-hover = emit << Hover
-changePenSize = emit << ChangePenSize
-changeColor = emit << ChangeColor
-
-
-{-| An input that can modify the Canvas -}
-type alias Input s m =
-    CanvasTool {subs : s -> Sub m} s m
-
-{-| A Canvas modification tool that is visible -}
-type alias Tool s m =
-    CanvasTool { view : s -> Html m } s m
-
-
-mapInput : (CanvasTool a s m -> x) -> (Msg -> y) -> m -> CanvasTool a s m -> (x, Cmd y)
-mapInput maptool mapcmd msg tool =
-    tool.update msg tool.state
-        |> \(state, cmd) -> ( maptool { tool | state = state }, Cmd.map mapcmd cmd )
-
-viewTool : (m -> x) -> Tool s m -> Html x
-viewTool mapf tool =
-    Html.map mapf (tool.view tool.state)
-
-subInput : (m -> x) -> Input s m -> Sub x
-subInput mapf input =
-    Sub.map mapf (input.subs input.state)
-

@@ -1,41 +1,64 @@
-module Art.Toolbox exposing (newTool, State, Msg)
+module Art.Toolbox exposing (view)
 
-import Html exposing (Html)
-import Art.Canvas as Canvas exposing (Canvas)
-import Art.Tools.ColorPicker as PColor
-import Art.Tools.SizePicker as PSize
-
-
-type Msg
-    = CMsg PColor.Msg
-    | SMsg PSize.Msg
+import Html exposing (Html, div)
+import Html.Attributes exposing (style, type_)
+import Html.Events exposing (onClick, onInput)
+import Json.Decode as Json
+import Result
+import Color exposing (..)
+import ColorMath
 
 
-type State
-    = State (Canvas.Tool PColor.State PColor.Msg) (Canvas.Tool PSize.State PSize.Msg)
-
-
-update : Msg -> State -> ( State, Cmd Canvas.Msg )
-update msg_ (State colorTool sizeTool) =
-    case msg_ of
-        CMsg msg ->
-            Canvas.mapInput (\x -> State x sizeTool) identity msg colorTool
-
-        SMsg msg ->
-            Canvas.mapInput (State colorTool) identity msg sizeTool
-
-
-view : State -> Html Msg
-view (State colorTool sizeTool) =
-    Html.div []
-        [ Html.map CMsg <| colorTool.view colorTool.state
-        , Html.map SMsg <| sizeTool.view sizeTool.state
+view : (Color -> msg) -> (Float -> msg) -> Html msg
+view colormsg sizemsg =
+    div []
+        [ div [] <| List.map (boxColor colormsg) colorList
+        , slider sizemsg
         ]
 
 
-newTool : Canvas.Tool State Msg
-newTool =
-    { state = State PColor.newTool PSize.newTool
-    , update = update
-    , view = view
-    }
+
+-- color picker
+
+
+colorList : List Color
+colorList =
+    [ white
+    , grey , lightGrey , darkGrey
+    , charcoal , lightCharcoal , darkCharcoal
+    , red , lightRed , darkRed
+    , orange , lightOrange , darkOrange
+    , yellow , lightYellow , darkYellow
+    , green , lightGreen , darkGreen
+    , blue , lightBlue , darkBlue
+    , purple , lightPurple , darkPurple
+    , brown , lightBrown , darkBrown
+    , black
+    ]
+
+
+boxColor : (Color -> msg) -> Color -> Html msg
+boxColor colormsg color =
+    let
+        myStyle =
+            style
+                [ ( "background-color", "#" ++ ColorMath.colorToHex color )
+                , ( "height", "20px" )
+                , ( "width", "20px" )
+                ]
+    in
+        Html.button [ myStyle, onClick (colormsg color) ] [ Html.text "  " ]
+
+
+
+-- Size picker
+
+
+slider : (Float -> msg) -> Html msg
+slider callback =
+    let
+        resultString : String -> Float
+        resultString jsonInput =
+            Result.withDefault 10 <| Json.decodeString Json.float jsonInput
+    in
+        Html.input [ type_ "range", onInput (callback << resultString) ] []

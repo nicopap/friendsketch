@@ -1,9 +1,9 @@
 module Index exposing (main)
 
-import Html exposing (span, Html)
+import Html exposing (Html)
 import Html.Events exposing (onClick)
 import Chat exposing (Chat)
-import Art exposing (Art)
+import Art.Canvas as Canvas exposing (Canvas)
 
 
 main : Program Never Model Msg
@@ -18,20 +18,20 @@ main =
 
 type alias Model =
     { chat : Maybe Chat
-    , art : Art
+    , canvas : Canvas
     }
 
 
 type Msg
     = Chatmsg Chat.Msg
-    | Artmsg Art.Msg
+    | Canvasmsg Canvas.Msg
     | OpenChat
 
 
 init : ( Model, Cmd Msg )
 init =
     { chat = Nothing
-    , art = Art.new
+    , canvas = Canvas.new
     }
         ! []
 
@@ -43,9 +43,10 @@ update msg model =
             ( modelmap subfield, Cmd.map cmdmap cmd )
     in
         case msg of
-            Artmsg artmsg ->
-                map (\x -> { model | art = x }) Artmsg <|
-                    Art.update artmsg model.art
+            Canvasmsg canvasmsg ->
+                ( { model | canvas = Canvas.update canvasmsg model.canvas }
+                , Cmd.none
+                )
 
             Chatmsg chatmsg ->
                 case model.chat of
@@ -57,31 +58,29 @@ update msg model =
                             Chat.update chatmsg chat
 
             OpenChat ->
-                { model | chat = Just <| Chat.new "127.0.0.1:9260/chat/" "room" }
-                    ! []
+                ( { model | chat = Just <| Chat.new "127.0.0.1:9260/chat/" "room" }
+                , Cmd.none
+                )
 
 
 subscriptions : Model -> Sub Msg
-subscriptions { art, chat } =
-    Sub.batch
-        [ case chat of
-            Nothing ->
-                Sub.none
+subscriptions { chat } =
+    case chat of
+        Nothing ->
+            Sub.none
 
-            Just chat ->
-                Sub.map Chatmsg <| Chat.subs chat
-        , Sub.map Artmsg <| Art.subs art
-        ]
+        Just chat ->
+            Sub.map Chatmsg <| Chat.subs chat
 
 
 view : Model -> Html Msg
-view { chat, art } =
+view { chat, canvas } =
     let
         chatbutton =
             Html.button [ onClick OpenChat ] [ Html.text "Open Chat" ]
     in
-        span []
-            [ Html.map Artmsg <| Art.view art
+        Html.div []
+            [ Html.map Canvasmsg <| Canvas.view canvas
             , case chat of
                 Nothing ->
                     chatbutton
