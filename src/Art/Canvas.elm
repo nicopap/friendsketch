@@ -19,9 +19,16 @@ import Art.Toolbox as Toolbox
 
 
 type State
-    = Drawing (Maybe Stroke)
-    | Selecting
+    = Drawing Stroke
     | Hovering Point
+
+
+type Msg
+    = Hover Point
+    | Lift Point
+    | Press Point
+    | ChangeColor Color
+    | ChangePenSize Float
 
 
 type alias Canvas =
@@ -38,7 +45,7 @@ type alias Canvas =
 -}
 new : Canvas
 new =
-    Canvas [] Selecting Color.black 20 600 400
+    Canvas [] (Hovering <| Point 0 0) Color.black 20 600 400
 
 
 
@@ -78,7 +85,7 @@ brushOutline strokeSize color position =
             , width = 1
             , cap = Collage.Flat
             , join = Collage.Smooth
-            , dashing = [ 1, round <| strokeSize / 10 ]
+            , dashing = List.repeat 2 <| ceiling <| strokeSize / 10
             , dashOffset = 0
             }
         |> Collage.move position
@@ -94,14 +101,8 @@ toForms { state, strokeSize, strokes, color } =
                 Hovering { x, y } ->
                     [ brushOutline strokeSize color ( x, y ) ]
 
-                Drawing (Just stroke) ->
+                Drawing stroke ->
                     [ strokeToForm stroke ]
-
-                Drawing Nothing ->
-                    []
-
-                Selecting ->
-                    []
     in
         strokes
             |> List.map strokeToForm
@@ -110,16 +111,21 @@ toForms { state, strokeSize, strokes, color } =
 
 canvasView : Canvas -> Html Msg
 canvasView ({ width, height } as canvas) =
-    toForms canvas
-        |> Collage.collage (round width) (round height)
-        |> GraphElement.toHtml
-        |> List.singleton
-        |> div
-            [ MouseE.onMouseMove Hover
-            , MouseE.onMouseUp <| always Lift
-            , MouseE.onMouseDown Press
-            , id "drawingcontainer"
-            ]
+    let
+        canvasCoords : Point -> Point
+        canvasCoords { x, y } =
+            { x = x - width / 2, y = height / 2 - y }
+    in
+        toForms canvas
+            |> Collage.collage (round width) (round height)
+            |> GraphElement.toHtml
+            |> List.singleton
+            |> div
+                [ MouseE.onMouseMove (canvasCoords >> Hover)
+                , MouseE.onMouseUp (canvasCoords >> Lift)
+                , MouseE.onMouseDown (canvasCoords >> Press)
+                , id "drawingcontainer"
+                ]
 
 
 view : Canvas -> Html Msg
@@ -136,45 +142,36 @@ view canvas =
 
 {-| Lift the "pen" from the canvas, that means the stroke is finished
 -}
-lift : Canvas -> Canvas
-lift canvas =
+lift : Point -> Canvas -> Canvas
+lift point canvas =
     case canvas.state of
-        Drawing (Just stroke) ->
+        Drawing stroke ->
             { canvas
                 | strokes = canvas.strokes ++ [ stroke ]
-                , state = Selecting
+                , state = Hovering point
             }
 
-        _ ->
+        Hovering _ ->
             canvas
 
 
 hover : Point -> Canvas -> Canvas
-hover { x, y } ({ state, strokeSize, color, width, height } as canvas) =
+hover point ({ state, width, height } as canvas) =
     let
-        point =
-            { x = x - width / 2, y = height / 2 - y }
-
         newstate =
             case state of
-                Drawing Nothing ->
-                    Drawing <| Just <| Stroke.new point color strokeSize
+                Drawing stroke ->
+                    Drawing <| Stroke.draw point stroke
 
-                Drawing (Just stroke) ->
-                    Drawing <| Just <| Stroke.draw point stroke
-
-                _ ->
+                Hovering _ ->
                     Hovering point
     in
         { canvas | state = newstate }
 
 
-type Msg
-    = Hover Point
-    | Lift
-    | Press Point
-    | ChangeColor Color
-    | ChangePenSize Float
+press : Point -> Canvas -> Canvas
+press point ({ strokeSize, color, width, height } as canvas) =
+    { canvas | state = Drawing <| Stroke.new point color strokeSize }
 
 
 update : Msg -> Canvas -> Canvas
@@ -184,10 +181,10 @@ update msg canvas =
             hover point canvas
 
         Press point ->
-            hover point { canvas | state = Drawing Nothing }
+            press point canvas
 
-        Lift ->
-            lift canvas
+        Lift point ->
+            lift point canvas
 
         ChangeColor newcolor ->
             { canvas | color = newcolor }
