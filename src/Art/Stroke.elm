@@ -1,4 +1,4 @@
-module Art.Stroke exposing (Stroke, new, draw)
+module Art.Stroke exposing (Stroke, new, draw, drawFeedback, head)
 
 {-| Represents a simple paint stroke.
 
@@ -25,6 +25,24 @@ import ElementRelativeMouseEvents exposing (Point)
 draw : Point -> Stroke -> Stroke
 draw point stroke =
     drawatthreashold (stroke.size / 2) point stroke
+
+
+{-| Expand the stroke to include a new point.
+
+returns a Maybe that contains the new stroke if it was changed, or
+Nothing if it was not changed
+
+-}
+drawFeedback : Point -> Stroke -> Maybe Stroke
+drawFeedback newpoint stroke =
+    let
+        lastpoint =
+            NE.head stroke.points
+    in
+        if dist lastpoint newpoint > (stroke.size / 2) then
+            Just { stroke | points = NE.cons newpoint stroke.points }
+        else
+            Nothing
 
 
 {-| A Stroke, can be of any Color and has a given size.
@@ -58,3 +76,8 @@ drawatthreashold threshold newpoint stroke =
             { stroke | points = NE.cons newpoint stroke.points }
         else
             stroke
+
+
+head : Stroke -> Point
+head stroke =
+    NE.head stroke.points

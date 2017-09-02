@@ -7,11 +7,11 @@ import Html.Events exposing (..)
 import WebSocket
 import Chat.Message as Message exposing (Message)
 import Chat.InputField as InputField
+import Room exposing (Room)
 
 
 type alias Chat =
-    { roomid : String
-    , baseurl : String
+    { room : Room
     , history : List Message
     , inputContent : String
     }
@@ -24,22 +24,16 @@ type Msg
     | SendInput String
 
 
-chatUrl : Chat -> String
-chatUrl { roomid, baseurl } =
-    "ws://" ++ baseurl ++ roomid
-
-
 subs : Chat -> Sub Msg
-subs chat =
+subs { room } =
     Sub.batch
-        [ WebSocket.listen (chatUrl chat) NewMessage
+        [ WebSocket.listen (Room.chatUrl room) NewMessage
         ]
 
 
-new : String -> String -> Chat
-new baseurl roomid =
-    { roomid = roomid
-    , baseurl = baseurl
+new : Room -> Chat
+new room =
+    { room = room
     , history = []
     , inputContent = ""
     }
@@ -60,7 +54,7 @@ update msg chat =
                   ]
 
         SendInput tosend ->
-            chat ! [ WebSocket.send (chatUrl chat) tosend ]
+            chat ! [ WebSocket.send (Room.chatUrl chat.room) tosend ]
 
 
 onEnter : Msg -> Attribute Msg
