@@ -1,3 +1,7 @@
 elm-stuff
 build
 documentation
+dist
+Setup.hs
+cabal.sandbox.config
+.cabal-sandbox
