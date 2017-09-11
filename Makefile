@@ -1,5 +1,5 @@
 cc = elm-make --warn
-BROWSER ?= chrome
+BROWSER ?= firefox
 BUILD_DIR = build
 NET_DIR = assets
 SRC_DIR = front
@@ -8,7 +8,13 @@ CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(filter-out %.html,$(wildcard 
 PAGES = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(wildcard $(NET_DIR)/*.html))
 
 
-.PHONY: run debug clean build compile
+.DEFAULT_GOAL = run
+.PHONY: run debug clean build compile experiment
+
+experiment : build
+	./dist/build/netpinary-server/netpinary-server &
+	$(BROWSER) $(BUILD_DIR)/Index.html
+	$(BROWSER) --new-window $(BUILD_DIR)/Index.html
 
 run : build
 	$(BROWSER) $(BUILD_DIR)/Index.html
