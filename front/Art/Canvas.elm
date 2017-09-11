@@ -2,10 +2,7 @@ module Art.Canvas exposing (Msg, Canvas, new, view, update, subs, changeArtist)
 
 import Debug
 import Tuple exposing (mapFirst)
-import Json.Encode as Encode exposing (encode)
-import Json.Decode as Decode exposing (Decoder, decodeString)
 import Color exposing (Color)
-import ColorMath as ColMath
 import Html exposing (Html, div)
 import Html.Attributes exposing (id)
 import Html.Events as HEvents
@@ -16,6 +13,7 @@ import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
 import Art.Stroke as Stroke exposing (Stroke)
 import Art.Toolbox as Toolbox
+import Art.Canvas.ServerMsgDecoder as ServerMsg exposing (ServerMsg)
 
 
 type Pen
@@ -29,18 +27,12 @@ type Msg
     | Server ServerMsg
 
 
-type ServerMsg
-    = Start Point Color Float
-    | Continue Point
-    | End
-    | DecodeError String
-
-
 type ClientMsg
     = Hover Point
     | Lift
     | Press Point
     | LeaveCanvas
+    | EnterCanvas ( Point, Bool )
     | ChangeColor Color
     | ChangePenSize Float
 
@@ -136,25 +128,24 @@ toForms { pen, strokeSize, strokes, color } =
 canvasView : Canvas -> Html ClientMsg
 canvasView ({ width, height, currentArtist } as canvas) =
     let
-        canvasCoords : Point -> Point
-        canvasCoords { x, y } =
+        canvasXY : Point -> Point
+        canvasXY { x, y } =
             { x = x - width / 2, y = height / 2 - y }
 
+        properties : List (Html.Attribute ClientMsg)
         properties =
-            case currentArtist of
-                Nothing ->
-                    [ MouseE.onMouseMove (canvasCoords >> Hover)
-                    , MouseE.onMouseUp (always Lift)
-                    , MouseE.onMouseDown (canvasCoords >> Press)
-                    , HEvents.onMouseOut LeaveCanvas
-                    , id "drawingcontainer"
-                    ]
+            id "drawingcontainer"
+                :: case currentArtist of
+                    Nothing ->
+                        [ MouseE.onMouseMove (canvasXY >> Hover)
+                        , MouseE.onMouseUp (always Lift)
+                        , MouseE.onMouseDown (canvasXY >> Press)
+                        , MouseE.onMouseEnter (mapFirst canvasXY >> EnterCanvas)
+                        , HEvents.onMouseLeave LeaveCanvas
+                        ]
 
-                Just artistName ->
-                    [ id "drawingcontainer"
-
-                    --, id "inactive"
-                    ]
+                    Just artistName ->
+                        []
     in
         toForms canvas
             |> Collage.collage (round width) (round height)
@@ -199,7 +190,7 @@ drawFeedback point roomname stroke =
     case Stroke.drawFeedback point stroke of
         Just newstroke ->
             ( newstroke
-            , WebSocket.send roomname (continueEncoder point)
+            , WebSocket.send roomname (ServerMsg.continueEncoder point)
             )
 
         Nothing ->
@@ -222,30 +213,38 @@ clientHover point canvas =
 
 clientPress : Point -> Canvas -> ( Canvas, Cmd msg )
 clientPress point ({ wsurl, pen, strokeSize, color, width, height } as canvas) =
-    case pen of
-        Hovering _ ->
+    let
+        pressedCanvas =
             ( { canvas | pen = Drawing (Stroke.new point color strokeSize) }
-            , WebSocket.send wsurl (startEncoder point color strokeSize)
+            , WebSocket.send wsurl <|
+                ServerMsg.startEncoder point color strokeSize
             )
+    in
+        case pen of
+            Hovering _ ->
+                pressedCanvas
 
-        Away ->
-            (Debug.log "Impossible press message!!!" canvas) ! []
+            Away ->
+                pressedCanvas
 
-        Drawing _ ->
-            (Debug.log "Impossible press message!!!" canvas) ! []
+            Drawing _ ->
+                (Debug.log "Impossible press message!!!" canvas) ! []
 
 
-leave : Canvas -> Canvas
-leave canvas =
+clientLeave : Canvas -> ( Canvas, Cmd msg )
+clientLeave canvas =
     case canvas.pen of
         Drawing stroke ->
-            lift canvas |> (\c -> { c | pen = Away })
+            (lift canvas |> (\c -> { c | pen = Away }))
+                ! [ WebSocket.send canvas.wsurl ServerMsg.endEncoder ]
 
         Hovering _ ->
             { canvas | pen = Away }
+                ! []
 
         Away ->
             Debug.log "Impossible leave message" canvas
+                ! []
 
 
 clientUpdate : ClientMsg -> Canvas -> ( Canvas, Cmd msg )
@@ -259,7 +258,7 @@ clientUpdate msg canvas =
 
         Lift ->
             lift canvas
-                ! [ WebSocket.send canvas.wsurl endEncoder ]
+                ! [ WebSocket.send canvas.wsurl ServerMsg.endEncoder ]
 
         ChangeColor newcolor ->
             { canvas | color = newcolor } ! []
@@ -268,37 +267,42 @@ clientUpdate msg canvas =
             { canvas | strokeSize = newsize } ! []
 
         LeaveCanvas ->
-            leave canvas
-                ! [ WebSocket.send canvas.wsurl endEncoder ]
+            clientLeave canvas
+
+        EnterCanvas ( point, True ) ->
+            clientPress point canvas
+
+        EnterCanvas ( point, False ) ->
+            clientHover point canvas
 
 
 serverUpdate : ServerMsg -> Canvas -> Canvas
 serverUpdate msg canvas =
-    case msg of
-        Start point color size ->
-            { canvas
-                | strokeSize = size
-                , color = color
-                , pen = Drawing (Stroke.new point color size)
-            }
+    let
+        continueDrawing point pen =
+            case pen of
+                Drawing stroke ->
+                    Drawing (Stroke.draw point stroke)
 
-        Continue point ->
-            let
-                continue =
-                    case canvas.pen of
-                        Drawing stroke ->
-                            Drawing (Stroke.draw point stroke)
+                _ ->
+                    pen
+    in
+        case msg of
+            ServerMsg.Start point color size ->
+                { canvas
+                    | strokeSize = size
+                    , color = color
+                    , pen = Drawing (Stroke.new point color size)
+                }
 
-                        _ ->
-                            canvas.pen
-            in
-                { canvas | pen = continue }
+            ServerMsg.Continue point ->
+                { canvas | pen = continueDrawing point canvas.pen }
 
-        End ->
-            leave canvas
+            ServerMsg.End ->
+                (\c -> { c | pen = Away }) <| lift canvas
 
-        DecodeError errorText ->
-            Debug.log ("Issue in server message: " ++ errorText) canvas
+            ServerMsg.DecodeError errorText ->
+                Debug.log ("Issue in server message: " ++ errorText) canvas
 
 
 update : Msg -> Canvas -> ( Canvas, Cmd Msg )
@@ -315,78 +319,7 @@ subs : Canvas -> Sub Msg
 subs { wsurl, currentArtist } =
     case currentArtist of
         Just _ ->
-            WebSocket.listen wsurl
-                (decodeString canvasActionDecoder >> handleCanvasAction)
+            WebSocket.listen wsurl <| ServerMsg.decode Server
 
         Nothing ->
             WebSocket.keepAlive wsurl
-
-
-
--- DECODERS
-
-
-handleCanvasAction : Result String ServerMsg -> Msg
-handleCanvasAction parsedMsg =
-    case parsedMsg of
-        Ok remoteMsg ->
-            Server remoteMsg
-
-        Err err ->
-            Server (DecodeError err)
-
-
-pointDecoder : Decoder Point
-pointDecoder =
-    Decode.map2 Point
-        (Decode.index 0 Decode.float)
-        (Decode.index 1 Decode.float)
-
-
-colorDecoder : Decoder Color
-colorDecoder =
-    Decode.map
-        (\x -> Result.withDefault Color.black (ColMath.hexToColor x))
-        Decode.string
-
-
-startDecoder : Decoder ServerMsg
-startDecoder =
-    Decode.map3 Start
-        (Decode.index 0 pointDecoder)
-        (Decode.index 1 colorDecoder)
-        (Decode.index 2 Decode.float)
-
-
-startEncoder : Point -> Color -> Float -> String
-startEncoder { x, y } color size =
-    Encode.list
-        [ Encode.list [ Encode.float x, Encode.float y ]
-        , Encode.string <| ColMath.colorToHex color
-        , Encode.float size
-        ]
-        |> (,) "start"
-        |> List.singleton
-        |> Encode.object
-        |> encode 0
-
-
-continueEncoder : Point -> String
-continueEncoder { x, y } =
-    encode 0 <|
-        Encode.object
-            [ ( "continue", Encode.list [ Encode.float x, Encode.float y ] ) ]
-
-
-endEncoder : String
-endEncoder =
-    encode 0 <| Encode.object [ ( "end", Encode.null ) ]
-
-
-canvasActionDecoder : Decoder ServerMsg
-canvasActionDecoder =
-    Decode.oneOf
-        [ Decode.field "start" startDecoder
-        , Decode.field "continue" <| Decode.map Continue pointDecoder
-        , Decode.field "end" <| Decode.succeed End
-        ]
