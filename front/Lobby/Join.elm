@@ -157,15 +157,15 @@ statusView status =
             H.div [] [ H.text <| "OtherError " ++ s ]
 
 
-roomFieldUnlocked : Status -> Bool
-roomFieldUnlocked status =
+roomFieldLocked : Status -> Bool
+roomFieldLocked status =
     case status of
-        AlreadyTakenName -> False
-        Established _ -> False
-        AttemptingConnection -> False
-        NotFailedYet -> True
-        InexistantRoom -> True
-        OtherError _ -> True
+        AlreadyTakenName -> True
+        Established _ -> True
+        AttemptingConnection -> True
+        NotFailedYet -> False
+        InexistantRoom -> False
+        OtherError _ -> False
 
 
 view : Join -> Html Msg
@@ -175,7 +175,7 @@ view { userName, roomId, status } =
             H.p []
                 [ H.label [] [ H.text "room name" ]
                 , H.input
-                    (if roomFieldUnlocked status then
+                    (if roomFieldLocked status then
                         [ HA.autofocus True, HE.onInput TypeRoomLetter ]
                      else
                         [ HA.disabled True ]
