@@ -1,8 +1,16 @@
+module Art.Canvas.ServerMsgDecoder
+    exposing
+        ( ServerMsg(..)
+        , endEncoder
+        , continueEncoder
+        , startEncoder
+        , decode
+        )
+
 {-| This module holds all decoders and encoders related to canvas remote
-    manipulation. It doesn't provide any form of encapsulation, as it exposes
-    the constructors for the ServerMsg data type.
+manipulation. It doesn't provide any form of encapsulation, as it exposes
+the constructors for the ServerMsg data type.
 -}
-module Art.Canvas.ServerMsgDecoder exposing (ServerMsg(..), endEncoder, continueEncoder, startEncoder, decode)
 
 import Color exposing (Color)
 import List

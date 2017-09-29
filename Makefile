@@ -1,42 +1,42 @@
-cc = elm-make --warn
 BROWSER ?= firefox
 BUILD_DIR = build
 NET_DIR = assets
-SRC_DIR = front
+ALT_WAI_ROUTES = ~/code/gitimpo/wai-routes
 
-CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(filter-out %.html,$(wildcard $(NET_DIR)/*)))
-PAGES = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(wildcard $(NET_DIR)/*.html))
+# --- Static content ---
+CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(shell find $(NET_DIR) -type f))
+
+# --- Javascript content ---
+ELM_SOURCE = $(shell find front -type f)
+# Rules
+$(BUILD_DIR)/games/pintclone/code.js : front/Pintclone.elm $(ELM_SOURCE)
+	elm-make --warn $< --output $@
+$(BUILD_DIR)/lobby/code.js : front/Lobby.elm $(ELM_SOURCE)
+	elm-make --warn $< --output $@
+# List of target files to build
+JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js
+
+# copy assets into the server filesystem
+$(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
+	(cd $(NET_DIR) && cp --parents $(patsubst $(NET_DIR)/%,%,$<) ../$(BUILD_DIR))
+
+.DEFAULT_GOAL = experiment
+.PHONY: clean experiment backend frontend recabal
+
+experiment : backend frontend
+	cabal run &
+	$(BROWSER) "http://localhost:8080/lobby"
 
 
-.DEFAULT_GOAL = run
-.PHONY: run debug clean build compile experiment
+frontend : $(JS_TARGETS) $(CONTENT)
+backend : server/Main.hs netpinary.cabal
+	cabal build
 
-experiment : build
-	./dist/build/netpinary-server/netpinary-server &
-	$(BROWSER) $(BUILD_DIR)/Index.html
-	$(BROWSER) --new-window $(BUILD_DIR)/Index.html
-
-run : build
-	$(BROWSER) $(BUILD_DIR)/Index.html
-
-debug : build_db
-	$(BROWSER) $(BUILD_DIR)/Index.html
-
+recabal :
+	cabal sandbox delete
+	cabal sandbox init
+	cabal sandbox add-source $(ALT_WAI_ROUTES)
+	cabal update
+	cabal install --dependencies-only
 clean:
 	rm -rf $(BUILD_DIR)/*
-
-build : $(PAGES) $(CONTENT) compile
-
-build_db : $(PAGES) $(CONTENT) compile_db
-
-compile : $(SRC_DIR)
-	$(cc) $(SRC_DIR)/Index.elm --output build/Index.js
-
-compile_db :
-	$(cc) $(SRC_DIR)/Index.elm --output build/Index.js --debug
-
-$(PAGES) : $(BUILD_DIR)/%.html : $(NET_DIR)/%.html
-	cp $< $@
-
-$(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
-	cp $< $@

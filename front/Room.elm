@@ -1,11 +1,18 @@
-module Room exposing (Room, canvasUrl, chatUrl, new, findOponent)
+module Room exposing (Room, canvasUrl, chatUrl, infoUrl, new, join, infoSub, view)
+
+import WebSocket
+import Html as H exposing (Html)
+
+
+-- TODO: Create local state (ie: user list)
+-- & view & update & caetera
 
 
 type alias Room_ =
     { roomid : String
     , baseurl : String
     , userName : String
-    , oponent : Maybe String
+    , oponents : List String
     }
 
 
@@ -23,11 +30,35 @@ canvasUrl (Room { roomid, baseurl }) =
     "ws://" ++ baseurl ++ roomid ++ "/canvas"
 
 
+infoUrl : Room -> String
+infoUrl (Room { roomid, baseurl, userName }) =
+    "ws://" ++ baseurl ++ roomid ++ "/info/" ++ userName
+
+
 new : String -> String -> String -> Room
 new baseurl roomid userName =
-    Room <| Room_ roomid baseurl userName Nothing
+    Room
+        { roomid = roomid
+        , baseurl = baseurl
+        , userName = userName
+        , oponents = []
+        }
 
 
-findOponent : String -> Room -> Room
-findOponent oponentName (Room room) =
-    Room { room | oponent = Just oponentName }
+{-| The URL to request the websocket to connect to roomId.
+-}
+join : String -> String
+join roomid =
+    "/room/join/" ++ roomid
+
+
+infoSub : (String -> msg) -> Room -> Sub msg
+infoSub continue room =
+    WebSocket.listen (infoUrl room) continue
+
+
+{-| A list of connected users to the room
+-}
+view : Room -> Html msg
+view _ =
+    H.text "Room list view"

@@ -13,10 +13,11 @@ import Data.Map.Strict (Map)
 import Data.Maybe (maybe)
 import qualified Data.Text as T
 import Data.Text (Text)
+import Data.Text.Encoding (encodeUtf8)
 
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Wai.Routes as Routes
-import Wai.Routes (Handler, RouteM, created201, notFound404)
+import Wai.Routes (Handler, RouteM, created201, notFound404, seeOther303, conflict409)
 import qualified Network.Wai.Application.Static as SWai
 import qualified Network.Wai as Wai
 import qualified Text.StringRandom as Rand
@@ -31,8 +32,8 @@ data Netpinary = Netpinary GlobalState
 Routes.mkRoute "Netpinary" [Routes.parseRoutes|
 /ws/games/pintclone/+[Text] WebSocketAPI GET
 /rooms/create CreateRoom POST
+/room/join/#RoomID JoinRoom POST
 /rooms/showAll ShowRooms GET
-/ StaticContent GET
 |]
 
 tshow :: Show a => a -> Text
@@ -43,6 +44,10 @@ unpackGS (Netpinary gs) = gs
 
 (<|-|) :: Show a => (Text -> b) -> a -> b
 (<|-|) f s = f $ tshow s
+
+(+|+) :: Text -> Text -> Text
+(+|+) = T.append
+
 
 -- *** -- *** -- SERVER STATE TYPE MANIPULATION -- *** -- *** --
 
@@ -84,20 +89,33 @@ postCreateRoom = Routes.runHandlerM $ do
     If the room exists, but the username is already occupied, returns
     a 403.
     Possible inconsistent states: the post returns the resource for
-    the WebSocket, but when client requests the WebSocket, it doesn't
-    exist anymore.
+    the WebSocket, but when client requests the WebSocket, someone
+    else connected to it with the same username.
     TODO: use imported API module to handle the request body.-}
--- postJoinRoom :: RoomID -> Handler Netpinary
--- postJoinRoom roomid = Routes.runHandlerM $ do
---     Netpinary globstate <- Routes.sub
---     Routes.plain roomid
+postJoinRoom :: RoomID -> Handler Netpinary
+postJoinRoom roomid = Routes.runHandlerM $ do
+    Netpinary gs <- Routes.sub
+    roomMap <- liftIO $ readMVar gs
+    username <- Routes.textBody
+    case Map.lookup roomid roomMap of
+        Nothing ->
+            Routes.status notFound404
+
+        Just room -> do
+            isConnected <- liftIO $ RC.isConnected username room
+            if isConnected then do
+                Routes.status conflict409
+            else do
+                Routes.header "location" $ encodeUtf8 $
+                    "ws://localhost:8080/ws/games/pintclone/"
+                    +|+ roomid +|+ "/info/" +|+ username
+                Routes.status seeOther303
 
 
-getStaticContent :: Handler Netpinary
+getStaticContent :: Wai.Application
 getStaticContent =
-    Routes.mountedAppHandler $
-        SWai.staticApp $
-            SWai.defaultFileServerSettings "build"
+    SWai.staticApp $
+        (SWai.defaultFileServerSettings "build") { SWai.ssRedirectToIndex = True }
 
 
 getWebSocketAPI :: [Text] -> Handler Netpinary
@@ -119,6 +137,7 @@ application :: Netpinary -> RouteM ()
 application gs = do
     Routes.middleware Routes.logStdoutDev
     Routes.route gs
+    Routes.catchall getStaticContent
 
 
 -- *** -- *** -- MAIN -- *** -- *** --

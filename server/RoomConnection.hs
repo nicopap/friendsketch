@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings, DuplicateRecordFields, NamedFieldPuns,
     MonadComprehensions #-}
-module RoomConnection (Room, newRoom, app) where
+module RoomConnection (Room, newRoom, app, isConnected) where
 
 import qualified Network.WebSockets as WS
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.WebSockets as WaiWS
-import Control.Concurrent (MVar, modifyMVar, modifyMVar_, newMVar, withMVar)
+import Control.Concurrent (MVar, modifyMVar, modifyMVar_, newMVar, withMVar, readMVar)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Control.Monad (forever, forM_)
@@ -45,7 +45,8 @@ newRoom = newMVar Map.empty
 tryDo
     :: (RoomState -> Bool)
     -> (WS.Connection -> RoomState -> RoomState)
-    -> WS.PendingConnection -> MutRoom (Maybe WS.Connection)
+    -> WS.PendingConnection
+    -> MutRoom (Maybe WS.Connection)
 tryDo predicate trans conn =
     flip modifyMVar atomicTransform
     where
@@ -63,7 +64,8 @@ tryDo predicate trans conn =
     already exists, otherwise refuses the connection. -}
 tryAddClient
     :: ClientName
-    -> WS.PendingConnection -> MutRoom (Maybe WS.Connection)
+    -> WS.PendingConnection
+    -> MutRoom (Maybe WS.Connection)
 tryAddClient clientName =
     tryDo predicate trans
     where
@@ -76,7 +78,8 @@ tryAddClient clientName =
     otherwise refuses the connection-}
 tryAddCanvas
     :: ClientName
-    -> WS.PendingConnection -> MutRoom (Maybe WS.Connection)
+    -> WS.PendingConnection
+    -> MutRoom (Maybe WS.Connection)
 tryAddCanvas clientName =
     tryDo predicate trans
     where
@@ -89,7 +92,8 @@ tryAddCanvas clientName =
 broadcastInfo
     :: WS.WebSocketsData msg
     => (ClientName -> Bool)
-    -> msg -> MutRoom ()
+    -> msg
+    -> MutRoom ()
 broadcastInfo filter' msg room =
     let
         sendifok :: Text -> ClientSockets -> IO ()
@@ -149,6 +153,12 @@ app' channel clientName room pending = do
     where
         ignoreData :: Text -> x -> IO ()
         ignoreData = const . const $ return () -- ignore 2 arguments, IO ()
+
+
+{-| Whether username is in given room -}
+isConnected :: Text -> MutRoom Bool
+isConnected username =
+    fmap (Map.member username) . readMVar
 
 
 app :: Room -> [Text] -> Wai.Application
