@@ -33,7 +33,7 @@ type ServerMsg
 
 
 decode : (ServerMsg -> a) -> String -> a
-decode encapsulator input =
+decode continuation input =
     let
         handleResult r =
             case r of
@@ -45,7 +45,7 @@ decode encapsulator input =
     in
         decodeString canvasActionDecoder input
             |> handleResult
-            |> encapsulator
+            |> continuation
 
 
 pointDecoder : Decoder Point
