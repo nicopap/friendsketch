@@ -116,7 +116,7 @@ update model msg =
             canBeRoom roomId model
 
         TypeNameLetter userName ->
-             { model | userName = userName } ! []
+            { model | userName = userName } ! []
 
         HttpAnswer response ->
             processAnswer response model ! []
@@ -139,22 +139,22 @@ statusView : Status -> Html Msg
 statusView status =
     case status of
         NotFailedYet ->
-            H.div [] [H.text "NotFailedYet"]
+            H.div [] [ H.text "NotFailedYet" ]
 
         InexistantRoom ->
-            H.div [] [H.text "InexistantRoom"]
+            H.div [] [ H.text "InexistantRoom" ]
 
         AlreadyTakenName ->
-            H.div [] [H.text "AlreadyTakenName"]
+            H.div [] [ H.text "AlreadyTakenName" ]
 
         Established room ->
             Room.view room
 
         AttemptingConnection ->
-            H.div [] [H.text "AttemptingConnection"]
+            H.div [] [ H.text "AttemptingConnection" ]
 
         OtherError s ->
-            H.div [] [H.text <| "OtherError " ++ s]
+            H.div [] [ H.text <| "OtherError " ++ s ]
 
 
 roomFieldUnlocked : Status -> Bool
@@ -172,28 +172,32 @@ view : Join -> Html Msg
 view { userName, roomId, status } =
     let
         roomInput =
-            H.input
-                (if roomFieldUnlocked status then
-                    [ HA.autofocus True, HE.onInput TypeRoomLetter ]
-                 else
-                    [ HA.disabled True]
-                )
-                [ H.text roomId ]
+            H.p []
+                [ H.label [] [ H.text "room name" ]
+                , H.input
+                    (if roomFieldUnlocked status then
+                        [ HA.autofocus True, HE.onInput TypeRoomLetter ]
+                     else
+                        [ HA.disabled True ]
+                    )
+                    [ H.text roomId ]
+                ]
 
         nameInput =
-            H.input
-                (if status /= AlreadyTakenName then
-                    [ HA.disabled True, HA.value userName]
-                 else
-                    [ HE.onInput TypeNameLetter, HA.value userName ]
-                )
-                [ H.text userName ]
+            H.p []
+                [ H.label [] [ H.text "Your user name" ]
+                , H.input
+                    (if status /= AlreadyTakenName then
+                        [ HA.disabled True, HA.value userName ]
+                     else
+                        [ HE.onInput TypeNameLetter, HA.value userName ]
+                    )
+                    [ H.text userName ]
+                ]
     in
         H.div []
             [ H.h1 [] [ H.text "Join" ]
-            , H.label [] [ H.text "room name" ]
             , roomInput
-            , H.label [] [ H.text "Your user name" ]
             , nameInput
             , statusView status
             ]
