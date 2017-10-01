@@ -4,20 +4,22 @@
 module Main where
 
 import qualified RoomConnection as RC
+import qualified RestImpl as API
+import MustacheTemplate (serveMustachTemplate, tupleToValue)
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (uncons)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, catMaybes)
 import qualified Data.Text as T
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8)
+import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Wai.Routes as Routes
-import Wai.Routes (Handler, RouteM, created201, notFound404, seeOther303, conflict409)
+import Wai.Routes (Handler, RouteM, created201, notFound404, seeOther303, conflict409, badRequest400)
 import qualified Network.Wai.Application.Static as SWai
 import qualified Network.Wai as Wai
 import qualified Text.StringRandom as Rand
@@ -31,9 +33,10 @@ data Netpinary = Netpinary GlobalState
 {-| In the future, we add redirections to the proper WebSockets urls -}
 Routes.mkRoute "Netpinary" [Routes.parseRoutes|
 /ws/games/pintclone/+[Text] WebSocketAPI GET
-/rooms/create CreateRoom POST
-/room/join/#RoomID JoinRoom POST
-/rooms/showAll ShowRooms GET
+/lobby/join/index.html JoinIndex GET
+/rooms/create RoomsCreate POST
+/rooms/join RoomsJoin POST
+/rooms/showAll RoomsShow GET
 |]
 
 tshow :: Show a => a -> Text
@@ -41,6 +44,10 @@ tshow = T.pack . show
 
 unpackGS :: Netpinary -> GlobalState
 unpackGS (Netpinary gs) = gs
+
+(|>) :: a -> (a -> b) -> b
+(|>) = flip ($)
+
 
 (<|-|) :: Show a => (Text -> b) -> a -> b
 (<|-|) f s = f $ tshow s
@@ -54,7 +61,7 @@ unpackGS (Netpinary gs) = gs
 
 createRoom :: MutState RoomID
 createRoom gs = do
-    roomName <- Rand.stringRandomIO "[a-z0-9]{10}"
+    roomName <- Rand.stringRandomIO "[a-z0-9]{5}"
     modifyMVar gs $ addRandRoom roomName
     where -- Room name generated outside the lock to not clog it.
         addRandRoom :: RoomID -> RoomMap -> IO (RoomMap, RoomID)
@@ -66,56 +73,74 @@ createRoom gs = do
 -- *** -- *** -- WEB REQUEST HANDLERS -- *** -- *** --
 
 
-getShowRooms :: Handler Netpinary
-getShowRooms = Routes.runHandlerM $ do
+getRoomsShow :: Handler Netpinary
+getRoomsShow = Routes.runHandlerM $ do
     Netpinary globstate <- Routes.sub
     rooms <- liftIO $ readMVar globstate
     Routes.plain <|-| Map.keys rooms
 
 
 {-| Create a new room, returns redirection to game start lobby with created
-    room name when success. Returns an error when failure.
-    TODO: add failure condition? -}
-postCreateRoom :: Handler Netpinary
-postCreateRoom = Routes.runHandlerM $ do
+    room name when success. Returns an error when failure. -}
+postRoomsCreate :: Handler Netpinary
+postRoomsCreate = Routes.runHandlerM $ do
     Netpinary gs <- Routes.sub
     roomid <- liftIO $ createRoom gs
     Routes.plain roomid
     Routes.status created201
 
 
-{-| Returns the URI of the ws/info of the given room if it exists.
-    otherwise, returns a 404.
-    If the room exists, but the username is already occupied, returns
-    a 403.
-    Possible inconsistent states: the post returns the resource for
+{-| Possible inconsistent states: the post returns the resource for
     the WebSocket, but when client requests the WebSocket, someone
-    else connected to it with the same username.
-    TODO: use imported API module to handle the request body.-}
-postJoinRoom :: RoomID -> Handler Netpinary
-postJoinRoom roomid = Routes.runHandlerM $ do
-    Netpinary gs <- Routes.sub
-    roomMap <- liftIO $ readMVar gs
-    username <- Routes.textBody
-    case Map.lookup roomid roomMap of
-        Nothing ->
-            Routes.status notFound404
+    else connected to it with the same username. -}
+postRoomsJoin :: Handler Netpinary
+postRoomsJoin = Routes.runHandlerM $ do
+    parsedRequest <- fmap API.roomsJoin Routes.jsonBody
+    case parsedRequest of
+        Left err -> badRequest err
+        Right (roomid, username) -> do
+            Netpinary gs <- Routes.sub
+            roomMap <- liftIO $ readMVar gs
+            case Map.lookup roomid roomMap of
+                Nothing -> Routes.status notFound404
+                Just room -> do
+                    isConnected <- liftIO $ RC.isConnected username room
+                    if isConnected then Routes.status conflict409
+                    else seeOther roomid username
+    where
+        badRequest err = do
+            Routes.status badRequest400
+            Routes.plain <|-| err
+        seeOther roomid username = do
+            Routes.header "location" $ encodeUtf8 $
+                "ws://localhost:8080/ws/games/pintclone/"
+                +|+ roomid +|+ "/info/" +|+ username
+            Routes.status seeOther303
 
-        Just room -> do
-            isConnected <- liftIO $ RC.isConnected username room
-            if isConnected then do
-                Routes.status conflict409
-            else do
-                Routes.header "location" $ encodeUtf8 $
-                    "ws://localhost:8080/ws/games/pintclone/"
-                    +|+ roomid +|+ "/info/" +|+ username
-                Routes.status seeOther303
+
+
+getJoinIndex :: Handler Netpinary
+getJoinIndex _ req continue =
+    let
+        qi = queryToTuple $ Wai.queryString $ Routes.waiReq req
+    in
+        serveMustachTemplate (tupleToValue qi) (Routes.waiReq req) continue
+    where
+        queryToTuple =
+            let
+                decode (_, Nothing) = Nothing
+                decode (k, Just v) = Just (decodeUtf8 k, decodeUtf8 v)
+            in
+                catMaybes . map decode
 
 
 getStaticContent :: Wai.Application
 getStaticContent =
     SWai.staticApp $
-        (SWai.defaultFileServerSettings "build") { SWai.ssRedirectToIndex = True }
+        (SWai.defaultFileServerSettings "build")
+            { SWai.ssRedirectToIndex = True
+            , SWai.ssListing = Nothing
+            }
 
 
 getWebSocketAPI :: [Text] -> Handler Netpinary
@@ -123,7 +148,8 @@ getWebSocketAPI urlparts env req continue = do
     roomMap <- readMVar $ unpackGS $ Routes.envSub env
     maybe
         (continue $ Wai.responseLBS notFound404 [] "Room doesn't exist")
-        (\(room, urltail) -> RC.app room urltail (Routes.waiReq req) continue)
+        (\(room, urltail)
+                -> RC.app room urltail (Routes.waiReq req) continue)
         $ do
             (h,t) <- uncons urlparts
             room <- Map.lookup h roomMap
