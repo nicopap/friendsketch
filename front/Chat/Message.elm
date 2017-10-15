@@ -1,6 +1,7 @@
 module Chat.Message exposing (Message, decode, view)
 
-import Json.Decode exposing (map3, field, string, decodeString, Decoder)
+import Json.Decode exposing (string, decodeString, Decoder)
+import TypeDecoders exposing (..)
 import Html exposing (..)
 import Html.Events exposing (..)
 import Html.Attributes exposing (..)
@@ -15,10 +16,10 @@ type alias Message =
 
 decodeMessage : Decoder Message
 decodeMessage =
-    map3 Message
-        (field "author" string)
-        (field "date" string)
-        (field "content" string)
+    Message
+        <*| "author" :* string
+        |*| "date" :* string
+        |*| "content" :* string
 
 
 decode : String -> Message

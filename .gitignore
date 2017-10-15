@@ -5,3 +5,4 @@ dist
 Setup.hs
 cabal.sandbox.config
 .cabal-sandbox
+tests

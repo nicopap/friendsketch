@@ -17,6 +17,7 @@ import List
 import Result
 import Json.Encode as Encode exposing (encode)
 import Json.Decode as Decode exposing (Decoder, decodeString)
+import TypeDecoders exposing (..)
 import ColorMath as ColMath
 import ElementRelativeMouseEvents as MouseE exposing (Point)
 
@@ -50,9 +51,7 @@ decode continuation input =
 
 pointDecoder : Decoder Point
 pointDecoder =
-    Decode.map2 Point
-        (Decode.index 0 Decode.float)
-        (Decode.index 1 Decode.float)
+    Point <*| 0 :^ Decode.float |*| 1 :^ Decode.float
 
 
 colorDecoder : Decoder Color
@@ -60,14 +59,6 @@ colorDecoder =
     Decode.map
         (\x -> Result.withDefault Color.black (ColMath.hexToColor x))
         Decode.string
-
-
-startDecoder : Decoder ServerMsg
-startDecoder =
-    Decode.map3 Start
-        (Decode.index 0 pointDecoder)
-        (Decode.index 1 colorDecoder)
-        (Decode.index 2 Decode.float)
 
 
 startEncoder : Point -> Color -> Float -> String
@@ -97,8 +88,10 @@ endEncoder =
 
 canvasActionDecoder : Decoder ServerMsg
 canvasActionDecoder =
-    Decode.oneOf
-        [ Decode.field "start" startDecoder
-        , Decode.field "continue" <| Decode.map Continue pointDecoder
-        , Decode.field "end" <| Decode.succeed End
-        ]
+    sumType
+        <+| "start" := Start
+            <*| 0 :^ pointDecoder
+            |*| 1 :^ colorDecoder
+            |*| 2 :^ Decode.float
+        |+| "continue" := Continue <*| pointDecoder
+        |+> "end" :- End
