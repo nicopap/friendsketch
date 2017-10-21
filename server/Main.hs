@@ -3,10 +3,6 @@
     DeriveDataTypeable, RankNTypes #-}
 module Main where
 
-import qualified RoomConnection as RC
-import qualified RestImpl as API
-import MustacheTemplate (serveMustachTemplate, tupleToValue)
-
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad.IO.Class (liftIO)
 import Data.List (uncons)
@@ -15,14 +11,17 @@ import Data.Map.Strict (Map)
 import Data.Maybe (maybe, catMaybes)
 import qualified Data.Text as T
 import Data.Text (Text)
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
+import Data.Text.Encoding (decodeUtf8)
 
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Wai.Routes as Routes
-import Wai.Routes (Handler, RouteM, created201, notFound404, seeOther303, conflict409, badRequest400)
+import Wai.Routes (Handler, RouteM, created201, notFound404, conflict409, badRequest400, ok200)
 import qualified Network.Wai.Application.Static as SWai
 import qualified Network.Wai as Wai
 import qualified Text.StringRandom as Rand
+
+import qualified RoomConnection as RC
+import qualified RestImpl as API
 
 type RoomID = Text
 type RoomMap = Map RoomID RC.Room
@@ -33,7 +32,6 @@ data Netpinary = Netpinary GlobalState
 {-| In the future, we add redirections to the proper WebSockets urls -}
 Routes.mkRoute "Netpinary" [Routes.parseRoutes|
 /ws/games/pintclone/+[Text] WebSocketAPI GET
-/lobby/join/index.html JoinIndex GET
 /rooms/create RoomsCreate POST
 /rooms/join RoomsJoin POST
 /rooms/showAll RoomsShow GET
@@ -56,6 +54,7 @@ unpackGS (Netpinary gs) = gs
 (+|+) = T.append
 
 
+
 -- *** -- *** -- SERVER STATE TYPE MANIPULATION -- *** -- *** --
 
 
@@ -68,6 +67,7 @@ createRoom gs = do
         addRandRoom roomName rm = do
             newRoom <- RC.newRoom
             return ( Map.insert roomName newRoom rm, roomName )
+
 
 
 -- *** -- *** -- WEB REQUEST HANDLERS -- *** -- *** --
@@ -86,7 +86,7 @@ postRoomsCreate :: Handler Netpinary
 postRoomsCreate = Routes.runHandlerM $ do
     Netpinary gs <- Routes.sub
     roomid <- liftIO $ createRoom gs
-    Routes.plain roomid
+    Routes.json roomid
     Routes.status created201
 
 
@@ -106,32 +106,16 @@ postRoomsJoin = Routes.runHandlerM $ do
                 Just room -> do
                     isConnected <- liftIO $ RC.isConnected username room
                     if isConnected then Routes.status conflict409
-                    else seeOther roomid username
+                    else success
     where
         badRequest err = do
             Routes.status badRequest400
             Routes.plain <|-| err
-        seeOther roomid username = do
-            Routes.header "location" $ encodeUtf8 $
-                "ws://localhost:8080/ws/games/pintclone/"
-                +|+ roomid +|+ "/info/" +|+ username
-            Routes.status seeOther303
 
+        success = do
+            Routes.json API.Pintclone
+            Routes.status ok200
 
-
-getJoinIndex :: Handler Netpinary
-getJoinIndex _ req continue =
-    let
-        qi = queryToTuple $ Wai.queryString $ Routes.waiReq req
-    in
-        serveMustachTemplate (tupleToValue qi) (Routes.waiReq req) continue
-    where
-        queryToTuple =
-            let
-                decode (_, Nothing) = Nothing
-                decode (k, Just v) = Just (decodeUtf8 k, decodeUtf8 v)
-            in
-                catMaybes . map decode
 
 
 getStaticContent :: Wai.Application
@@ -156,6 +140,7 @@ getWebSocketAPI urlparts env req continue = do
             return (room,t)
 
 
+
 -- *** -- *** -- APPLICATION HANDLERS -- *** -- *** --
 
 
@@ -164,6 +149,7 @@ application gs = do
     Routes.middleware Routes.logStdoutDev
     Routes.route gs
     Routes.catchall getStaticContent
+
 
 
 -- *** -- *** -- MAIN -- *** -- *** --

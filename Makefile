@@ -15,10 +15,8 @@ $(BUILD_DIR)/lobby/code.js : front/Lobby.elm $(ELM_SOURCE)
 	elm-make --warn $< --output $@
 $(BUILD_DIR)/lobby/join/code.js : front/Lobby/Join.elm $(ELM_SOURCE)
 	elm-make --warn $< --output $@
-$(BUILD_DIR)/lobby/create/code.js : front/Lobby/Create.elm $(ELM_SOURCE)
-	elm-make --warn $< --output $@
 # List of target files to build
-JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js $(BUILD_DIR)/lobby/create/code.js $(BUILD_DIR)/lobby/join/code.js
+JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js $(BUILD_DIR)/lobby/join/code.js
 
 # copy assets into the server filesystem
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
@@ -28,8 +26,8 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 .PHONY: clean experiment backend frontend recabal
 
 experiment : backend frontend
-	cabal run &
-	$(BROWSER) "http://localhost:8080/lobby"
+	(sleep 2 ; $(BROWSER) "http://localhost:8080/lobby") &
+	cabal run
 
 
 frontend : $(JS_TARGETS) $(CONTENT)

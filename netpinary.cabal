@@ -17,7 +17,6 @@ executable netpinary-server
     , containers
     , string-random
     , aeson
-    , microstache
     , websockets >= 0.12.2.0
     , wai-websockets >= 3.0.1.1
     , wai
