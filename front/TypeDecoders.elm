@@ -1,6 +1,6 @@
 module TypeDecoders
     exposing
-        ( (<+|), (|+|), (|+>)
+        ( (<+|), (|+|), (|+<)
         , (<*|), (|*|), (:*), (:^)
         , (:-), (:=)
         , sumType
@@ -49,7 +49,7 @@ Example:
             <+| "bottom" := Bottom <*| J.string
             |+| "top" := Top <*| userDecoder
             |+| "left" := Left <*| userDecoder |*| dateDecoder
-            |+> "right" :- Right
+            |+< "right" :- Right
 
     J.decodeString sumDecoder """{"bottom": "Charlemagne"}"""
     --> Ok (Bottom "Charlemagne")
@@ -140,7 +140,7 @@ Consider the following data type and JSON equivalent:
             <+| "top" := Top_ <*| decodeUser_
             |+| "bottom" := Bottom_ <*| J.string
             |+| "left" := Left_ <*| 0 :^ decodeUser_ |*| 1 :^ decodeDay
-            |+> "right" :- Right_
+            |+< "right" :- Right_
 
     -- Decoding:
     J.decodeString decodeChoiceOfFour topjson
@@ -162,7 +162,7 @@ example: `Top <*| decodeUser_` is the constructor for `Top` with argument
 `decodeUser_`). Compare this to the previous example where we defined
 `decodeDay`.
 
-@docs sumType, (<+|), (|+|), (|+>), (:-), (:=)
+@docs sumType, (<+|), (|+|), (|+<), (:-), (:=)
 
 -}
 
@@ -173,7 +173,7 @@ import Json.Decode as J
 
 this function is a synonym for `Json.Decode.oneOf`
 
-the `|+|` and `|+>` operators are alias for list concatenation of
+the `|+|` and `|+<` operators are alias for list concatenation of
 decoders, and `<+|` *feeds* the resulting list into this function.
 For sum types, we are in fact *just* constructing a list of possible
 object fields and picking the existing one. There is no magic really.
@@ -225,8 +225,8 @@ It is a synonym for `Json.Decode.field`.
 
 It concatenates the last two arguments and creates a list.
 -}
-(|+>) : J.Decoder x -> J.Decoder x -> List (J.Decoder x)
-(|+>) d1 d2 = [d1, d2]
+(|+<) : J.Decoder x -> J.Decoder x -> List (J.Decoder x)
+(|+<) d1 d2 = [d1, d2]
 
 
 {-| Middle terms in sum type expressions.
@@ -281,5 +281,5 @@ infixr 3 :=
 
 infixr 2 <+|
 infixr 2 |+|
-infixr 2 |+>
+infixr 2 |+<
 

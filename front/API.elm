@@ -255,7 +255,7 @@ decoderGameState =
     sumType
         <+| "summary" := Summary <*| decoderScoresState
         |+| "round" := Round <*| decoderRoundState
-        |+> "lobby" := Lobby <*| decoderLobbyState
+        |+< "lobby" := Lobby <*| decoderLobbyState
 
 
 
@@ -275,5 +275,5 @@ decoderInfo =
         <+| "joined" := Joined <*| decoderName
         |+| "left" := Left <*| decoderName
         |+| "sync" := Sync <*| decoderGameState
-        |+> "mastery" :- Mastery
+        |+< "mastery" :- Mastery
 

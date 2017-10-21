@@ -94,4 +94,4 @@ canvasActionDecoder =
             |*| 1 :^ colorDecoder
             |*| 2 :^ Decode.float
         |+| "continue" := Continue <*| pointDecoder
-        |+> "end" :- End
+        |+< "end" :- End
