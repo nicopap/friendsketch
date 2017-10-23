@@ -2,26 +2,40 @@ module API
     exposing
         ( lobbyJoin
         , Game(..)
+        , gamepage
         , RoomID
+        , validRoomID
+        , showRoomID
         , Name
         , validName
         , showName
-        , validRoomID
-        , showRoomID
-        , gamepage
         , roomsCreateRequest
         , roomsJoinRequest
-        , wsinfo
         , wschat
-        , wscanvas
+        , LobbyState
+        , RoundState
+        , ScoresState
+        , GameState(..)
         , InfoMsg(..)
+        , InfoRequest(..)
+        , wsinfoListen
+        , wsinfoSend
+        , CanvasMsg(..)
+        , wscanvasListen
+        , wscanvasSend
         )
 
 {-| Exposes the necessary functions and types to access the backend API.
-TODO: Decide what to include in this module.
+
+All the types that the API specifies are defined and exported in this
+module.
+
 -}
 
-import Json.Encode as Enc
+import Color exposing (Color)
+import ColorMath exposing (hexToColor, colorToHex)
+import ElementRelativeMouseEvents exposing (Point)
+import Json.Encode as Enc exposing (Value)
 import Json.Decode as Dec exposing (Decoder)
 import TypeDecoders exposing (..)
 import Http exposing (encodeUri)
@@ -163,24 +177,70 @@ gamepage game =
 --- WebSocket API ---
 
 
-wschat : Game -> RoomID -> Name -> String
-wschat game (RoomID_ roomid) (Name_ name) =
-    "ws:///ws/games" +/+ showGame game +/+ roomid +/+ "chat" +/+ name
-
-
-wscanvas : Game -> RoomID -> Name -> String
-wscanvas game (RoomID_ roomid) (Name_ name) =
-    "ws:///ws/games" +/+ showGame game +/+ roomid +/+ "canvas" +/+ name
-
-
-wsinfo : Game -> RoomID -> Name -> (Result String InfoMsg -> msg) -> Sub msg
-wsinfo game (RoomID_ roomid) (Name_ name) continuation =
+{-| Generic way of accessing (sending to) a game websocket.
+-}
+wssend :
+    String -> (inmsg -> Value)
+    -> Game -> RoomID -> Name
+    -> inmsg -> Cmd msg
+wssend channel encoder game (RoomID_ roomid) (Name_ name) =
     let
         address =
-            "ws:///ws/games" +/+ showGame game +/+ roomid +/+ "info" +/+ name
+            "/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
     in
-        WebSocket.listen address <|
-            continuation << Dec.decodeString decoderInfo
+        WebSocket.send address << Enc.encode 0 << encoder
+
+
+{-| Generic way of accessing (listening to) a game websocket.
+-}
+wslisten :
+    String -> Decoder inmsg
+    -> Game -> RoomID -> Name
+    -> Maybe (Result String inmsg -> outmsg)
+    -> Sub outmsg
+wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
+    let
+        address =
+            "/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
+    in
+        case continuation of
+            Nothing ->
+                WebSocket.keepAlive address
+
+            Just continuation_ ->
+                WebSocket.listen address <|
+                    continuation_ << Dec.decodeString decoder
+
+
+wschat : Game -> RoomID -> Name -> String
+wschat game (RoomID_ roomid) (Name_ name) =
+    "/ws/games" +/+ showGame game +/+ roomid +/+ "chat" +/+ name
+
+
+wscanvasListen :
+    Game -> RoomID -> Name
+    -> Maybe (Result String CanvasMsg -> msg)
+    -> Sub msg
+wscanvasListen =
+    wslisten "canvas" decoderCanvasMsg
+
+
+wscanvasSend : Game -> RoomID -> Name -> CanvasMsg -> Cmd msg
+wscanvasSend =
+    wssend "canvas" encoderCanvasMsg
+
+
+wsinfoListen :
+    Game -> RoomID -> Name
+    -> Maybe (Result String InfoMsg -> msg)
+    -> Sub msg
+wsinfoListen =
+    wslisten "info" decoderInfo
+
+
+wsinfoSend : Game -> RoomID -> Name -> InfoRequest -> Cmd msg
+wsinfoSend =
+    wssend "info" encoderInfoRequest
 
 
 
@@ -189,7 +249,6 @@ wsinfo game (RoomID_ roomid) (Name_ name) continuation =
 
 type alias ScoresState =
     { scores : List (Name, Int)
-    , you : Name
     }
 
 
@@ -197,7 +256,6 @@ decoderScoresState : Decoder ScoresState
 decoderScoresState =
     ScoresState
         <*| "scores" :* Dec.list ((,) <*| 0 :^ decoderName |*| 1 :^ Dec.int)
-        |*| "you" :* decoderName
 
 
 
@@ -206,7 +264,6 @@ decoderScoresState =
 
 type alias LobbyState =
     { opponents : List Name
-    , you : Name
     , master : Bool
     }
 
@@ -215,7 +272,6 @@ decoderLobbyState : Decoder LobbyState
 decoderLobbyState =
     LobbyState
         <*| "opponents" :* Dec.list decoderName
-        |*| "you" :* decoderName
         |*| "master" :* Dec.bool
 
 
@@ -226,7 +282,6 @@ decoderLobbyState =
 type alias RoundState =
     { spectators : List Name
     , artist : Name
-    , you : Name
     , timeout : Int
     }
 
@@ -236,7 +291,6 @@ decoderRoundState =
     RoundState
         <*| "spectators" :* Dec.list decoderName
         |*| "artist" :* decoderName
-        |*| "you" :* decoderName
         |*| "timeout" :* Dec.int
 
 
@@ -277,3 +331,80 @@ decoderInfo =
         |+| "sync" := Sync <*| decoderGameState
         |+< "mastery" :- Mastery
 
+
+
+--- InfoRequest ---
+
+
+type InfoRequest
+    = ReqSync
+    | ReqStart
+
+
+encoderInfoRequest : InfoRequest -> Value
+encoderInfoRequest infoRequest =
+    let
+        type_ =
+            case infoRequest of
+                ReqSync -> "sync"
+                ReqStart -> "start"
+    in
+        Enc.object [ ( type_, Enc.null ) ]
+
+
+
+--- CanvasMsg ---
+
+
+type CanvasMsg
+    = CnvStart Point Color Float
+    | CnvContinue Point
+    | CnvEnd
+
+
+decoderCanvasMsg : Decoder CanvasMsg
+decoderCanvasMsg =
+    let
+        decoderPoint =
+            Point <*| 0 :^ Dec.float |*| 1 :^ Dec.float
+
+        decoderColor =
+            Dec.map
+                (Result.withDefault Color.black << hexToColor)
+                Dec.string
+    in
+        sumType
+            <+| "start" := CnvStart
+                <*| 0 :^ decoderPoint
+                |*| 1 :^ decoderColor
+                |*| 2 :^ Dec.float
+            |+| "continue" := CnvContinue <*| decoderPoint
+            |+< "end" :- CnvEnd
+
+
+encoderCanvasMsg : CanvasMsg -> Value
+encoderCanvasMsg msg =
+    let
+        encoderPoint { x, y } =
+            Enc.list [ Enc.float x, Enc.float y ]
+
+        encoderColor =
+            Enc.string << colorToHex
+    in
+        case msg of
+            CnvStart point color size ->
+                Enc.object
+                    [ ( "start"
+                      , Enc.list
+                          [ encoderPoint point
+                          , encoderColor color
+                          , Enc.float size
+                          ]
+                      )
+                    ]
+
+            CnvContinue point ->
+                Enc.object [ ( "continue", encoderPoint point ) ]
+
+            CnvEnd ->
+                Enc.object [ ( "end", Enc.null ) ]

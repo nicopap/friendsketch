@@ -11,11 +11,11 @@
 	<script>
 		var app = Elm.Main.fullscreen();
 		app.ports.stashAndOpen.subscribe(function(args) {
-			stashList = args[0];
-			link = args[1];
-			for (stash in stashList) {
+			var stashList = args[0];
+			var link = args[1];
+			stashList.forEach(function(stash) {
 				sessionStorage.setItem(stash[0], stash[1]);
-			}
+			});
 			window.open(link, '_self', false);
 		});
 		app.ports.openLink.subscribe(function(link) {

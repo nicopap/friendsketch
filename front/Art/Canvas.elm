@@ -1,19 +1,27 @@
-module Art.Canvas exposing (Msg, Canvas, new, view, update, subs, changeArtist)
+module Art.Canvas
+    exposing
+        ( Msg
+        , Canvas
+        , State(..)
+        , new
+        , view
+        , update
+        , subs
+        )
 
-import Debug
-import Tuple exposing (mapFirst)
+import Tuple exposing (mapFirst, mapSecond)
 import Color exposing (Color)
 import Html exposing (Html, div)
 import Html.Attributes exposing (id)
 import Html.Events as HEvents
-import WebSocket
+import Debug
 import Collage
 import Element as GraphElement
 import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
 import Art.Stroke as Stroke exposing (Stroke)
 import Art.Toolbox as Toolbox
-import Art.Canvas.ServerMsgDecoder as ServerMsg exposing (ServerMsg)
+import API
 
 
 type Pen
@@ -23,11 +31,11 @@ type Pen
 
 
 type Msg
-    = Client ClientMsg
-    | Server ServerMsg
+    = ArtistMsg ArtistMsg
+    | Server (Result String API.CanvasMsg)
 
 
-type ClientMsg
+type ArtistMsg
     = Hover Point
     | Lift
     | Press Point
@@ -37,35 +45,56 @@ type ClientMsg
     | ChangePenSize Float
 
 
+{-| Controls the canvas behavior.
+
+The canvas knows whether to send and allow drawing with its state:
+
+  - `Spectator` : Cannot draw, draws what the server asks to draw.
+  - `Artist` : Can draw, will send to the server the strokes.
+  - `Pregame` : Can draw, but do not send strokes to the server. This is to
+    fill time when the user cannot draw or see someone else draw.
+
+-}
+type State
+    = Spectator
+    | Artist
+    | Pregame
+
+
 type alias Canvas =
     { strokes : List Stroke
-    , currentArtist : Maybe String
+    , state : State
     , pen : Pen
     , color : Color
     , strokeSize : Float
     , width : Float
     , height : Float
-    , wsurl : String
+    , wslisten : Maybe (Result String API.CanvasMsg -> Msg) -> Sub Msg
+    , wssend : API.CanvasMsg -> Cmd Msg
     }
 
 
-{-| A default canvas
+{-| An initial canvas.
 -}
-new : String -> Canvas
-new =
-    Canvas [] Nothing Away Color.black 20 600 400
-
-
-changeArtist : Maybe String -> Canvas -> Canvas
-changeArtist newartist canvas =
-    { canvas | currentArtist = newartist }
+new : API.Game -> API.RoomID -> API.Name -> State -> Canvas
+new game roomid name state =
+    { strokes = []
+    , state = state
+    , pen = Away
+    , color = Color.black
+    , strokeSize = 20
+    , width = 600
+    , height = 400
+    , wslisten = API.wscanvasListen game roomid name
+    , wssend = API.wscanvasSend game roomid name
+    }
 
 
 
 -- VIEW
 
 
-{-| Displays a stroke
+{-| Displays a stroke.
 -}
 strokeToForm : Stroke -> Collage.Form
 strokeToForm { points, color, size } =
@@ -88,7 +117,7 @@ strokeToForm { points, color, size } =
                 }
 
 
-{-| Display the outline of the brush when howevering over the canvas
+{-| Display the outline of the brush when hovering over the canvas
 -}
 brushOutline : Float -> Color -> ( Float, Float ) -> Collage.Form
 brushOutline strokeSize color position =
@@ -125,27 +154,27 @@ toForms { pen, strokeSize, strokes, color } =
             |> (flip (++)) drawingTip
 
 
-canvasView : Canvas -> Html ClientMsg
-canvasView ({ width, height, currentArtist } as canvas) =
+canvasView : Canvas -> Html ArtistMsg
+canvasView ({ width, height, state } as canvas) =
     let
         canvasXY : Point -> Point
         canvasXY { x, y } =
             { x = x - width / 2, y = height / 2 - y }
 
-        properties : List (Html.Attribute ClientMsg)
+        properties : List (Html.Attribute ArtistMsg)
         properties =
             id "drawingcontainer"
-                :: case currentArtist of
-                    Nothing ->
+                :: case state of
+                    Spectator ->
+                        []
+
+                    _ ->
                         [ MouseE.onMouseMove (canvasXY >> Hover)
                         , MouseE.onMouseUp (always Lift)
                         , MouseE.onMouseDown (canvasXY >> Press)
                         , MouseE.onMouseEnter (mapFirst canvasXY >> EnterCanvas)
                         , HEvents.onMouseLeave LeaveCanvas
                         ]
-
-                    Just artistName ->
-                        []
     in
         toForms canvas
             |> Collage.collage (round width) (round height)
@@ -156,7 +185,7 @@ canvasView ({ width, height, currentArtist } as canvas) =
 
 view : Canvas -> Html Msg
 view canvas =
-    Html.map Client <|
+    Html.map ArtistMsg <|
         div []
             [ canvasView canvas
             , div [ id "toolbox" ] [ Toolbox.view ChangeColor ChangePenSize ]
@@ -185,98 +214,98 @@ lift ({ strokes, pen } as canvas) =
             Debug.log "Impossible lift message!!!" canvas
 
 
-drawFeedback : Point -> String -> Stroke -> ( Stroke, Cmd msg )
-drawFeedback point roomname stroke =
-    case Stroke.drawFeedback point stroke of
-        Just newstroke ->
-            ( newstroke
-            , WebSocket.send roomname (ServerMsg.continueEncoder point)
-            )
+{-| Modifies pen according to the new hover point.
+If the new point is worth sending to the server, also returns the input
+point.
 
+Note: if the line is currently being draw, it adds to it, if the client
+is just hovering over the canvas, then it adjusts the location of the
+hovering mark.
+
+-}
+hover : Point -> Pen -> ( Pen, Maybe Point )
+hover point pen =
+    case pen of
+        Drawing stroke ->
+            case Stroke.drawFeedback point stroke of
+                Just newstroke ->
+                    ( Drawing newstroke, Just point )
+
+                Nothing ->
+                    ( Drawing stroke, Nothing )
+
+        Hovering _ ->
+            ( Hovering point, Nothing )
+
+        Away ->
+            ( Hovering point, Nothing )
+
+
+{-| What happens when a client goes from unpressed to pressed pen.
+-}
+press : Point -> Color -> Float -> Pen
+press point color strokeSize =
+    Drawing (Stroke.new point color strokeSize)
+
+
+{-| Send `Just point` to server, otherwise Nothing
+-}
+continueSend : (API.CanvasMsg -> Cmd msg) -> Maybe Point -> Cmd msg
+continueSend action maybePoint =
+    case maybePoint of
         Nothing ->
-            ( stroke, Cmd.none )
+            Cmd.none
+
+        Just point ->
+            action <| API.CnvContinue point
 
 
-clientHover : Point -> Canvas -> ( Canvas, Cmd msg )
-clientHover point canvas =
-    case canvas.pen of
-        Drawing stroke ->
-            drawFeedback point canvas.wsurl stroke
-                |> mapFirst (\s -> { canvas | pen = Drawing s })
-
-        Hovering _ ->
-            { canvas | pen = Hovering point } ! []
-
-        Away ->
-            { canvas | pen = Hovering point } ! []
-
-
-clientPress : Point -> Canvas -> ( Canvas, Cmd msg )
-clientPress point ({ wsurl, pen, strokeSize, color, width, height } as canvas) =
+{-| Update function when the canvas state is `Artist`.
+-}
+artistUpdate : ArtistMsg -> Canvas -> ( Canvas, Cmd Msg )
+artistUpdate msg canvas =
     let
-        pressedCanvas =
-            ( { canvas | pen = Drawing (Stroke.new point color strokeSize) }
-            , WebSocket.send wsurl <|
-                ServerMsg.startEncoder point color strokeSize
-            )
+        clientPress point pen =
+            { canvas | pen = pen }
+                ! [ canvas.wssend <|
+                        API.CnvStart point canvas.color canvas.strokeSize
+                  ]
+
+        clientHover point =
+            hover point canvas.pen
+                |> mapFirst (\p -> { canvas | pen = p })
+                |> mapSecond (continueSend canvas.wssend)
     in
-        case pen of
-            Hovering _ ->
-                pressedCanvas
+        case msg of
+            Hover point ->
+                clientHover point
 
-            Away ->
-                pressedCanvas
+            Press point ->
+                press point canvas.color canvas.strokeSize
+                    |> clientPress point
 
-            Drawing _ ->
-                (Debug.log "Impossible press message!!!" canvas) ! []
+            Lift ->
+                lift canvas ! [ canvas.wssend API.CnvEnd ]
 
+            ChangeColor newcolor ->
+                { canvas | color = newcolor } ! []
 
-clientLeave : Canvas -> ( Canvas, Cmd msg )
-clientLeave canvas =
-    case canvas.pen of
-        Drawing stroke ->
-            (lift canvas |> (\c -> { c | pen = Away }))
-                ! [ WebSocket.send canvas.wsurl ServerMsg.endEncoder ]
+            ChangePenSize newsize ->
+                { canvas | strokeSize = newsize } ! []
 
-        Hovering _ ->
-            { canvas | pen = Away }
-                ! []
+            LeaveCanvas ->
+                (lift canvas |> (\c -> { c | pen = Away }))
+                    ! [ canvas.wssend API.CnvEnd ]
 
-        Away ->
-            Debug.log "Impossible leave message" canvas
-                ! []
+            EnterCanvas ( point, True ) ->
+                press point canvas.color canvas.strokeSize
+                    |> clientPress point
 
-
-clientUpdate : ClientMsg -> Canvas -> ( Canvas, Cmd msg )
-clientUpdate msg canvas =
-    case msg of
-        Hover point ->
-            clientHover point canvas
-
-        Press point ->
-            clientPress point canvas
-
-        Lift ->
-            lift canvas
-                ! [ WebSocket.send canvas.wsurl ServerMsg.endEncoder ]
-
-        ChangeColor newcolor ->
-            { canvas | color = newcolor } ! []
-
-        ChangePenSize newsize ->
-            { canvas | strokeSize = newsize } ! []
-
-        LeaveCanvas ->
-            clientLeave canvas
-
-        EnterCanvas ( point, True ) ->
-            clientPress point canvas
-
-        EnterCanvas ( point, False ) ->
-            clientHover point canvas
+            EnterCanvas ( point, False ) ->
+                clientHover point
 
 
-serverUpdate : ServerMsg -> Canvas -> Canvas
+serverUpdate : Result String API.CanvasMsg -> Canvas -> Canvas
 serverUpdate msg canvas =
     let
         continueDrawing point pen =
@@ -288,38 +317,84 @@ serverUpdate msg canvas =
                     pen
     in
         case msg of
-            ServerMsg.Start point color size ->
+            Ok (API.CnvStart point color size) ->
                 { canvas
                     | strokeSize = size
                     , color = color
                     , pen = Drawing (Stroke.new point color size)
                 }
 
-            ServerMsg.Continue point ->
+            Ok (API.CnvContinue point) ->
                 { canvas | pen = continueDrawing point canvas.pen }
 
-            ServerMsg.End ->
-                (\c -> { c | pen = Away }) <| lift canvas
+            Ok API.CnvEnd ->
+                lift canvas |> (\c -> { c | pen = Away })
 
-            ServerMsg.DecodeError errorText ->
+            Err errorText ->
                 Debug.log ("Issue in server message: " ++ errorText) canvas
+
+
+{-| A version of the canvas that draws client-side actions but do
+not send information to the server.
+-}
+pregameUpdate : ArtistMsg -> Canvas -> Canvas
+pregameUpdate msg canvas =
+    case msg of
+        Hover point ->
+            hover point canvas.pen
+                |> (\( pen, _ ) -> { canvas | pen = pen })
+
+        Press point ->
+            { canvas | pen = press point canvas.color canvas.strokeSize }
+
+        Lift ->
+            lift canvas
+
+        ChangeColor newcolor ->
+            { canvas | color = newcolor }
+
+        ChangePenSize newsize ->
+            { canvas | strokeSize = newsize }
+
+        LeaveCanvas ->
+            lift canvas
+                |> (\c -> { c | pen = Away })
+
+        EnterCanvas ( point, True ) ->
+            { canvas | pen = press point canvas.color canvas.strokeSize }
+
+        EnterCanvas ( point, False ) ->
+            hover point canvas.pen
+                |> (\( pen, _ ) -> { canvas | pen = pen })
 
 
 update : Msg -> Canvas -> ( Canvas, Cmd Msg )
 update msg canvas =
-    case msg of
-        Server msg_ ->
+    case ( msg, canvas.state ) of
+        ( Server msg_, Spectator ) ->
             serverUpdate msg_ canvas ! []
 
-        Client msg_ ->
-            clientUpdate msg_ canvas
+        ( ArtistMsg msg_, Artist ) ->
+            artistUpdate msg_ canvas
+
+        ( ArtistMsg msg_, Pregame ) ->
+            pregameUpdate msg_ canvas ! []
+
+        ( msg_, state ) ->
+            Debug.log
+                ("Inconsistent state between server and client!")
+                (canvas)
+                ! []
 
 
 subs : Canvas -> Sub Msg
-subs { wsurl, currentArtist } =
-    case currentArtist of
-        Just _ ->
-            WebSocket.listen wsurl <| ServerMsg.decode Server
+subs { wslisten, state } =
+    case state of
+        Spectator ->
+            wslisten <| Just Server
 
-        Nothing ->
-            WebSocket.keepAlive wsurl
+        Artist ->
+            wslisten Nothing
+
+        Pregame ->
+            wslisten Nothing
