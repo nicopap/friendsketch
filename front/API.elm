@@ -349,7 +349,7 @@ encoderInfoRequest infoRequest =
                 ReqSync -> "sync"
                 ReqStart -> "start"
     in
-        Enc.object [ ( type_, Enc.null ) ]
+        Enc.object [ ( type_, Enc.list [] ) ]
 
 
 
@@ -407,4 +407,4 @@ encoderCanvasMsg msg =
                 Enc.object [ ( "continue", encoderPoint point ) ]
 
             CnvEnd ->
-                Enc.object [ ( "end", Enc.null ) ]
+                Enc.object [ ( "end", Enc.list [] ) ]

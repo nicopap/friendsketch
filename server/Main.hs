@@ -5,25 +5,24 @@ module Main where
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
 import Control.Monad.IO.Class (liftIO)
-import Data.List (uncons)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
-import Data.Maybe (maybe, catMaybes)
+import Data.Maybe (maybe)
 import qualified Data.Text as T
 import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8)
+import Data.Text.Encoding (encodeUtf8Builder)
 
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Wai.Routes as Routes
 import Wai.Routes (Handler, RouteM, created201, notFound404, conflict409, badRequest400, ok200)
 import qualified Network.Wai.Application.Static as SWai
 import qualified Network.Wai as Wai
-import qualified Text.StringRandom as Rand
 
 import qualified RoomConnection as RC
 import qualified RestImpl as API
+import RestImpl (RoomID)
 
-type RoomID = Text
+
 type RoomMap = Map RoomID RC.Room
 type GlobalState = MVar RoomMap
 type MutState a = GlobalState -> IO a
@@ -60,7 +59,7 @@ unpackGS (Netpinary gs) = gs
 
 createRoom :: MutState RoomID
 createRoom gs = do
-    roomName <- Rand.stringRandomIO "[a-z0-9]{5}"
+    roomName <- API.randomRoomID
     modifyMVar gs $ addRandRoom roomName
     where -- Room name generated outside the lock to not clog it.
         addRandRoom :: RoomID -> RoomMap -> IO (RoomMap, RoomID)
@@ -127,18 +126,36 @@ getStaticContent =
             }
 
 
+{-| with urlparts == [RoomID, RC.Channel, Name], reroutes the request to the
+correct WebSocket handler, if RoomID exists.
+-}
 getWebSocketAPI :: [Text] -> Handler Netpinary
-getWebSocketAPI urlparts env req continue = do
-    roomMap <- readMVar $ unpackGS $ Routes.envSub env
-    maybe
-        (continue $ Wai.responseLBS notFound404 [] "Room doesn't exist")
-        (\(room, urltail)
-                -> RC.app room urltail (Routes.waiReq req) continue)
-        $ do
-            (h,t) <- uncons urlparts
-            room <- Map.lookup h roomMap
-            return (room,t)
+getWebSocketAPI urlparts env req continue =
+    let
+        -- maybeApp return a Left Text (with pertinent error message)
+        -- if any of its component fails at parsing.
+        maybeApp :: [Text] -> RoomMap -> Either Text Wai.Application
+        maybeApp [rawroomid, rawchannel, rawname] roomMap =
+            RC.app
+                <$> (findRoom roomMap =<< API.valid rawroomid)
+                <*> API.valid rawchannel
+                <*> API.valid rawname
+                where
+                    findRoom :: RoomMap -> API.RoomID -> Either Text RC.Room
+                    findRoom roomMap' roomid =
+                        maybe
+                            (Left "The given roomid doesn't exist") Right
+                            $ Map.lookup roomid roomMap'
 
+        maybeApp _ _ = Left "Invalid request path"
+    in do
+        roomMap <- readMVar $ unpackGS $ Routes.envSub env
+        case maybeApp urlparts roomMap of
+            Right app ->
+                app (Routes.waiReq req) continue
+            Left err ->
+                continue $ Wai.responseBuilder notFound404 [] $
+                    encodeUtf8Builder err
 
 
 -- *** -- *** -- APPLICATION HANDLERS -- *** -- *** --

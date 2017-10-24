@@ -5,31 +5,33 @@ module RoomConnection (Room, newRoom, app, isConnected) where
 import qualified Network.WebSockets as WS
 import qualified Network.Wai as Wai
 import qualified Network.Wai.Handler.WebSockets as WaiWS
-import Control.Concurrent (MVar, modifyMVar, modifyMVar_, newMVar, withMVar, readMVar)
+import Control.Concurrent (MVar, modifyMVar, newMVar, withMVar, readMVar)
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import Control.Monad (forever, forM_)
 import Control.Exception (finally)
-import Data.Text (Text, append)
-import Data.Maybe (isJust, maybe)
-import Network.HTTP.Types.Status (notFound404, badRequest400)
+import Data.Text (Text)
+import Data.Maybe (isJust, fromMaybe)
+import Network.HTTP.Types.Status (badRequest400)
+import qualified RestImpl as API
+import RestImpl (Channel(..))
+import qualified Data.Aeson as Aeson
 
-data Channel
-    = Canvas
-    | Info
+data ClientSockets =
+    ClientSockets
+        { canvas :: Maybe WS.Connection
+        , info :: WS.Connection
+        }
 
-instance Show Channel where
-    show Canvas = "canvas"
-    show Info = "info"
+instance Show ClientSockets where
+    show (ClientSockets { canvas }) =
+        "ClientSockets {canvas="
+        ++ (if isJust canvas then "(Just <SOCKET>)" else "Nothing")
+        ++ ", info=<SOCKET>}"
 
 
-type ClientName = Text
-data ClientSockets = ClientSockets
-    { canvas :: Maybe WS.Connection
-    , info :: WS.Connection
-    }
+type RoomState = Map API.Name ClientSockets
 
-type RoomState = Map ClientName ClientSockets
 type Room = MVar RoomState
 type MutRoom a = Room -> IO a
 
@@ -39,9 +41,10 @@ newRoom = newMVar Map.empty
 
 
 {-| Given an acceptation condition `predicate`
-    and a transformation on a RoomState `trans` taking a connection,
-    will return a function that takes a connection, accepts and transforms
-    it only if `predicate` is true. -}
+and a transformation on a RoomState `trans` taking a connection,
+will return a function that takes a connection, accepts and transforms
+it only if `predicate` is true.
+-}
 tryDo
     :: (RoomState -> Bool)
     -> (WS.Connection -> RoomState -> RoomState)
@@ -60,43 +63,60 @@ tryDo predicate trans conn =
                 return ( roomState, Nothing )
 
 
-{-| Given `clientName` will accept a new connection if the clientName doesn't
-    already exists, otherwise refuses the connection. -}
-tryAddClient
-    :: ClientName
+{-| Given `clientName` will accept a new connection
+if the clientName doesn't already exists, otherwise
+refuses the connection.
+-}
+tryAddInfo
+    :: API.Name
     -> WS.PendingConnection
     -> MutRoom (Maybe WS.Connection)
-tryAddClient clientName =
+tryAddInfo clientName =
     tryDo predicate trans
     where
-        predicate = Map.notMember clientName
-        trans conn = Map.insert clientName (ClientSockets Nothing conn)
+        predicate =
+            Map.notMember clientName
+
+        trans conn =
+            Map.insert clientName (ClientSockets Nothing conn)
 
 
-{-| Given `clientName` will accept a new canvas connection if the clientName
-    doesn't already have a Canvas connection and already exists.
-    otherwise refuses the connection-}
+{-| Given `clientName` will accept a new canvas connection
+if the clientName doesn't already have a Canvas connection
+and already exists.  otherwise refuses the connection
+-}
 tryAddCanvas
-    :: ClientName
+    :: API.Name
     -> WS.PendingConnection
     -> MutRoom (Maybe WS.Connection)
 tryAddCanvas clientName =
     tryDo predicate trans
     where
-        predicate = isJust . (\x -> canvas =<< Map.lookup clientName x)
-        trans conn = Map.adjust (\x -> x {canvas = Just conn}) clientName
+        predicate =
+            isJust . (\x -> canvas =<< Map.lookup clientName x)
+
+        trans conn =
+            Map.adjust (\x -> x {canvas = Just conn}) clientName
+
+
+
+{-| Send to the given client the given message on the info channel.
+-}
+sendInfo :: API.InfoMsg -> API.Name -> MutRoom ()
+sendInfo msg name room = do
+    maybeClient <- fmap (Map.lookup name) $ readMVar room
+    case maybeClient of
+        Just (ClientSockets { info }) ->
+            WS.sendTextData info $ Aeson.encode msg
+        Nothing ->
+            return ()
 
 
 {-| Broadcast to all clients where filter(client) holds True msg,
-    on info channel.  -}
-broadcastInfo
-    :: WS.WebSocketsData msg
-    => (ClientName -> Bool)
-    -> msg
-    -> MutRoom ()
-broadcastInfo filter' msg room =
+on info channel.
+previous version:
     let
-        sendifok :: Text -> ClientSockets -> IO ()
+        sendifok :: API.Name -> ClientSockets -> IO ()
         sendifok clientName sockets = do
             if filter' clientName then
                 WS.sendTextData (info sockets) msg
@@ -104,21 +124,93 @@ broadcastInfo filter' msg room =
                 return ()
     in
         withMVar room $ Map.foldMapWithKey sendifok
-
-
-{-| Atomically broadcast of the client leave notification and removing it from
-the room -}
-disconnect :: ClientName -> MutRoom ()
-disconnect clientName =
-    flip modifyMVar_ remAndBroadcast
+-}
+broadcastInfo' :: API.InfoMsg -> (API.Name -> Bool) -> MutRoom ()
+broadcastInfo' msg predicate =
+    let
+        sendifok :: API.Name -> ClientSockets -> IO ()
+        sendifok name (ClientSockets { info }) =
+            if predicate name then
+                WS.sendTextData info msg'
+            else
+                return ()
+    in
+        flip withMVar $ Map.foldMapWithKey sendifok
     where
-        remAndBroadcast :: RoomState -> IO RoomState
-        remAndBroadcast roomState = do
-            let disconnected = Map.delete clientName roomState
-            forM_-- TODO: use an external API json serialization module isntead of sending the raw name
-                (Map.elems disconnected)
-                (flip WS.sendTextData ("< " `append` clientName) . info)
-            return disconnected
+        msg' = Aeson.encode msg
+
+
+{-| broadcast to all clients without exception the given message.
+-}
+broadcastInfo :: API.InfoMsg -> MutRoom ()
+broadcastInfo msg =
+    flip withMVar (\cmap ->
+        forM_ (Map.elems cmap)
+            ( \(ClientSockets { info }) ->
+                WS.sendTextData info $ Aeson.encode msg
+            )
+    )
+
+
+{-| Notify all players that the given player left the game.
+-}
+notifyLeft_ :: API.Name -> MutRoom ()
+notifyLeft_ name =
+    broadcastInfo (API.Left_ name)
+
+
+{-| Put the game in state of pintclone rounds.
+-}
+startGame :: MutRoom ()
+startGame room = do
+    userList <- fmap Map.keys $ readMVar room
+    broadcastInfo (syncMsg userList) room
+    where
+        syncMsg members = API.Sync $ API.Round $ API.RoundState
+            (members)
+            (head members)
+            (300)
+
+
+{-| TODO: add a proper way to handle game states
+-}
+sendSync :: API.Name -> MutRoom ()
+sendSync target room = do
+    msg <- fmap (toGameState . Map.keys) $ readMVar room
+    sendInfo (API.Sync msg) target room
+    where
+        toGameState members =
+            API.Lobby (API.LobbyState members True)
+
+
+
+{-| Handles and reroutes info request messages gotten from the info socket.
+-}
+handleInfoReq :: API.Name -> API.InfoRequest -> MutRoom ()
+handleInfoReq name msg =
+    case msg of
+        API.ReqSync ->
+            sendSync name
+
+        API.ReqStart ->
+            startGame
+
+
+{-| Maintains a connection to the info websocket of a client.
+-}
+receiveInfo :: API.Name -> WS.Connection -> MutRoom ()
+receiveInfo name socket room = do
+    sendSync name room
+    finally receiveLoop (notifyLeft_ name room)
+    where
+        receiveLoop :: IO ()
+        receiveLoop = forever $ do
+            msg <- fmap Aeson.decode $ WS.receiveData socket
+            case msg of
+                Just msg' ->
+                    handleInfoReq name msg' room
+                Nothing ->
+                    return ()
 
 
 maintainConnection
@@ -135,53 +227,45 @@ maintainConnection conn onDisconnect onRecieve room =
             onRecieve msg room
 
 
--- TODO: properly handle invalid connections
-app' :: Channel -> ClientName -> Room -> WS.ServerApp
+{-| Handle and reroutes connection based on route data turned into application
+types.
+TODO: properly handle invalid connections
+-}
+app' :: Channel -> API.Name -> Room -> WS.ServerApp
 app' channel clientName room pending = do
     case channel of
         Canvas -> do
             Just conn <- tryAddCanvas clientName pending room
-            maintainConnection conn (disconnect clientName) ignoreData room
+            maintainConnection conn (\_ -> return ()) ignoreData room
             -- TODO: only accept and resend data from the current artist
             -- connected.
+
         Info -> do
-            Just conn <- tryAddClient clientName pending room
-            broadcastInfo (const True) ("> " `append` clientName) room
+            Just conn <- tryAddInfo clientName pending room
+            broadcastInfo (API.Joined clientName) room
             -- TODO: give new client info about who is already connected. Note,
-            -- this should be atomic to room variable, to avoid /tromperie/
-            maintainConnection conn (disconnect clientName) ignoreData room
+            -- this should be atomic to room variable.
+            receiveInfo clientName conn room
     where
         ignoreData :: Text -> x -> IO ()
         ignoreData = const . const $ return () -- ignore 2 arguments, IO ()
 
 
 {-| Whether username is in given room -}
-isConnected :: Text -> MutRoom Bool
+isConnected :: API.Name -> MutRoom Bool
 isConnected username =
     fmap (Map.member username) . readMVar
 
 
-app :: Room -> [Text] -> Wai.Application
-app room route request respond =
+app :: Room -> Channel -> API.Name -> Wai.Application
+app room channel name request continuation =
     let
         maybeWaiRespond =
-            case route of
-                ["canvas", clientName] ->
-                    WaiWS.websocketsApp
-                        (WS.defaultConnectionOptions)
-                        (app' Canvas clientName room)
-                        (request)
-
-                ["info", clientName] ->
-                    WaiWS.websocketsApp
-                        (WS.defaultConnectionOptions)
-                        (app' Info clientName room)
-                        (request)
-
-                _ ->
-                    Just $ Wai.responseLBS notFound404 [] "The websocket doesn't exist"
-
-        badRequestAnswer = -- TODO: understant when this is called
-            respond $ Wai.responseLBS badRequest400 [] "Not a WebSocket request"
+            WaiWS.websocketsApp
+                (WS.defaultConnectionOptions)
+                (app' channel name room)
+                (request)
     in
-        maybe badRequestAnswer respond maybeWaiRespond
+        continuation $ fromMaybe
+            (Wai.responseLBS badRequest400 [] "Not a WebSocket request")
+            (maybeWaiRespond)

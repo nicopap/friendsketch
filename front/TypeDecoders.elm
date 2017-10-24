@@ -54,7 +54,7 @@ Example:
     J.decodeString sumDecoder """{"bottom": "Charlemagne"}"""
     --> Ok (Bottom "Charlemagne")
 
-    J.decodeString sumDecoder """{"right": null}"""
+    J.decodeString sumDecoder """{"right": []}"""
     --> Ok Right
 
     J.decodeString sumDecoder """{"top" : {"name": "Philip", "id": 2}}"""
@@ -112,8 +112,9 @@ I wrote this library because of the verbosity of sum type decoders in
 normal elm.
 
 With the assumption that the data constructor will be the name of an
-object that contains what the constructor needs as argument (or a `null`
-value), it is very simple to construct a decoder for a sum type.
+object that contains what the constructor needs as argument (or, in
+fact, anything if the constructor has 0 arguments), it is very
+simple to construct a decoder for a sum type.
 
 Consider the following data type and JSON equivalent:
 
