@@ -12,7 +12,7 @@ import Html as H exposing (Html, programWithFlags)
 import Html.Attributes as HA
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
-import Art.Canvas as Canvas exposing (Canvas)
+import Canvas exposing (Canvas)
 import Ports
 import API
 

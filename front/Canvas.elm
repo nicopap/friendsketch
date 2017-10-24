@@ -1,4 +1,4 @@
-module Art.Canvas
+module Canvas
     exposing
         ( Msg
         , Canvas
@@ -19,8 +19,8 @@ import Collage
 import Element as GraphElement
 import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
-import Art.Stroke as Stroke exposing (Stroke)
-import Art.Toolbox as Toolbox
+import Canvas.Stroke as Stroke exposing (Stroke)
+import Canvas.Toolbox as Toolbox
 import API
 
 

@@ -1,4 +1,4 @@
-module Art.Toolbox exposing (view)
+module Canvas.Toolbox exposing (view)
 
 import Html exposing (Html, div)
 import Html.Attributes exposing (style, type_)

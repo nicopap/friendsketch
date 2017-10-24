@@ -1,4 +1,4 @@
-module Art.Stroke exposing (Stroke, new, draw, drawFeedback, head)
+module Canvas.Stroke exposing (Stroke, new, draw, drawFeedback, head)
 
 {-| Represents a simple paint stroke.
 
