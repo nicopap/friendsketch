@@ -9,6 +9,7 @@ module Pintclone.Room
         , view
         , Room
         , Artist(Me, Another)
+        , MasterStatus(Master, Peasant)
         )
 
 {-| Manages state changes related to the user list.
@@ -43,6 +44,14 @@ type State
     | Alone
 
 
+{-| If the current user is master or not, used as flag for the
+`newLobby` function.
+-}
+type MasterStatus
+    = Master
+    | Peasant
+
+
 {-| newLobby, returns an initialized Room
 
     Room.newLobby user userList
@@ -56,14 +65,19 @@ In order to initialize the room during a "round", see `newRound`.
 TODO: think about what happens when me \in opponentsList.
 
 -}
-newLobby : API.Name -> List API.Name -> Room
-newLobby me opponentsList =
+newLobby : MasterStatus -> API.Name -> List API.Name -> Room
+newLobby status me opponentsList =
     case opponentsList of
         [] ->
             Room me Alone
 
         h :: t ->
-            Room me <| NormalWith <| uniq <| Nonempty h t
+            case status of
+                Master ->
+                    Room me <| MasterOf <| uniq <| Nonempty h t
+
+                Peasant ->
+                    Room me <| NormalWith <| uniq <| Nonempty h t
 
 
 {-| Create a room in "round" state.
@@ -84,7 +98,7 @@ newRound me opponentsList artist =
             Room me <| PlayingWith <| uniq <| Nonempty name opponentsList
 
 
-{-| Remove a name from the oppnents list, operation on the state.
+{-| Remove a name from the opponents list, operation on the state.
 
 TODO: think what happens when the artist leaves.
 TODO: signal an issue if we try to `popState Alone` (so we can `Sync`)
@@ -218,22 +232,27 @@ joins joining ({ me } as room) =
 view : Room -> Html msg
 view room =
     let
-        nameList headText opponents =
-            H.h1 [] [ H.text headText ]
-                :: map (H.text << API.showName) (toList opponents)
+        userRow name =
+            H.tr [] [ H.text <| API.showName name ]
+
+        nameList title opponents =
+            H.table []
+                (H.caption [] [ H.text "Friends" ]
+                    :: map userRow (toList opponents)
+                )
     in
         case room.state of
             Alone ->
                 H.div [] [ H.text "ALONE" ]
 
             NormalWith opponents ->
-                H.div [] <| nameList "NormalWith" opponents
+                H.div [] [ nameList "NormalWith" opponents ]
 
             MasterOf opponents ->
-                H.div [] <| nameList "MasterOf" opponents
+                H.div [] [ nameList "MasterOf" opponents ]
 
             PlayingWith opponents ->
-                H.div [] <| nameList "PlayingWith" opponents
+                H.div [] [ nameList "PlayingWith" opponents ]
 
             ArtistWith opponents ->
-                H.div [] <| nameList "ArtistWith" opponents
+                H.div [] [ nameList "ArtistWith" opponents ]

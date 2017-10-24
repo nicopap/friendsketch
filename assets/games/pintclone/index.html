@@ -7,11 +7,13 @@
 		<link rel="icon" type="image/png" href="/favicon.png">
 	</head>
 	<div id="main"></div>
+	<script src="/ports.js"></script>
 	<script src="code.js"></script>
 	<script>
 		var app = Elm.Main.fullscreen({
 			username: sessionStorage.getItem("username"),
 			roomid: sessionStorage.getItem("roomid")
 		});
+		app.ports.copyCatch.subscribe(copyCatch);
 	</script>
 </html>
