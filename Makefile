@@ -3,18 +3,29 @@ BUILD_DIR = build
 NET_DIR = assets
 ALT_WAI_ROUTES = ~/code/gitimpo/wai-routes
 
+# --- Goals ---
+.DEFAULT_GOAL = experiment
+.PHONY: clean experiment backend frontend recabal debug
+
+ELM_FLAGS = --warn
+debug : ELM_FLAGS += --debug
+debug : experiment
+debug-frontend : ELM_FLAGS += --debug
+debug-frontend : frontend
+
 # --- Static content ---
 CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(shell find $(NET_DIR) -type f))
 
 # --- Javascript content ---
 ELM_SOURCE = $(shell find front -type f)
+HASKELL_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/pintclone/code.js : front/Pintclone.elm $(ELM_SOURCE)
-	elm-make --warn $< --output $@
+	elm-make $(ELM_FLAGS) $< --output $@
 $(BUILD_DIR)/lobby/code.js : front/Lobby.elm $(ELM_SOURCE)
-	elm-make --warn $< --output $@
+	elm-make $(ELM_FLAGS) $< --output $@
 $(BUILD_DIR)/lobby/join/code.js : front/Lobby/Join.elm $(ELM_SOURCE)
-	elm-make --warn $< --output $@
+	elm-make $(ELM_FLAGS) $< --output $@
 # List of target files to build
 JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js $(BUILD_DIR)/lobby/join/code.js
 
@@ -22,8 +33,6 @@ JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js $(B
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 	(cd $(NET_DIR) && cp --parents $(patsubst $(NET_DIR)/%,%,$<) ../$(BUILD_DIR))
 
-.DEFAULT_GOAL = experiment
-.PHONY: clean experiment backend frontend recabal
 
 experiment : backend frontend
 	(sleep 2 ; $(BROWSER) "http://localhost:8080/lobby") &
@@ -31,7 +40,7 @@ experiment : backend frontend
 
 
 frontend : $(JS_TARGETS) $(CONTENT)
-backend : server/Main.hs netpinary.cabal
+backend : $(HASKELL_SOURCE) netpinary.cabal
 	cabal build
 
 recabal :
