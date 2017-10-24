@@ -207,11 +207,8 @@ lift ({ strokes, pen } as canvas) =
                 , pen = Hovering (Stroke.head stroke)
             }
 
-        Away ->
-            Debug.log "Impossible lift message!!!" canvas
-
-        Hovering _ ->
-            Debug.log "Impossible lift message!!!" canvas
+        _ ->
+            canvas
 
 
 {-| Modifies pen according to the new hover point.
@@ -294,8 +291,13 @@ artistUpdate msg canvas =
                 { canvas | strokeSize = newsize } ! []
 
             LeaveCanvas ->
-                (lift canvas |> (\c -> { c | pen = Away }))
-                    ! [ canvas.wssend API.CnvEnd ]
+                case canvas.pen of
+                    Drawing _ ->
+                        (lift canvas |> (\c -> { c | pen = Away }))
+                            ! [ canvas.wssend API.CnvEnd ]
+
+                    _ ->
+                        { canvas | pen = Away } ! []
 
             EnterCanvas ( point, True ) ->
                 press point canvas.color canvas.strokeSize
