@@ -5,20 +5,19 @@ import Html.Attributes as HA
 import Html.Events as HE
 import Http exposing (Error(..))
 import Result exposing (Result)
-import Tuple exposing (mapFirst)
 import Maybe
 import API
-import Ports exposing (openLink)
 
 
 type Msg
     = InputRoom String
     | InputName String
-    | HttpAnswer (Result Http.Error API.Game)
+    | HttpAnswer API.RoomID API.Name (Result Http.Error API.Game)
 
 
 type Status
     = NotFailedYet
+    | ConnectingTo API.Game
     | AttemptingConnection
     | InexistantRoom
     | AlreadyTakenName
@@ -40,7 +39,7 @@ type alias Flags =
 main : Program Flags Join Msg
 main =
     H.programWithFlags
-        { init = \x -> (new x, Cmd.none)
+        { init = \x -> ( new x, Cmd.none )
         , update = update
         , view = view
         , subscriptions = always Sub.none
@@ -68,42 +67,34 @@ new { username } =
     }
 
 
-attemptRoom : String -> API.Name -> Maybe (Cmd Msg)
-attemptRoom roominput name =
-    Maybe.map
-        (\v -> Http.send HttpAnswer <| API.roomsJoinRequest v name)
-        (API.validRoomID roominput)
-
-
 {-| Modify model based on the content of the Http response.
+defaultErrorHandle message =
 -}
-processAnswer : Result Http.Error API.Game -> ( Status, Cmd Msg )
+processAnswer : Result Http.Error API.Game -> Status
 processAnswer result =
-    let
-        defaultErrorHandle message =
-            ( OtherError ("Internal error:" ++ message), Cmd.none )
+    case result of
+        Err Timeout ->
+            OtherError "Request timed out"
 
-        successHandle game =
-            ( AttemptingConnection, openLink <| API.gamepage game )
-    in
-        case result of
-            Err Timeout ->
-                defaultErrorHandle "Request timed out"
+        Err NetworkError ->
+            OtherError "Cannot connect to server (are you offline?)"
 
-            Err NetworkError ->
-                defaultErrorHandle "Cannot connect to server (offline?)"
+        Err (BadStatus { status }) ->
+            case status.code of
+                404 ->
+                    InexistantRoom
 
-            Err (BadStatus { status }) ->
-                case status.code of
-                    404 -> InexistantRoom ! []
-                    409 -> AlreadyTakenName ! []
-                    _ -> defaultErrorHandle status.message
+                409 ->
+                    AlreadyTakenName
 
-            Err _ ->
-                defaultErrorHandle "misc error"
+                _ ->
+                    OtherError status.message
 
-            Ok game ->
-                successHandle game
+        Err _ ->
+            OtherError "misc error"
+
+        Ok game ->
+            ConnectingTo game
 
 
 update : Msg -> Join -> ( Join, Cmd Msg )
@@ -112,17 +103,18 @@ update msg model =
         InputRoom roominput ->
             case model.username of
                 Ok name ->
-                    case attemptRoom roominput name of
-                        Just cmd ->
-                            ( { model
-                                | status = AttemptingConnection
-                                , roominput = roominput
-                              }
-                            , cmd
-                            )
-
+                    case API.validRoomID roominput of
                         Nothing ->
                             { model | roominput = roominput } ! []
+
+                        Just validRoom ->
+                            { model
+                                | status = AttemptingConnection
+                                , roominput = roominput
+                            }
+                                ! [ API.roomsJoinRequest validRoom name
+                                        |> Http.send (HttpAnswer validRoom name)
+                                  ]
 
                 Err _ ->
                     { model | roominput = roominput } ! []
@@ -130,10 +122,18 @@ update msg model =
         InputName username ->
             { model | username = validateNameInput username } ! []
 
-        HttpAnswer response ->
-            mapFirst
-                (\x -> { model | status = x })
-                (processAnswer response)
+        HttpAnswer validroomid validname response ->
+            let
+                answer =
+                    processAnswer response
+            in
+                { model | status = answer }
+                    ! case answer of
+                        ConnectingTo game ->
+                            [ API.exitToGame game validroomid validname ]
+
+                        _ ->
+                            []
 
 
 statusView : Status -> Html Msg
@@ -154,16 +154,23 @@ roomFieldLocked : Status -> Bool
 roomFieldLocked status =
     case status of
         AlreadyTakenName -> True
+        ConnectingTo _ -> True
         AttemptingConnection -> True
         NotFailedYet -> False
         InexistantRoom -> False
         OtherError _ -> False
 
+
 inputField : String -> (String -> Msg) -> Bool -> String -> Html Msg
 inputField label msg disabled content =
     H.p []
         [ H.label [] [ H.text label ]
-        , H.input [ HA.disabled disabled, HE.onInput msg ] [ H.text content ]
+        , H.input
+            [ HA.disabled disabled
+            , HA.value content
+            , HE.onInput msg
+            ]
+            [ H.text content ]
         ]
 
 

@@ -1,8 +1,8 @@
 module API
     exposing
-        ( lobbyJoin
+        ( exitToJoin
         , Game(..)
-        , gamepage
+        , exitToGame
         , RoomID
         , validRoomID
         , showRoomID
@@ -42,6 +42,7 @@ import Http exposing (encodeUri)
 import Regex as Re
 import Maybe
 import WebSocket
+import Ports
 
 
 type Game
@@ -120,9 +121,12 @@ validRoomID =
     Maybe.map RoomID_ << regexValidate "^[a-z0-9]{5}$"
 
 
-lobbyJoin : String
-lobbyJoin =
-    "/lobby/join/index.html"
+exitToJoin : Name -> Cmd msg
+exitToJoin (Name_ username) =
+    Ports.stashAndOpen
+        ( [("username", username)]
+        , "/lobby/join/index.html"
+        )
 
 
 roomsCreate : String
@@ -168,9 +172,12 @@ showGame game =
             "pintclone"
 
 
-gamepage : Game -> String
-gamepage game =
-    "/games" +/+ showGame game
+exitToGame : Game -> RoomID -> Name -> Cmd msg
+exitToGame game (RoomID_ roomid) (Name_ username) =
+    Ports.stashAndOpen
+        ( [("roomid", roomid), ("username", username)]
+        , "/games" +/+ showGame game
+        )
 
 
 
@@ -186,7 +193,7 @@ wssend :
 wssend channel encoder game (RoomID_ roomid) (Name_ name) =
     let
         address =
-            "/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
+            "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
     in
         WebSocket.send address << Enc.encode 0 << encoder
 
@@ -201,7 +208,7 @@ wslisten :
 wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
-            "/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
+            "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
     in
         case continuation of
             Nothing ->
@@ -214,7 +221,7 @@ wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
 
 wschat : Game -> RoomID -> Name -> String
 wschat game (RoomID_ roomid) (Name_ name) =
-    "/ws/games" +/+ showGame game +/+ roomid +/+ "chat" +/+ name
+    "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ "chat" +/+ name
 
 
 wscanvasListen :

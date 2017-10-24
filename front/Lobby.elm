@@ -13,13 +13,12 @@ import Task exposing (Task)
 import Http
 import Debug
 import Lobby.NameLists exposing (nameList, adjectiveList)
-import Ports
 import API
 
 
 type Msg
     = CreateGame API.Name Settings
-    | OpenGame (List ( String, String )) String
+    | OpenGame API.Game API.RoomID API.Name
     | JoinGame API.Name
     | UpdateUserName String
     | ErrorNotify String
@@ -110,22 +109,18 @@ new =
 attemptJoin :
     API.Name
     -> API.RoomID
-    -> Task Http.Error ( API.Game, API.Name, API.RoomID )
+    -> Task Http.Error ( API.Game, API.RoomID, API.Name )
 attemptJoin name roomid =
     API.roomsJoinRequest roomid name
         |> Http.toTask
-        |> Task.map (\game -> ( game, name, roomid ))
+        |> Task.map (\game -> ( game, roomid, name ))
 
 
-openLink : Result Http.Error ( API.Game, API.Name, API.RoomID ) -> Msg
+openLink : Result Http.Error ( API.Game, API.RoomID, API.Name ) -> Msg
 openLink result =
     case result of
-        Ok ( game, name, roomid ) ->
-            OpenGame
-                [ ( "username", API.showName name )
-                , ( "roomid", API.showRoomID roomid )
-                ]
-                (API.gamepage game)
+        Ok ( game, roomid, name ) ->
+            OpenGame game roomid name
 
         Err errmsg ->
             ErrorNotify (toString errmsg)
@@ -143,18 +138,6 @@ attemptCreate username { game } =
         |> Task.attempt openLink
 
 
-{-| Open the join page (at /lobby/join/index.html?username=username)
-with the given username. No failure, terminating (ie: if javascript
-function behaves poorly, the program breaks)
--}
-joinPage : API.Name -> Cmd msg
-joinPage username =
-    Ports.stashAndOpen
-        ( [ ( "username", API.showName username ) ]
-        , (API.lobbyJoin)
-        )
-
-
 update : Msg -> Welcome -> ( Welcome, Cmd Msg )
 update msg welcome =
     case msg of
@@ -162,13 +145,13 @@ update msg welcome =
             welcome ! [ attemptCreate username settings ]
 
         JoinGame name ->
-            welcome ! [ joinPage name ]
+            welcome ! [ API.exitToJoin name ]
 
         UpdateUserName newUserName ->
             { welcome | username = validateNameInput newUserName } ! []
 
-        OpenGame toStash link ->
-            welcome ! [ Ports.stashAndOpen ( toStash, link ) ]
+        OpenGame game roomid username ->
+            welcome ! [ API.exitToGame game roomid username ]
 
         ErrorNotify errmsg ->
             Debug.log errmsg welcome ! []
