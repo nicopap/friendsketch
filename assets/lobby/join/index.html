@@ -3,25 +3,17 @@
 	<head>
 		<meta charset="UTF-8">
 		<title>Join a Netpinary room</title>
-		<link rel="/stylesheet.css" type="text/css" href="stylesheet">
+		<link rel="stylesheet" type="text/css" href="/stylesheet.css">
 		<link rel="icon" type="image/png" href="/favicon.png">
 	</head>
 	<div id="main"></div>
 	<script src="code.js"></script>
+	<script src="/ports.js"></script>
 	<script>
 		var app = Elm.Main.fullscreen({
-			username: sessionStorage.getItem("username")
+			username : sessionStorage.getItem("username")
 		});
-		app.ports.stashAndOpen.subscribe(function(args) {
-			var stashList = args[0];
-			var link = args[1];
-			stashList.forEach(function(stash) {
-				sessionStorage.setItem(stash[0], stash[1]);
-			});
-			window.open(link, '_self', false);
-		});
-		app.ports.openLink.subscribe(function(link) {
-			window.open(link, '_self', false);
-		});
+		app.ports.stashAndOpen.subscribe(stashAndOpen);
+		app.ports.openLink.subscribe(openLink);
 	</script>
 </html>
