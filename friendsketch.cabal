@@ -1,8 +1,10 @@
-name: netpinary-server
-version: 0.0.1
+name: friendsketch-server
+version: 0.1.0
+stability: alpha
 author: Nicola Papale
 maintainer: nico.ppl@protonmail.com
 copyright: 2017 Nicola Papale
+license: All rights reserved
 build-type: Simple
 cabal-version: >=1.10
 
@@ -10,6 +12,17 @@ executable netpinary-server
   hs-source-dirs: server
   main-is: Main.hs
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  default-extensions: OverloadedStrings, DuplicateRecordFields, NamedFieldPuns
+  other-extensions: TemplateHaskell
+    , QuasiQuotes
+    , TypeFamilies
+    , ViewPatterns
+    , MultiParamTypeClasses
+    , FlexibleInstances
+    , DeriveGeneric
+    , DeriveDataTypeable
+    , RankNTypes
+  other-modules: RestImpl, RoomConnection
   build-depends: base
     , http-types >= 0.9.1
     , text

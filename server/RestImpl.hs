@@ -1,5 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields,
-    NamedFieldPuns #-}
+{-# LANGUAGE DeriveGeneric #-}
 module RestImpl
     ( roomsCreate
     , roomsJoin

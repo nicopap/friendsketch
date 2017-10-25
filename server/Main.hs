@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, TypeFamilies,
+{-# LANGUAGE TemplateHaskell, QuasiQuotes, TypeFamilies,
     ViewPatterns, MultiParamTypeClasses, FlexibleInstances, DeriveGeneric,
     DeriveDataTypeable, RankNTypes #-}
 module Main where

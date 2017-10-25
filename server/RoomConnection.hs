@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, DuplicateRecordFields, NamedFieldPuns,
-    MonadComprehensions #-}
 module RoomConnection (Room, newRoom, app, isConnected) where
 
 import qualified Network.WebSockets as WS
