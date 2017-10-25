@@ -40,7 +40,7 @@ experiment : backend frontend
 
 
 frontend : $(JS_TARGETS) $(CONTENT)
-backend : $(HASKELL_SOURCE) netpinary.cabal
+backend : $(HASKELL_SOURCE) friendsketch.cabal
 	cabal build
 
 recabal :
