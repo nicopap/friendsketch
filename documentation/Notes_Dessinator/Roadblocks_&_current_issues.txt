@@ -1,0 +1,39 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2017-09-26T18:05:55+02:00
+
+====== Roadblocks & current issues ======
+Created Tuesday 26 September 2017
+
+====== Elm ======
+
+* I need to investigate elm websockets in order to see what I can do incase of websocket connection error not related to server unavaliability
+	* Some connection errors are expressed through the Http answer to the websocket get conenction request.
+
+====== Haskell ======
+
+I need to figure out how to test properly my code.
+
+===== Leads =====
+* quickcheck
+
+====== REST API ======
+
+* Resource to see if one with given username can join a room //and then// redirect to info websocket for the room.
+	* Issue: possible lack of consistency: 
+		1. Someone requests ''/room/join/#RoomID'' and get a //303 see other//  ''websocket url'' 
+		2. Someone else (with the same username) requests ''/room/join/#RoomID'' and get the ''websocket url'' 
+		3. The one else connects to ''websocket url'' with given username, he is accepted
+		4. The former one tries to get hold of ''websocket url'' but is refused because he got the grass cut under him.
+		5. The issue is mitigated by the fact that the the websocket resource will return an error if it is already occupied. But I'm not sure how to handle that in the Elm part. (Possible solution is having the Room.view function returning a ''Result'' and forcing the caller to handle failure conditions)
+
+====== Game design ======
+
+They say it is particularly hard to design a multiplayer game. And they are right!
+Here are the troubles I'm currently having:
+* My current design is based around formally specifying the game as a series of connected state machines. And relying on the server as the single source of truth in order to properly handle distributed shared game state.
+* This is not inherently terrible (especially since my client is written in a functional language) as long as I keep track of my specs.
+	But this might get more complex with time and I may make basic mistakes in the design of the state machines.
+	Or if I fail to implement the server specs correctly (I guess that identifies the backend as a good test target)
+
+* State machines are weak to specify a distributed system, in fact, they only describe the state of a single client based on "commands" (which would be arcs in the graph) that the server sends them. This causes formal verification issues.

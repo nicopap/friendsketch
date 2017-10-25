@@ -1,0 +1,160 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2017-09-12T17:58:20+02:00
+
+====== Backend API specification ======
+Created Tuesday 12 September 2017
+
+====== Summary ======
+
+
+'''
+-- LOBBY --
+
+/lobby
+	/index.html : welcome page for connecting to a game
+	/join/index.html : If user decided to join an existing game, brings up this page
+
+-- GAMES --
+
+/games
+	/pintclone : The game in which you draw and other guesses
+
+-- ROOMS --
+
+/rooms
+	/create POST json : create a new room and get the room name as return value
+	/join POST json : Get the URI of a websocket to info channel for given room, as given username
+
+-- MISC --
+/ws : Base url for all websocket endpoints
+/ports.js : Shared code for javascript ports.
+any: (added to existing path to get relevent resource)
+	+/stylesheet.css : Css style
+	+/code.js : Generated javascript code
+'''
+
+
+
+====== Types ======
+
+Specifications of the types used in the API. When a value is specified to be of a certain type, the client must follow it or the request will be refused.
+
+=== Game ===
+''Game = "pintclone"''
+The string name of an avaliable game. Any other string will be refused.
+* Currently there is only one value possible for it.
+
+=== Name ===
+''Name ~= [[::unicode_alphanum::] _-]{-100}''
+A user name. Can be arbitrary unicode alphanumericals.
+* TODO: handle spaces at the start and end of the string in specification.
+* This is user-generated and shown to other users!
+* Will be refused if the size (in bytes, as opposed to characters) is greater than a certain ammount
+
+=== RoomID ===
+''RoomID ~= [a-z0-9]{5}''
+A room id, let identify a unique party going on currently.
+* Server-generated. Only values that you got (directly or indirectly) from the server will be accepted,  most likely.
+
+
+====== Static pages ======
+
+==== Lobby welcome page ====
+''GET /lobby/index.html''
+Html page. User interface to select whether to create or join a game.
+
+==== Lobby join page ====
+''GET /lobby/join/index.html''
+Html page. User interface to join an existing game.
+
+==== Pintclone ====
+''GET /games/pintclone/index.html ''
+Html page. User interface for the pintclone game
+
+====== Resources ======
+
+===== Rooms =====
+
+==== Create a room ====
+''POST /rooms/create {game: Game}''
+Create a room for given ''game''.
+	* Returns:
+		* __201 created__ RoomID | The Body is the RoomID to join.
+		* __404 not found__ | the game doesn't exist.
+
+==== Join a Room ====
+''POST /rooms/join {roomid: RoomID, username: Name}''
+Attempts to join an existing room ''roomid'' as ''username'' .
+	* Returns:
+		* __200 success__ Game | The game you are connecting to.
+		* __404 not found__ | ''roomid'' is not a room.
+		* __409 conflict__ | ''roomid'' is indeed a room, but ''username'' already taken.
+		* __400 bad request__ | ''username'' is not a valid name.
+
+====== Websockets ======
+
+===== Pintclone =====
+
+==== Types ====
+'''
+Point ~= [X, Y] where X = Y = [-2^31; 2^31[ ∈ Int
+Color ~= #[0-9a-f]{6}
+LogString ~= .{10000}
+Size = Float
+Scores = [[Name, Int]]
+
+LobbyState =
+	{ opponents: [Name]
+	, master: Bool
+	}
+
+RoundState =
+	{ spectators: [Name]
+	, artist: Name
+	, timeout: Int
+	}
+
+ScoresState =
+	{ scores: Scores
+	, timeout: Int
+	}
+
+GameState
+	= { summary: ScoresState }
+	| { round: RoundState }
+	| { lobby: LobbyState }
+
+CanvasMsg
+	= { start: [ Point, Color, Size ] }
+	| { end: [] }
+	| { continue: Point }
+
+InfoMsg
+	= { joined: Name }
+	| { left: Name }
+	| { sync: GameState }
+	| { mastery: [] }
+
+InfoRequest
+	= { sync: [] }
+	| { start: [] }
+	| { warn: LogString }
+'''
+
+
+==== Canvas ====
+''GET /ws/games/pintclone/:RoomID/canvas/:Name''
+The URL of the canvas websocket for the given room. Describes what is being drawn on the canvas.
+	* Accepts: CanvasMsg (only when the user is artist)
+	* Sends: CanvasMsg (only when the user is spectator)
+
+==== Chat ====
+''GET /ws/games/pintclone/:RoomID/chat/:Name''
+The URL of the chat websocket for the given room.
+
+==== Info ====
+''GET /ws/games/pintclone/:RoomID/info/:Name''
+The URL of the information websocket, used to recieve informations about the state of the room. does only send data.
+	* Accepts: InfoRequest
+	* Sends: InfoMsg

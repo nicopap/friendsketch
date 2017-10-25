@@ -1,0 +1,46 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2017-09-12T16:28:47+02:00
+
+====== Notes Dessinator ======
+Created Tuesday 12 September 2017
+
+This notebook relates to the Dessinator website game.
+It is a collection of web-based games around drawing with multiple people over the web.
+
+Some sections relates to the design and the choices behind it, other to the experiences learn from making the application, what where the roadblocks and what is to plan
+
+[[+Create A room Page]]
+
+[[+Pintclone game design]]
+
+[[+Backend API specification]]
+
+[[+market research]]
+
+[[+Roadblocks & current issues]]
+
+[[+Potential names]]
+
+===== Dreams =====
+* Handle explicitely user names in Main.hs.
+	* Issue being that information is redundant.
+	* This solves the problem of incoherent REST API calls for connecting to rooms.
+* Implement test suite based on specification state machines / formally test the state machines
+
+===== Current roadmap =====
+* Add arbitrary color selector to the palette
+* Rename "Round" to "drawing" in frontend to be consistent with the doc specs
+* Start sketching a good interface layout.
+* Improve how the backend handles stuff
+	* Sanitize names and roomids in backend
+	* Implement game logic
+	* Clean up when Rooms stay empty for too long
+* Add tests to the backend
+* Create A logging instance for the Websocket application.
+* Fix chat
+* Study Haskell websocket package to see if the following is possible:
+	* Be aware of ping between server and client
+	* Use this to slow down packet redistribution according to average ping.
+	* Compute "real" guess time according to ping  so it is fair to everyone.
+

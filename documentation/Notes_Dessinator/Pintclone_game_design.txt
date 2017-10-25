@@ -1,0 +1,79 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2017-10-01T10:40:54+02:00
+
+====== Pintclone game design ======
+Created Sunday 01 October 2017
+
+Based loosely on Pinturillo 2.
+
+There is a "pre-game" and a "during-game" period, pre-game is before the game starts, during-game is what one might call //gameplay.//
+The game is based on the structure of a room.
+* A room is a shared state between all clients and the server.
+* State is updated and communicated to other actors through multiple WebSockets.
+* the game should be flexible enough to allow new players connecting mid-game, handle correctly disconnection and maybe reconnections.
+* There is two levels of state, //lobby state//, relating to user lists/point count/who is drawing which is communicated through the //info// socket, and //canvas state// which relates to the drawing being made, communicated through the //canvas// socket.
+* the //lobby state// is constantly sent in its entirety to the clients. The //canvas state// is dependent on previous informations sent, therefor, people that have access to the //canvas state// should only have so if they were here since the beginning of the drawing.
+
+===== Pre-game =====
+* When one creates a room of Pintclone, they should be connected to it through the //info// websocket. The game hasn't started yet, one cannot play against himself.
+* The game creator have access to the room id for the game so they can share it with their friends.
+* The room creator has privileged (later called //master//) rights during the pre-game period. They can choose to start the game anytime when there is enough connected players (ie: several).
+* (to be evaluated) When the game hasn't started yet, connected people should be able to draw for themselves, so they don't die of boredom when their friend group is bad at handling game lobbies (very common).
+* When someone joins the room in pre-game the game do not immediately start. The //master// is presented with the choice of starting the game anytime, only when they choose to start the game, the game shall start.
+* It should be // very// explicit that the game hasn't started and that action is needed __from the master__ to start it.
+* When the //master// leaves before starting the game, but some people remain, the //master// rights should be transferred to someone else.
+
+===== Gameplay =====
+* Pintclone is structured in N rounds. Players can gather points during rounds and have a final score resulting of the sum of the collected points.
+* A round is divided in K drawings, where K is the number of players.
+* During a drawing, a unique player is drawing (they are called artist); The other players are called spectators:
+	* The artist has a set amount of time to draw a word that the server has given to them.
+	* The spectators have to guess the word being drawn. Points are distributed to the spectators based on the alacrity with which the spectator guessed the correct word.
+	* The artist earns at the end of the drawing half of the total of points that all spectators gathered.
+* Each player gets to draw during a round.
+
+===== Design =====
+
+A note on state machines:
+* They only describe the state of **one single client**. They are of no help to identify concurrency (or design) issues and multiclient interactions.
+
+==== Redundency principle ====
+WebSockets guarantee us that a sent message is always received and only once, also in order. However, programming mistakes or technical oversights may lead the game into an inconsistent state.
+
+I propose two levels of game state synchronization:
+* One immediate, that change local states as the events goes.
+* One synchronization primitive that happens once in a while, that all clients must always expect regardless of their state (which means that also inconsistent states are respective to synchronization primitives) and which is awaited upon regularly by the clients.
+* <for Pintclone, the synchronization is done between each round.
+
+==== Join/leave logic ====
+The reality of the world restrains the design of our game. Notably **at any time, a user may disconnect**. Regardless of the current state of the game. How we handle it is what maters.
+* At any time, the game should be able to handle logically and smoothly a user disconnecting.
+* It may try to handle properly a user trying to rejoin a game that he left recently.
+
+==== Canvas State & Join/leave logic ====
+* Join/leave logic may affect the proper flow of the game and therefor affect the canvas state indirectly.
+* We need to handle new people joining the game while it is running
+* It is impossible to reconstruct the canvas while it is being drawn, so someone that just came must have an empty canvas that tells them what is going on.
+
+{{../../CanvasStateMachine.svg}}
+* Where ''nR False'' and ''nR True'' is the function ''nextRound isArtist''.
+* When an //artist// leaves, the server should notify the client the following way:
+	1. nextRound (so the //Artist// is not the one who left)
+	2. Notify that someone has left.
+	This way, there is no inconsistent states.
+* The exposed API should let the canvas module know what is the next state to reach, they are the following:
+	1. nextRound isArtist
+	2. Init isLatecomer
+
+==== Game lobby state ====
+Since the game must support arbitrary join/leaves, we need to specify its behavior to have 0 unexpected states.
+The following graph specifies the "base" behavior related to group making and out-of-game leave/join situations.
+We want to //always// have one of the client as the //master//, ie: being capable of requesting the start of the game when in "pregame", the solution is to grant that permission to the "first" person in the lobby, or the one that happend to be the last remaining.
+{{../../PintcloneLobbyStateMachine.svg}}
+
+Considerations:
+* This graph do not represent what happens when a remote client joins or leaves when there is more than one connected client already existing or respectively remaining afterward. In fact, in the named situation, the state is not changed.
+* yIt does not describe the actual game flow, only the interaction between "non-game" and "game" in the light of users connecting and disconnecting.
+* There is no formal proofs of its completeness.
+* We lose track of who is the //master// client when the game runs.
