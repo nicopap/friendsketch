@@ -37,7 +37,7 @@ Aeson.encode $ CnvStart (Point 10 34) (Color "#123456") 34.3
 -}
 
 import GHC.Generics
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import Data.Char (toLower)
 
 import qualified Text.StringRandom as Rand
@@ -77,7 +77,10 @@ class Validate a where
 --- Name ---
 
 
-newtype Name = Name {unname :: Text} deriving (Generic, Show, Ord, Eq)
+newtype Name = Name {unname :: Text} deriving (Generic, Ord, Eq)
+
+instance Show Name where
+    show = unpack . unname
 
 instance Validate Name where
     valid = Right . Name
@@ -95,10 +98,13 @@ instance ToJSON Name where
 --- RoomID ---
 
 
-newtype RoomID = RoomID {unroomid :: Text} deriving (Generic, Show, Ord, Eq)
+newtype RoomID = RoomID {unroomid :: Text} deriving (Generic, Ord, Eq)
 
 randomRoomID :: IO RoomID
 randomRoomID = fmap RoomID $ Rand.stringRandomIO "[a-z0-9]{5}"
+
+instance Show RoomID where
+    show = unpack . unroomid
 
 instance Validate RoomID where
     valid = Right . RoomID

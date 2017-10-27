@@ -20,5 +20,5 @@ function copyCatch(args) {
 			event.clipboardData.setData("text/plain", content);
 			event.preventDefault();
 		});
-	});
+	}, 100);
 }

@@ -237,13 +237,14 @@ view room =
 
         nameList title opponents =
             H.table []
-                (H.caption [] [ H.text "Friends" ]
+                (H.caption [] [ H.text title]
+                    :: H.tr [] [ H.text <| "you: " ++ API.showName room.me ]
                     :: map userRow (toList opponents)
                 )
     in
         case room.state of
             Alone ->
-                H.div [] [ H.text "ALONE" ]
+                H.div [] [ H.text "Alone" ]
 
             NormalWith opponents ->
                 H.div [] [ nameList "NormalWith" opponents ]

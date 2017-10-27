@@ -284,8 +284,22 @@ update msg pintclone =
 
 
 subs : Pintclone -> Sub Msg
-subs { wslisten } =
-    wslisten
+subs { wslisten, state } =
+    Sub.batch
+        [ wslisten
+        , case state of
+            LobbyState { canvas } ->
+                Sub.map CanvasMsg <| Canvas.subs canvas
+
+            FinalState _ ->
+                Sub.none
+
+            RoundState { canvas } ->
+                Sub.map CanvasMsg <| Canvas.subs canvas
+
+            Uninit ->
+                Sub.none
+        ]
 
 
 lobbyView : LobbyState_T -> API.RoomID -> Html Msg
