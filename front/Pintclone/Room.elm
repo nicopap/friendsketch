@@ -67,36 +67,44 @@ TODO: think about what happens when me \in opponentsList.
 
 -}
 newLobby : MasterStatus -> API.Name -> List API.Name -> Room
-newLobby status me opponentsList =
-    case opponentsList of
-        [] ->
-            Room me Alone
+newLobby status me opponentsList_ =
+    let
+        opponentsList =
+            List.filter ((/=) me) opponentsList_
+    in
+        case opponentsList of
+            [] ->
+                Room me Alone
 
-        h :: t ->
-            case status of
-                Master ->
-                    Room me <| MasterOf <| uniq <| Nonempty h t
+            h :: t ->
+                case status of
+                    Master ->
+                        Room me <| MasterOf <| uniq <| Nonempty h t
 
-                Peasant ->
-                    Room me <| NormalWith <| uniq <| Nonempty h t
+                    Peasant ->
+                        Room me <| NormalWith <| uniq <| Nonempty h t
 
 
 {-| Create a room in "round" state.
 TODO: think about what happens when me \in opponentsList.
 -}
 newRound : API.Name -> List API.Name -> Artist -> Room
-newRound me opponentsList artist =
-    case artist of
-        Me ->
-            case opponentsList of
-                [] ->
-                    Room me Alone
+newRound me opponentsList_ artist =
+    let
+        opponentsList =
+            List.filter ((/=) me) opponentsList_
+    in
+        case artist of
+            Me ->
+                case opponentsList of
+                    [] ->
+                        Room me Alone
 
-                h :: t ->
-                    Room me <| ArtistWith <| uniq <| Nonempty h t
+                    h :: t ->
+                        Room me <| ArtistWith <| uniq <| Nonempty h t
 
-        Another name ->
-            Room me <| PlayingWith <| uniq <| Nonempty name opponentsList
+            Another name ->
+                Room me <| PlayingWith <| uniq <| Nonempty name opponentsList
 
 
 {-| Remove a name from the opponents list, operation on the state.
