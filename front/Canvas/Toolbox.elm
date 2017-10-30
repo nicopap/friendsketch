@@ -31,7 +31,7 @@ new =
     { palette =
         Array.append
             (Array.map Fixed colorList)
-            (Array.repeat 6 <| Modifiable Nothing)
+            (Array.repeat 10 <| Modifiable Nothing)
     }
 
 

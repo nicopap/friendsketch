@@ -193,7 +193,7 @@ canvasView ({ width, height, state } as canvas) =
 
 
 view : Canvas -> Html Msg
-view ({ toolbox, state } as canvas) =
+view ({ toolbox, state, strokes, pen } as canvas) =
     let
         adaptToolbox result =
             case result of
@@ -206,7 +206,10 @@ view ({ toolbox, state } as canvas) =
         stateClass =
             case state of
                 Artist ->
-                    "artist"
+                    if strokes == [] && pen == Away then
+                        "artist-empty artist"
+                    else
+                        "artist"
 
                 Pregame ->
                     "pregame"
