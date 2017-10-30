@@ -68,7 +68,6 @@ new { username } =
 
 
 {-| Modify model based on the content of the Http response.
-defaultErrorHandle message =
 -}
 processAnswer : Result Http.Error API.Game -> Status
 processAnswer result =
@@ -90,8 +89,8 @@ processAnswer result =
                 _ ->
                     OtherError status.message
 
-        Err _ ->
-            OtherError "misc error"
+        Err anyelse ->
+            OtherError <| toString anyelse
 
         Ok game ->
             ConnectingTo game
@@ -136,68 +135,89 @@ update msg model =
                             []
 
 
-statusView : Status -> Html Msg
-statusView status =
+type FieldStatus
+    = Disabled
+    | Bad String
+    | Neutral
+
+
+inputField : String -> (String -> Msg) -> FieldStatus -> String -> Html Msg
+inputField label msg status content =
     let
-        statusTextValue =
-            case status of
-                OtherError s ->
-                    s
-
-                anyelse ->
-                    toString anyelse
+        basicButton extraAttributes extraLabel =
+            H.p []
+                ([ H.label [] [ H.text label ]
+                 , H.input (HA.value content :: extraAttributes) [ H.text content ]
+                 ]
+                    ++ extraLabel
+                )
     in
-        H.div [] [ H.text statusTextValue ]
+        case status of
+            Disabled ->
+                basicButton [ HA.disabled True ] []
 
+            Bad errmsg ->
+                basicButton
+                    [ HA.class "badinput", HE.onInput msg ]
+                    [ H.text errmsg ]
 
-roomFieldLocked : Status -> Bool
-roomFieldLocked status =
-    case status of
-        AlreadyTakenName -> True
-        ConnectingTo _ -> True
-        AttemptingConnection -> True
-        NotFailedYet -> False
-        InexistantRoom -> False
-        OtherError _ -> False
-
-
-inputField : String -> (String -> Msg) -> Bool -> String -> Html Msg
-inputField label msg disabled content =
-    H.p []
-        [ H.label [] [ H.text label ]
-        , H.input
-            [ HA.disabled disabled
-            , HA.value content
-            , HE.onInput msg
-            ]
-            [ H.text content ]
-        ]
+            Neutral ->
+                basicButton [ HE.onInput msg ] []
 
 
 view : Join -> Html Msg
 view { username, roominput, status } =
     let
-        roomInputView =
-            inputField
-                ("room name")
-                (InputRoom)
-                (roomFieldLocked status)
-                (roominput)
-
-        nameInput =
+        ( nameValue, nameErr ) =
             case username of
                 Err value ->
-                    inputField "Your username" InputName False value
+                    ( value, "Invalid :/" )
 
                 Ok value ->
-                    inputField "Your username"
+                    ( API.showName value, "" )
+
+        form =
+            case status of
+                AlreadyTakenName ->
+                    [ inputField "Room:" InputRoom Disabled roominput
+                    , inputField "Your name:"
                         InputName
-                        (status /= AlreadyTakenName)
-                        (API.showName value)
+                        (Bad <| nameErr ++ "already taken")
+                        nameValue
+                    , H.div [ HA.class "info info-warning" ]
+                        [ H.text "Name is aleady taken" ]
+                    ]
+
+                ConnectingTo _ ->
+                    [ inputField "Room:" InputRoom Disabled roominput
+                    , inputField "Your name:" InputName Disabled nameValue
+                    , H.div [ HA.class "info" ] [ H.text "Connecting ..." ]
+                    ]
+
+                AttemptingConnection ->
+                    [ inputField "Room:" InputRoom Disabled roominput
+                    , inputField "Your name:" InputName Disabled nameValue
+                    , H.div [ HA.class "info" ] [ H.text "Connecting ..." ]
+                    ]
+
+                NotFailedYet ->
+                    [ inputField "Room:" InputRoom Neutral roominput
+                    , inputField "Your name:" InputName Disabled nameValue
+                    ]
+
+                InexistantRoom ->
+                    [ inputField "Room:" InputRoom (Bad "") roominput
+                    , inputField "Your name:" InputName Disabled nameValue
+                    , H.div [ HA.class "info info-warning" ]
+                        [ H.text "That room doesn't exist!" ]
+                    ]
+
+                OtherError errmsg ->
+                    [ inputField "Room:" InputRoom Neutral roominput
+                    , inputField "Your name:" InputName Neutral nameValue
+                    , H.div [ HA.class "info info-warning" ]
+                        [ H.text ("Error: " ++ errmsg) ]
+                    ]
     in
-        H.div []
-            [ H.h1 [] [ H.text "Join" ]
-            , roomInputView
-            , nameInput
-            , statusView status
-            ]
+        H.div [ HA.id "lobbydiv" ]
+            (H.h1 [] [ H.text "Join" ] :: form)

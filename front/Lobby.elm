@@ -176,29 +176,43 @@ hbutton maybemsg buttonLabel =
             H.p [] [ H.button [ HA.disabled True ] [ H.text buttonLabel ] ]
 
 
+nameInputView : String -> String -> Html Msg
+nameInputView value errmsg =
+    let
+        classField =
+            case errmsg of
+                "" ->
+                    HA.class "goodinput"
+
+                _ ->
+                    HA.class "badinput"
+
+    in
+        H.p []
+            [ H.text "name:"
+            , H.input
+                (classField
+                    :: [ HA.autofocus True
+                       , onInput UpdateUserName
+                       , HA.value value
+                       ]
+                )
+                [ H.text value ]
+            , H.text errmsg
+            ]
+
+
 submitView : Settings -> Result String API.Name -> List (Html Msg)
 submitView settings username =
     case username of
         Ok apiname ->
-            [ H.input
-                [ HA.autofocus True
-                , HA.value <| API.showName apiname
-                , onInput UpdateUserName
-                , HA.class "goodinput"
-                ]
-                [ H.text <| API.showName apiname ]
+            [ nameInputView (API.showName apiname) ""
             , hbutton (Just <| CreateGame apiname settings) "Create a new game"
             , hbutton (Just <| JoinGame apiname) "Join an existing game"
             ]
 
         Err badname ->
-            [ H.input
-                [ HA.autofocus True
-                , HA.value badname
-                , onInput UpdateUserName
-                , HA.class "badinput"
-                ]
-                [ H.text badname ]
+            [ nameInputView badname "invalid :/"
             , hbutton Nothing "Create a new game"
             , hbutton Nothing "Join an existing game"
             ]
@@ -206,8 +220,8 @@ submitView settings username =
 
 view : Welcome -> Html Msg
 view { username, settings, settingsVisible } =
-    H.div []
-        (H.h1 [] [ H.text "Lobby: What to do?" ]
+    H.div [ HA.id "lobbydiv" ]
+        (H.h1 [] [ H.text "lobby" ]
             :: submitView settings username
             ++ if settingsVisible then
                 [ settingsView settings ]

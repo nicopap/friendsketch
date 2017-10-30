@@ -1,0 +1,14 @@
+<svg
+width="128" height="128"
+fill="#000000"
+xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+version="1.1"
+x="0px" y="0px"
+viewBox="0 0 128 128"
+enable-background="new 0 0 128 128"
+xml:space="preserve">
+<polygon fill-opacity="0.1" points="0,0 0,80 80,0 "/>
+<polygon fill-opacity="0.1" points="0,0 0,64 64,0 "/>
+<polygon fill-opacity="0.1" points="0,128 128,0 128,80 80,128 "/>
+<polygon fill-opacity="0.1" points="0,128 128,0 128,64 64,128 "/>
+</svg>

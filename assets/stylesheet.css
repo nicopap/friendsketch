@@ -1,5 +1,6 @@
 html {
-	background-color: #E0E0E0
+	background-color: white;
+	color: black;
 }
 
 #drawingcontainer {
@@ -9,4 +10,68 @@ html {
 	margin: auto;
 	margin-top: 20px;
 	background-color: #FFFFFF
+}
+
+#lobbydiv {
+	border-radius: 10px;
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	background-color: white;
+	color: black;
+
+	height: 400px;
+	margin-top: -200px;
+
+	width: 600px;
+	margin-left: -300px;
+	padding: 50px 50px 50px 50px;
+}
+
+input.badinput:focus { box-shadow: 0 0 10px red; }
+input.badinput { box-shadow: 0 0 5px red; }
+input.goodinput:focus { box-shadow: 0 0 10px green; }
+input.goodinput { box-shadow: 0 0 5px green; }
+input:focus { box-shadow: 0 0 5px blue; }
+input:disabled { color: #767b87; }
+
+input {
+    background-color: white;
+    color:black;
+    padding-top: 5px;
+    padding-bottom: 5px;
+	margin-left: 5px;
+	margin-right: 5px;
+    border-radius: 3px;
+    border: 0;
+	width: 20em;
+    box-shadow: 0 0 5px #767b87;
+}
+
+
+button:hover { background-color: #acc996; }
+button:disabled { background-color: #e9b7b8; color: #767b87; }
+
+button {
+    background-color: #cce9b6;
+    color: black;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    width: 20em;
+    border-radius: 3px;
+    border: 0;
+    left: 50%;
+}
+
+div.info {
+    border-radius: 20px;
+    padding: 20px 20px 20px 20px;
+    background-color: #b6cee9;
+    width: 30em;
+}
+
+div.info.info-warning {
+    background-image: url('/icons/stripbg.svg');
+    background-size: 64px;
+    background-color: #e9b7b8;
 }

@@ -29,6 +29,31 @@ It should be very fast and barebone, so as to not confuse the newcomer.
 	* Room exists but the game didn't start yet (In this case, users list is displayed)
 	* Valid room name, but the connection is not yet complete.
 
+===== Join page =====
+
+Feedback should be given showing what to modify to make the request correct.
+Currently, there is six types of errors that the frontend detects, what do do with them:
+* ''AlreadyTakenName'':
+	* Room field locked
+	* Name field highlighted with red, editable
+	* Infobox highlighted with warning color, saying "Name already taken in this room"
+* ''AttemptingConnection'' | ''ConnectingTo _'' :
+	* (ConnectingTo is implementation detail, and shouldn't be seen too often)
+	* Room field locked
+	* Name field locked
+	* Infobox highlight neutral, saying "connecting ..."
+* ''NotFailedYet'' :
+	* Default view
+	* Room field is editable
+	* Name field is locked
+	* Infobox is invisible
+* ''Inexistant Room'' :
+	* Room field is editable, highlighted red
+	* Infobox highlighted with warning color, saying "Room doesn't exist!"
+* ''OtherError _'' :
+	* All editable
+	* Infobox warning, with error msg
+
 ===== Connection handling =====
 
 The first two/three operations are pure REST post calls:
