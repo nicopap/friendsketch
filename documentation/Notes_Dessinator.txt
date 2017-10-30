@@ -31,9 +31,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 ===== Current roadmap =====
 * Mask room input in join page
 * In join page, when changing name, put a confirmation button instead of automatically redirecting
-* Add arbitrary color selector to the palette
-* Rename "Round" to "drawing" in frontend to be consistent with the doc specs
-* Start sketching a good interface layout.
 * Improve how the backend handles stuff
 	* Refactor RoomConnection (think hard about desing)
 	* Sanitize names and roomids in backend

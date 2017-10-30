@@ -14,7 +14,7 @@ Canvas has three states, let's reflect the state in the UI:
 
 The user list is always in the order of who is going to draw, from top to bottom.
 
-The name of the current user is highlighted by being underlined (''text-decoration: underline'' in CSS)
+The name of the current user is highlighted by being underlined
 
 The name of the current leader is highlighted in yellow, follow-ups are a thiner gold.
 

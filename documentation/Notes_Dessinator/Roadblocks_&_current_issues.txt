@@ -5,11 +5,6 @@ Creation-Date: 2017-09-26T18:05:55+02:00
 ====== Roadblocks & current issues ======
 Created Tuesday 26 September 2017
 
-====== Elm ======
-
-* I need to investigate elm websockets in order to see what I can do incase of websocket connection error not related to server unavaliability
-	* Some connection errors are expressed through the Http answer to the websocket get conenction request.
-
 ====== Haskell ======
 
 I need to figure out how to test properly my code.
