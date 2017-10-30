@@ -1,0 +1,26 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2017-10-30T13:36:57+01:00
+
+====== graphic design ======
+Created Monday 30 October 2017
+
+Feedback should be subtily given to the user about what action they should take
+
+Canvas has three states, let's reflect the state in the UI:
+* Pregame: have a backgroud with text saying "Waiting to start a new round, this drawing is for your eyes only"
+* Artist: If the canvas is empty, have text saying "it is your turn to draw". have a blank background if the artist started drawing.
+* Spectator: have the toolbox greyed-out to show that they cannot draw, have the name of the artist in the userlist highlighted to show who is drawing.
+
+The user list is always in the order of who is going to draw, from top to bottom.
+
+The name of the current user is highlighted by being underlined (''text-decoration: underline'' in CSS)
+
+The name of the current leader is highlighted in yellow, follow-ups are a thiner gold.
+
+Each cell of the user list contains information about what has happend since the beginning of the game, and hints at what is going to happen next.
+* A case for each round there is in the game
+* Have the number of points earned at a round for rounds that already happend
+	* If the person was an artist for the given round, the case is of the color that highlights an artist.
+	* If no points were earned, there is a red X
+* Somewhere display the total of points earne

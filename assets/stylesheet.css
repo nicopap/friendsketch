@@ -44,7 +44,6 @@ input {
 	margin-right: 5px;
     border-radius: 3px;
     border: 0;
-	width: 20em;
     box-shadow: 0 0 5px #767b87;
 }
 
@@ -57,7 +56,7 @@ button {
     color: black;
     padding-top: 5px;
     padding-bottom: 5px;
-    width: 20em;
+    width: auto;
     border-radius: 3px;
     border: 0;
     left: 50%;
@@ -75,3 +74,5 @@ div.info.info-warning {
     background-size: 64px;
     background-color: #e9b7b8;
 }
+
+

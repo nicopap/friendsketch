@@ -12,15 +12,16 @@ module Canvas
 import Tuple exposing (mapFirst, mapSecond)
 import Color exposing (Color)
 import Html exposing (Html, div)
-import Html.Attributes exposing (id)
+import Html.Attributes exposing (id, class)
 import Html.Events as HEvents
+import Task
 import Debug
 import Collage
 import Element as GraphElement
 import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
 import Canvas.Stroke as Stroke exposing (Stroke)
-import Canvas.Toolbox as Toolbox
+import Canvas.Toolbox as Toolbox exposing (Toolbox)
 import API
 
 
@@ -33,6 +34,7 @@ type Pen
 type Msg
     = ArtistMsg ArtistMsg
     | Server (Result String API.CanvasMsg)
+    | ToolboxMsg Toolbox.Msg
 
 
 type ArtistMsg
@@ -69,6 +71,7 @@ type alias Canvas =
     , strokeSize : Float
     , width : Float
     , height : Float
+    , toolbox : Toolbox
     , wslisten : Maybe (Result String API.CanvasMsg -> Msg) -> Sub Msg
     , wssend : API.CanvasMsg -> Cmd Msg
     }
@@ -85,9 +88,15 @@ new game roomid name state =
     , strokeSize = 20
     , width = 600
     , height = 400
+    , toolbox = Toolbox.new
     , wslisten = API.wscanvasListen game roomid name
     , wssend = API.wscanvasSend game roomid name
     }
+
+
+cmd : msg -> Cmd msg
+cmd msg =
+    Task.perform identity <| Task.succeed msg
 
 
 
@@ -163,7 +172,7 @@ canvasView ({ width, height, state } as canvas) =
 
         properties : List (Html.Attribute ArtistMsg)
         properties =
-            id "drawingcontainer"
+            id "canvas"
                 :: case state of
                     Spectator ->
                         []
@@ -184,11 +193,31 @@ canvasView ({ width, height, state } as canvas) =
 
 
 view : Canvas -> Html Msg
-view canvas =
-    Html.map ArtistMsg <|
-        div []
-            [ canvasView canvas
-            , div [ id "toolbox" ] [ Toolbox.view ChangeColor ChangePenSize ]
+view ({ toolbox, state } as canvas) =
+    let
+        adaptToolbox result =
+            case result of
+                Err toolboxmsg ->
+                    ToolboxMsg toolboxmsg
+
+                Ok canvasmsg ->
+                    ArtistMsg canvasmsg
+
+        stateClass =
+            case state of
+                Artist ->
+                    "artist"
+
+                Pregame ->
+                    "pregame"
+
+                Spectator ->
+                    "spectator"
+    in
+        div [ id "artcontainer", class stateClass ]
+            [ Html.map ArtistMsg <| canvasView canvas
+            , Html.map adaptToolbox <|
+                Toolbox.view ChangeColor ChangePenSize toolbox
             ]
 
 
@@ -375,6 +404,22 @@ update msg canvas =
     case ( msg, canvas.state ) of
         ( Server msg_, Spectator ) ->
             serverUpdate msg_ canvas ! []
+
+        ( ToolboxMsg msg_, Artist ) ->
+            let
+                ( toolbox, color ) =
+                    Toolbox.update msg_ canvas.toolbox
+            in
+                { canvas | toolbox = toolbox }
+                    ! [ cmd <| ArtistMsg <| ChangeColor color ]
+
+        ( ToolboxMsg msg_, Pregame ) ->
+            let
+                ( toolbox, color ) =
+                    Toolbox.update msg_ canvas.toolbox
+            in
+                { canvas | toolbox = toolbox }
+                    ! [ cmd <| ArtistMsg <| ChangeColor color ]
 
         ( ArtistMsg msg_, Artist ) ->
             artistUpdate msg_ canvas

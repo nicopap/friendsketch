@@ -19,9 +19,10 @@ artist in the game part of the game.
 
 -}
 
-import Html as H exposing (Html)
-import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList)
-import List exposing (map)
+import Html as H exposing (Html, div, text, ul, li, label)
+import Html.Attributes exposing (id, class, align, classList)
+import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList, (:::))
+import List exposing (map, sortBy)
 import API
 
 
@@ -230,30 +231,40 @@ joins joining ({ me } as room) =
 
 
 view : Room -> Html msg
-view room =
+view ({ me, state } as room) =
     let
-        userRow name =
-            H.tr [] [ H.text <| API.showName name ]
+        userRow artistName name =
+            li
+                [ classList
+                    [ ( "userentry", True )
+                    , ( "userentry-me", name == me )
+                    , ( "userentry-artist", Just name == artistName )
+                    ]
+                ]
+                [ label [ class "username", align "left" ]
+                    [ text <| API.showName name ]
+                , label [ class "userscore", align "right" ]
+                    [ text "100" ]
+                ]
 
-        nameList title opponents =
-            H.table []
-                (H.caption [] [ H.text title]
-                    :: H.tr [] [ H.text <| "you: " ++ API.showName room.me ]
-                    :: map userRow (toList opponents)
-                )
+        nameList maybeartist opponents =
+            toList opponents
+                |> sortBy API.showName
+                |> map (userRow maybeartist)
+                |> ul [ id "userlist" ]
     in
-        case room.state of
+        case state of
             Alone ->
-                H.div [] [ H.text "Alone" ]
+                nameList Nothing <| fromElement me
 
             NormalWith opponents ->
-                H.div [] [ nameList "NormalWith" opponents ]
+                nameList Nothing opponents
 
             MasterOf opponents ->
-                H.div [] [ nameList "MasterOf" opponents ]
+                nameList Nothing (me ::: opponents)
 
-            PlayingWith opponents ->
-                H.div [] [ nameList "PlayingWith" opponents ]
+            PlayingWith (Nonempty artist opponents) ->
+                nameList (Just artist) (artist ::: Nonempty me opponents)
 
             ArtistWith opponents ->
-                H.div [] [ nameList "ArtistWith" opponents ]
+                nameList (Just me) (me ::: opponents)

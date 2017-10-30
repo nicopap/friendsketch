@@ -7,6 +7,7 @@ Created Sunday 01 October 2017
 
 Based loosely on Pinturillo 2.
 
+[[+ graphic design]]
 There is a "pre-game" and a "during-game" period, pre-game is before the game starts, during-game is what one might call //gameplay.//
 The game is based on the structure of a room.
 * A room is a shared state between all clients and the server.

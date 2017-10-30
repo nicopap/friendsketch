@@ -8,8 +8,8 @@ accordingly.
 import Tuple exposing (mapSecond, mapFirst)
 import Maybe
 import Debug
-import Html as H exposing (Html, programWithFlags)
-import Html.Attributes as HA
+import Html as H exposing (Html, programWithFlags, div, p, b, h1, text)
+import Html.Attributes as HA exposing (id, class)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
 import Canvas exposing (Canvas)
@@ -302,81 +302,62 @@ subs { wslisten, state } =
         ]
 
 
-lobbyView : LobbyState_T -> API.RoomID -> Html Msg
-lobbyView { room, canvas, passHidden } roomid =
+masterDialog : Bool -> API.RoomID -> Html Msg
+masterDialog passHidden roomid =
     let
         hiddenStateName =
             if passHidden then
                 "password"
             else
                 "input"
-
-        masterDialog =
-            H.div []
-                [ H.label []
-                    [ H.text "Room name: "
-                    , H.input
-                        [ HA.type_ hiddenStateName
-                        , HA.readonly True
-                        , HA.value <| API.showRoomID roomid
-                        , HA.selected True
-                        , HA.autofocus True
-                        , HA.size 6
-                        , HA.id roomiddisplay
-                        ]
-                        []
-                    , H.input
-                        [ HA.type_ "checkbox"
-                        , HE.onClick <| LobbyMsg TogglePassView
-                        ]
-                        []
-                    ]
-                , H.p []
-                    [ H.button
-                        [ HE.onClick <| LobbyMsg StartGame ]
-                        [ H.text "Start the game!" ]
-                    ]
-                ]
-
-        isMaster =
-            Room.isMaster room
-
-        waitText =
-            if isMaster then
-                H.h1 []
-                    [ H.b [] [ H.text "YOU ARE THE ROOM MASTER" ] ]
-            else
-                H.h1 [] [ H.text "Waiting on room master to start" ]
     in
-        H.div []
-            [ waitText
-            , H.p []
-                [ Room.view room
-                , if isMaster then
-                    masterDialog
-                  else
-                    H.p [] []
-                , H.map CanvasMsg <| Canvas.view canvas
+        div [ id "roomiddialog" ]
+            [ div []
+                [ text "Room name:"
+                , H.input
+                    [ HA.type_ hiddenStateName
+                    , HA.readonly True
+                    , HA.value <| API.showRoomID roomid
+                    ]
+                    []
+                , H.input
+                    [ HA.type_ "checkbox"
+                    , HE.onClick <| LobbyMsg TogglePassView
+                    ]
+                    []
+                ]
+            , div []
+                [ H.button
+                    [ HE.onClick <| LobbyMsg StartGame ]
+                    [ text "Start the game!" ]
                 ]
             ]
 
 
 view : Pintclone -> Html Msg
 view pintclone =
-    case pintclone.state of
-        Uninit ->
-            H.div [] [ H.h1 [] [ H.text "Loading ..." ] ]
-
-        LobbyState state ->
-            lobbyView state pintclone.roomid
-
-        RoundState { room, canvas } ->
-            H.div []
-                [ H.p []
-                    [ Room.view room
-                    , H.map CanvasMsg <| Canvas.view canvas
-                    ]
+    let
+        gameView room canvas =
+            div [ id "masterlayout" ]
+                [ Room.view room
+                , H.map CanvasMsg <| Canvas.view canvas
                 ]
+    in
+        case pintclone.state of
+            Uninit ->
+                div [] [ h1 [] [ text "Loading ..." ] ]
 
-        FinalState { room, scores } ->
-            H.div [] [ H.h1 [] [ H.text "NOT IMPLEMENTED YET" ] ]
+            LobbyState { room, canvas, passHidden } ->
+                div []
+                    [ gameView room canvas
+                    , if Room.isMaster room then
+                        masterDialog passHidden pintclone.roomid
+                      else
+                        p [] []
+                    ]
+
+            RoundState { room, canvas } ->
+                gameView room canvas
+
+            FinalState { room, scores } ->
+                div [] [ h1 [] [ text "NOT IMPLEMENTED YET" ] ]
