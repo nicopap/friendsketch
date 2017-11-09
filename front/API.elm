@@ -134,12 +134,15 @@ roomsCreate =
     "/rooms/create"
 
 
-roomsCreateRequest : Game -> Http.Request RoomID
-roomsCreateRequest game =
+roomsCreateRequest : Game -> Name -> Http.Request RoomID
+roomsCreateRequest game (Name_ name) =
     let
         body =
             Http.jsonBody <|
-                Enc.object [ ( "game", Enc.string <| showGame game ) ]
+                Enc.object
+                    [ ( "game", Enc.string <| showGame game )
+                    , ( "username", Enc.string name )
+                    ]
 
         responseDecoder =
             decodeMaybe "Invalid room id!" <| validRoomID <*| Dec.string
@@ -251,18 +254,49 @@ wsinfoSend =
 
 
 
+--- RoundSummary ---
+
+
+type alias Score = Int
+
+
+type RoundSummary
+    = WasArtist Score
+    | HasGuessed Score
+    | HasFailed
+    | WasAbsent
+
+
+decoderRoundSummary : Decoder RoundSummary
+decoderRoundSummary =
+    sumType
+        <+| "artist" := WasArtist <*| Dec.int
+        |+| "guessed" := HasGuessed <*| Dec.int
+        |+| "failed" :- HasFailed
+        |+< "absent" :- WasAbsent
+
+
+decoderScore : Decoder (List (Name, List RoundSummary))
+decoderScore =
+    Dec.list ((,)
+        <*| 0 :^ decoderName
+        |*| 1 :^ Dec.list decoderRoundSummary
+        )
+
+
+
 --- ScoresState ---
 
 
 type alias ScoresState =
-    { scores : List (Name, Int)
+    { scores : List (Name, List RoundSummary)
     }
 
 
 decoderScoresState : Decoder ScoresState
 decoderScoresState =
     ScoresState
-        <*| "scores" :* Dec.list ((,) <*| 0 :^ decoderName |*| 1 :^ Dec.int)
+        <*| "scores" :* decoderScore
 
 
 
@@ -270,7 +304,7 @@ decoderScoresState =
 
 
 type alias LobbyState =
-    { opponents : List Name
+    { players : List Name
     , master : Bool
     }
 
@@ -278,7 +312,7 @@ type alias LobbyState =
 decoderLobbyState : Decoder LobbyState
 decoderLobbyState =
     LobbyState
-        <*| "opponents" :* Dec.list decoderName
+        <*| "players" :* Dec.list decoderName
         |*| "master" :* Dec.bool
 
 
@@ -287,7 +321,7 @@ decoderLobbyState =
 
 
 type alias RoundState =
-    { spectators : List Name
+    { playerScores : List (Name, List RoundSummary)
     , artist : Name
     , timeout : Int
     }
@@ -296,7 +330,7 @@ type alias RoundState =
 decoderRoundState : Decoder RoundState
 decoderRoundState =
     RoundState
-        <*| "spectators" :* Dec.list decoderName
+        <*| "players" :* decoderScore
         |*| "artist" :* decoderName
         |*| "timeout" :* Dec.int
 

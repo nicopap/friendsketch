@@ -77,7 +77,7 @@ Html page. User interface for the pintclone game
 ===== Rooms =====
 
 ==== Create a room ====
-''POST /rooms/create {game: Game}''
+''POST /rooms/create {username: Name, game: Game}''
 Create a room for given ''game''.
 	* Returns:
 		* __201 created__ RoomID | The Body is the RoomID to join.
@@ -99,24 +99,30 @@ Attempts to join an existing room ''roomid'' as ''username'' .
 ==== Types ====
 '''
 Point ~= [X, Y] where X = Y = [-2^31; 2^31[ ∈ Int
+Score = Int
 Color ~= #[0-9a-f]{6}
 LogString ~= .{10000}
 Size = Float
-Scores = [[Name, Int]]
+RoundSummary
+	= { artist: Score}
+	| { guessed: Score}
+	| { failed: [] }
+	| { absent: [] }
+	
 
 LobbyState =
-	{ opponents: [Name]
+	{ players: [Name]
 	, master: Bool
 	}
 
 RoundState =
-	{ spectators: [Name]
+	{ players: [ [Name, [RoundSummary]] ]
 	, artist: Name
 	, timeout: Int
 	}
 
 ScoresState =
-	{ scores: Scores
+	{ scores: [ [Name, [RoundSummary]] ]
 	, timeout: Int
 	}
 

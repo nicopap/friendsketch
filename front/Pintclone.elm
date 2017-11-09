@@ -129,7 +129,7 @@ newScores _ pintclone =
 {-| Start at the Pregame mode.
 -}
 newLobby : API.LobbyState -> Pintclone -> ( Pintclone, Cmd msg )
-newLobby { opponents, master } ({ roomid, username } as pintclone) =
+newLobby { players, master } ({ roomid, username } as pintclone) =
     let
         status =
             if master then
@@ -140,7 +140,7 @@ newLobby { opponents, master } ({ roomid, username } as pintclone) =
         { pintclone
             | state =
                 LobbyState
-                    { room = Room.newLobby status username opponents
+                    { room = Room.newLobby status username players
                     , canvas = newCanvas roomid username Canvas.Pregame
                     , passHidden = True
                     }
@@ -154,21 +154,23 @@ newLobby { opponents, master } ({ roomid, username } as pintclone) =
 {-| Start a new round of Pintclone.
 -}
 newRound : API.RoundState -> Pintclone -> Pintclone
-newRound { spectators, artist } ({ roomid, username } as pintclone) =
-    { pintclone
-        | state =
-            RoundState <|
-                if username == artist then
-                    { room = Room.newRound username spectators Room.Me
-                    , canvas = newCanvas roomid username Canvas.Artist
-                    }
-                else
-                    { room =
-                        Room.newRound username spectators <|
-                            Room.Another artist
-                    , canvas = newCanvas roomid username Canvas.Spectator
-                    }
-    }
+newRound { playerScores, artist } ({ roomid, username } as pintclone) =
+    let
+        ps =
+            List.map Tuple.first playerScores
+    in
+        { pintclone
+            | state =
+                RoundState <|
+                    if username == artist then
+                        { room = Room.newRound username ps Room.Me
+                        , canvas = newCanvas roomid username Canvas.Artist
+                        }
+                    else
+                        { room = Room.newRound username ps <| Room.Another artist
+                        , canvas = newCanvas roomid username Canvas.Spectator
+                        }
+        }
 
 
 canvasUpdate : Canvas.Msg -> GameLobby -> ( GameLobby, Cmd Msg )
@@ -199,7 +201,12 @@ canvasUpdate msg state =
                 FinalState state_ ! []
 
 
-roomChange : i -> GameLobby -> (i -> Room -> Room) -> Cmd m -> ( GameLobby, Cmd m )
+roomChange :
+    i
+    -> GameLobby
+    -> (i -> Room -> Room)
+    -> Cmd m
+    -> ( GameLobby, Cmd m )
 roomChange name state change ifError =
     case state of
         Uninit ->

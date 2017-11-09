@@ -22,6 +22,14 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Potential names]]
 
+[[+Devlog]]
+
+===== Websocket spec to implement =====
+* 1009 terminating because message is too big
+* 1008 Generic termminate (ie: did not respect API spec)
+* Use ''sub-protocol'' fields to specify which version of the API (and which data) is being transmitted)
+* Use binary data using something like ''protobuff'' 
+
 ===== Dreams =====
 * Handle explicitely user names in Main.hs.
 	* Issue being that information is redundant.
@@ -30,15 +38,22 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 ===== Current roadmap =====
 * Mask room input in join page
+* Make sure client handles properly joining in middle of Drawing & leaving artist
+* Improve readability of logging for websockets:
+	* Implement show in API.hs
+	* merge into single entry request+response
+	* better look for requests
 * In join page, when changing name, put a confirmation button instead of automatically redirecting
 * Improve how the backend handles stuff
-	* Refactor RoomConnection (think hard about desing)
 	* Sanitize names and roomids in backend
 	* Implement game logic
 	* Clean up when Rooms stay empty for too long
+* Update API (Lobby master [bool → name]) so lobby broadcasting is independent of the connected it is sending to.
+* Implement "cooldown" on people leaving so they have a chance to rejoin.
 * Add tests to the backend
-* Create A logging instance for the Websocket application.
 * Fix chat
+	* Frontend: create interface (for chat, and word to guess etc)
+	* Backend: handle guesses and stuff, implement "SendTo"
 * Study Haskell websocket package to see if the following is possible:
 	* Be aware of ping between server and client
 	* Use this to slow down packet redistribution according to average ping.

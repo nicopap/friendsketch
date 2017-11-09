@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-module RestImpl
+module API
     ( roomsCreate
     , roomsJoin
     , Game(Pintclone)
@@ -8,13 +8,15 @@ module RestImpl
     , RoomID
     , Channel(..)
     , randomRoomID
-    , ScoresState
+    , ScoresState(..)
     , LobbyState(..)
     , RoundState(..)
     , GameState(..)
     , InfoMsg(..)
     , InfoRequest(..)
     , CanvasMsg(..)
+    , ChatMsg(..)
+    , RoundSummary(..)
     ) where
 
 {-| Define all types that come directly from the outside world.
@@ -89,8 +91,8 @@ instance FromJSON Name where
     parseJSON = Aeson.withText "Name" $ return . Name
 
 instance ToJSON Name where
-    toEncoding (Name { unname }) = toEncoding unname
-    toJSON (Name { unname }) = toJSON unname
+    toEncoding Name{unname} = toEncoding unname
+    toJSON Name{unname} = toJSON unname
 
 
 
@@ -113,14 +115,15 @@ instance FromJSON RoomID where
     parseJSON = Aeson.withText "RoomID" $ return . RoomID
 
 instance ToJSON RoomID where
-    toEncoding (RoomID { unroomid }) = toEncoding unroomid
-    toJSON (RoomID { unroomid }) = toJSON unroomid
+    toEncoding RoomID{unroomid} = toEncoding unroomid
+    toJSON RoomID{unroomid} = toJSON unroomid
 
 
 
 --- Misc ---
 -- TODO: implement input validation.
 
+type Score = Int
 
 newtype Color = Color {uncolor :: Text} deriving (Generic, Show)
 
@@ -128,8 +131,8 @@ instance FromJSON Color where
     parseJSON = Aeson.withText "Color" $ return . Color
 
 instance ToJSON Color where
-    toEncoding (Color { uncolor }) = toEncoding uncolor
-    toJSON (Color { uncolor }) = toJSON uncolor
+    toEncoding Color{uncolor} = toEncoding uncolor
+    toJSON Color{uncolor} = toJSON uncolor
 
 
 
@@ -143,8 +146,8 @@ instance FromJSON Point where
 
 
 instance ToJSON Point where
-    toEncoding (Point { x, y }) = toEncoding [x, y]
-    toJSON (Point { x, y }) = toJSON [x, y]
+    toEncoding Point{x,y} = toEncoding [x, y]
+    toJSON Point{x,y} = toJSON [x, y]
 
 
 
@@ -153,7 +156,9 @@ data Game
     deriving (Generic, Show)
 
 
-instance FromJSON Game
+instance FromJSON Game where
+    parseJSON = Aeson.withText "Game" $ return . const Pintclone
+
 instance ToJSON Game where
     toEncoding Pintclone = toEncoding ("pintclone" :: Text)
     toJSON Pintclone = toJSON ("pintclone" :: Text)
@@ -162,12 +167,14 @@ instance ToJSON Game where
 data Channel
     = Info
     | Canvas
+    | Chat
     deriving(Show, Eq)
 
 instance Validate Channel where
     valid text
         | text == "info" = Right Info
         | text == "canvas" = Right Canvas
+        | text == "chat" = Right Chat
         | otherwise = Left "Invalid channel"
 
 
@@ -187,8 +194,7 @@ instance ToJSON RoomsCreate where
 
 
 roomsCreate :: Either String RoomsCreate -> Either String (Game, Name)
-roomsCreate = fmap (\(RoomsCreate {game, username}) ->
-    (game, username))
+roomsCreate = fmap (\RoomsCreate{game,username} -> (game, username))
 
 
 
@@ -205,20 +211,29 @@ instance ToJSON RoomsJoin where
 
 
 roomsJoin :: Either String RoomsJoin -> Either String (RoomID, Name)
-roomsJoin = fmap (\(RoomsJoin {roomid, username}) ->
-    (roomid, username))
+roomsJoin = fmap (\RoomsJoin{roomid,username} -> (roomid, username))
 
 
 
 --- WebSocket Types ---
 
 
-data ScoresState =
-    ScoresState
-        { scores :: [(Name, Int)]
-        }
+data RoundSummary
+    = Artist Score
+    | Guessed Score
+    | Failed
+    | Absent
     deriving (Generic, Show)
 
+instance ToJSON RoundSummary where
+    toEncoding = genericToEncoding defaultOptions
+
+
+data ScoresState =
+    ScoresState
+        { scores :: [(Name, [RoundSummary])]
+        }
+    deriving (Generic, Show)
 
 instance ToJSON ScoresState where
     toEncoding = genericToEncoding defaultOptions
@@ -227,11 +242,10 @@ instance ToJSON ScoresState where
 
 data LobbyState =
     LobbyState
-        { opponents :: [Name]
+        { players :: [Name]
         , master :: Bool
         }
     deriving (Generic, Show)
-
 
 instance ToJSON LobbyState where
     toEncoding = genericToEncoding defaultOptions
@@ -240,12 +254,11 @@ instance ToJSON LobbyState where
 
 data RoundState =
     RoundState
-        { spectators :: [Name]
+        { players :: [(Name, [RoundSummary])]
         , artist :: Name
         , timeout :: Int
         }
     deriving (Generic, Show)
-
 
 instance ToJSON RoundState where
     toEncoding = genericToEncoding defaultOptions
@@ -306,3 +319,14 @@ instance ToJSON CanvasMsg where
 
     toJSON = Aeson.genericToJSON <-|-
         (\('C':'n':'v':h:tail') -> toLower h : tail')
+
+
+data ChatMsg
+    = ChatMsg_
+    deriving (Generic, Show)
+
+instance FromJSON ChatMsg
+instance ToJSON ChatMsg where
+    toEncoding = genericToEncoding defaultOptions
+
+

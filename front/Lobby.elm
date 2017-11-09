@@ -132,7 +132,7 @@ This will redirect the browser to the new page, in case of failure, cry?
 -}
 attemptCreate : API.Name -> Settings -> Cmd Msg
 attemptCreate username { game } =
-    API.roomsCreateRequest game
+    API.roomsCreateRequest game username
         |> Http.toTask
         |> Task.andThen (attemptJoin username)
         |> Task.attempt openLink
