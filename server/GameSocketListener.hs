@@ -269,8 +269,14 @@ receiveLoop channel name conn gameref notifyParent =
         closeConn :: ReactiveGame game => Game game -> IO (Game game)
         closeConn Game{gameState = oldState, connections} =
             disconnect channel name oldState
-                |>> execCmds name connections
-                >=> (\newState -> Game{gameState = newState, connections})
+                |>> execCmds name newConns
+                >=> ( \s -> Game{gameState=s, connections=newConns} )
+            where
+                newConns = Map.update (rmConn channel) name connections
+
+                rmConn Info conns = Nothing
+                rmConn Chat conns = Just conns{chat=Nothing}
+                rmConn Canvas conns = Just conns{canvas=Nothing}
 
 
 execCmds :: API.Name -> Map API.Name Connections -> CommandM a -> IO a
