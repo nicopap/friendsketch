@@ -68,7 +68,7 @@ viewColorBox colormsg index box =
             button
                 [ withBackground color
                 , class "colorbox"
-                , onClick ((Ok << colormsg) color)
+                , onClick (Ok (colormsg color))
                 ]
                 [ Html.text "  " ]
 

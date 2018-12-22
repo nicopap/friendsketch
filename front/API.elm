@@ -103,12 +103,13 @@ showName (Name_ stringrep) =
 
 
 validName : String -> Maybe Name
-validName =
+validName toValidate =
     let
         nameRegex =
             "^[!-~\\u00A1-\\u02AF\\u0390-\\u04FF][ -~\\u00A1-\\u02AF\\u0390-\\u04FF]{0,50}[!-~\\u00A1-\\u02AF\\u0390-\\u04FF]$"
     in
-        Maybe.map Name_ << regexValidate nameRegex
+        regexValidate nameRegex toValidate
+            |> Maybe.map Name_
 
 
 showRoomID : RoomID -> String

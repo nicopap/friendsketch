@@ -5,7 +5,7 @@ ALT_WAI_ROUTES = ~/code/gitimpo/wai-routes
 
 # --- Goals ---
 .DEFAULT_GOAL = experiment
-.PHONY: clean experiment backend frontend recabal debug
+.PHONY: clean experiment backend frontend debug
 
 ELM_FLAGS = --warn
 debug : ELM_FLAGS += --debug
@@ -36,18 +36,12 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 experiment : backend frontend
 	(sleep 2 ; $(BROWSER) "http://localhost:8080/lobby") &
-	cabal run
+	stack exec netpinary-server
 
 
 frontend : $(JS_TARGETS) $(CONTENT)
-backend : $(HASKELL_SOURCE) friendsketch.cabal
-	cabal build
+backend : $(HASKELL_SOURCE) friendsketch-server.cabal
+	stack build
 
-recabal :
-	cabal sandbox delete
-	cabal sandbox init
-	cabal sandbox add-source $(ALT_WAI_ROUTES)
-	cabal update
-	cabal install --dependencies-only
 clean:
 	rm -rf $(BUILD_DIR)/*
