@@ -64,10 +64,6 @@ A room id, let identify a unique party going on currently.
 ''GET /lobby/index.html''
 Html page. User interface to select whether to create or join a game.
 
-==== Lobby join page ====
-''GET /lobby/join/index.html''
-Html page. User interface to join an existing game.
-
 ==== Pintclone ====
 ''GET /games/pintclone/index.html ''
 Html page. User interface for the pintclone game

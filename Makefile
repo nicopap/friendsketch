@@ -24,10 +24,8 @@ $(BUILD_DIR)/games/pintclone/code.js : front/Pintclone.elm $(ELM_SOURCE)
 	elm-make $(ELM_FLAGS) $< --output $@
 $(BUILD_DIR)/lobby/code.js : front/Lobby.elm $(ELM_SOURCE)
 	elm-make $(ELM_FLAGS) $< --output $@
-$(BUILD_DIR)/lobby/join/code.js : front/Lobby/Join.elm $(ELM_SOURCE)
-	elm-make $(ELM_FLAGS) $< --output $@
 # List of target files to build
-JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js $(BUILD_DIR)/lobby/join/code.js
+JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/pintclone/code.js
 
 # copy assets into the server filesystem
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%

@@ -70,14 +70,7 @@ type RoomID
 decodeMaybe : String -> Decoder (Maybe a) -> Decoder a
 decodeMaybe errorMessage =
     Dec.andThen
-        (\x ->
-            case x of
-                Just val ->
-                    Dec.succeed val
-
-                Nothing ->
-                    Dec.fail errorMessage
-        )
+        (Maybe.map Dec.succeed >> Maybe.withDefault (Dec.fail errorMessage))
 
 
 regexValidate : String -> String -> Maybe String
