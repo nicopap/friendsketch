@@ -11,7 +11,6 @@ module API
         , showName
         , roomsCreateRequest
         , roomsJoinRequest
-        , wschat
         , LobbyState
         , RoundState
         , ScoresState
@@ -36,8 +35,8 @@ import Color exposing (Color)
 import ColorMath exposing (hexToColor, colorToHex)
 import ElementRelativeMouseEvents exposing (Point)
 import Json.Encode as Enc exposing (Value)
-import Json.Decode as Dec exposing (Decoder)
-import TypeDecoders exposing (..)
+import Json.Decode as Dec exposing (Decoder, oneOf)
+import TypeDecoders exposing ((<*|),(|*|),(:=),(:-),(:^), (:*))
 import Http exposing (encodeUri)
 import Regex as Re
 import Maybe
@@ -223,11 +222,6 @@ wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
                     continuation_ << Dec.decodeString decoder
 
 
-wschat : Game -> RoomID -> Name -> String
-wschat game (RoomID_ roomid) (Name_ name) =
-    "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ "chat" +/+ name
-
-
 wscanvasListen :
     Game -> RoomID -> Name
     -> Maybe (Result String CanvasMsg -> msg)
@@ -270,11 +264,12 @@ type RoundSummary
 
 decoderRoundSummary : Decoder RoundSummary
 decoderRoundSummary =
-    sumType
-        <+| "artist" := WasArtist <*| Dec.int
-        |+| "guessed" := HasGuessed <*| Dec.int
-        |+| "failed" :- HasFailed
-        |+< "absent" :- WasAbsent
+    oneOf
+        [ "artist" := WasArtist <*| Dec.int
+        , "guessed" := HasGuessed <*| Dec.int
+        , "failed" :- HasFailed
+        , "absent" :- WasAbsent
+        ]
 
 
 decoderScore : Decoder (List (Name, List RoundSummary))
@@ -348,10 +343,11 @@ type GameState
 
 decoderGameState : Decoder GameState
 decoderGameState =
-    sumType
-        <+| "summary" := Summary <*| decoderScoresState
-        |+| "round" := Round <*| decoderRoundState
-        |+< "lobby" := Lobby <*| decoderLobbyState
+    oneOf
+        [ "summary" := Summary <*| decoderScoresState
+        , "round" := Round <*| decoderRoundState
+        , "lobby" := Lobby <*| decoderLobbyState
+        ]
 
 
 
@@ -367,11 +363,12 @@ type InfoMsg
 
 decoderInfo : Decoder InfoMsg
 decoderInfo =
-    sumType
-        <+| "joined" := Joined <*| decoderName
-        |+| "left" := Left <*| decoderName
-        |+| "sync" := Sync <*| decoderGameState
-        |+< "mastery" :- Mastery
+    oneOf
+        [ "joined" := Joined <*| decoderName
+        , "left" := Left <*| decoderName
+        , "sync" := Sync <*| decoderGameState
+        , "mastery" :- Mastery
+        ]
 
 
 
@@ -415,13 +412,14 @@ decoderCanvasMsg =
                 (Result.withDefault Color.black << hexToColor)
                 Dec.string
     in
-        sumType
-            <+| "start" := CnvStart
+        oneOf
+            [ "start" := CnvStart
                 <*| 0 :^ decoderPoint
                 |*| 1 :^ decoderColor
                 |*| 2 :^ Dec.float
-            |+| "continue" := CnvContinue <*| decoderPoint
-            |+< "end" :- CnvEnd
+            , "continue" := CnvContinue <*| decoderPoint
+            , "end" :- CnvEnd
+            ]
 
 
 encoderCanvasMsg : CanvasMsg -> Value
@@ -450,3 +448,4 @@ encoderCanvasMsg msg =
 
             CnvEnd ->
                 Enc.object [ ( "end", Enc.list [] ) ]
+

@@ -46,7 +46,7 @@ The string name of an avaliable game. Any other string will be refused.
 * Currently there is only one value possible for it.
 
 === Name ===
-''Name ~= [[::unicode_alphanum::] _-]{-100}''
+''Name ~= [[::unicode_alphanum::] _-]{2-100}''
 A user name. Can be arbitrary unicode alphanumericals.
 * TODO: handle spaces at the start and end of the string in specification.
 * This is user-generated and shown to other users!
@@ -82,6 +82,7 @@ Create a room for given ''game''.
 	* Returns:
 		* __201 created__ RoomID | The Body is the RoomID to join.
 		* __404 not found__ | the game doesn't exist.
+		* __400 bad request__ | ''username'' is not a valid name.
 
 ==== Join a Room ====
 ''POST /rooms/join {roomid: RoomID, username: Name}''
@@ -98,7 +99,7 @@ Attempts to join an existing room ''roomid'' as ''username'' .
 
 ==== Types ====
 '''
-Point ~= [X, Y] where X = Y = [-2^31; 2^31[ ∈ Int
+Point ~= [X, Y] where X = Y = [-2^31; 2^31[ : Int
 Score = Int
 Color ~= #[0-9a-f]{6}
 LogString ~= .{10000}

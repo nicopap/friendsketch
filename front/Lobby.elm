@@ -1,18 +1,13 @@
 module Main exposing (main)
 
-import Random as Rand
 import Maybe exposing (withDefault)
-import Array
 import Result exposing (Result)
-import String
-import Char exposing (toUpper)
 import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events exposing (onClick, onInput)
 import Task exposing (Task)
 import Http
 import Debug
-import Lobby.NameLists exposing (nameList, adjectiveList)
 import API
 
 
@@ -36,34 +31,6 @@ type alias Welcome =
     }
 
 
-{-| Returns the combination of AdjName where, for
-
-    composeName (adjIndx, nameIndx)
-
-The adjective is located at index adjIndx in adjectiveList and the name
-is located at index nameIndx in nameList.
-
--}
-composeName : ( Int, Int ) -> String
-composeName ( adjIndx, nameIndx ) =
-    let
-        adjective =
-            withDefault "intolerent" <| Array.get adjIndx adjectiveList
-
-        name =
-            withDefault "marmoset" <| Array.get nameIndx nameList
-
-        titilize s =
-            case String.uncons s of
-                Nothing ->
-                    ""
-
-                Just ( h, t ) ->
-                    String.cons (toUpper h) t
-    in
-        (titilize adjective) ++ (titilize name)
-
-
 {-| Validate the input and distinguish valid from invalid inputs.
 TODO: feedback on why a name is invlaid
 -}
@@ -79,19 +46,12 @@ validateNameInput input =
 
 main : Program Never Welcome Msg
 main =
-    let
-        genrand =
-            Rand.pair
-                (Rand.int 0 <| (Array.length adjectiveList) - 1)
-                (Rand.int 0 <| (Array.length nameList) - 1)
-                |> Rand.map composeName
-    in
-        H.program
-            { init = ( new, Rand.generate UpdateUserName genrand )
-            , update = update
-            , view = view
-            , subscriptions = always Sub.none
-            }
+    H.program
+        { init = ( new, Cmd.none )
+        , update = update
+        , view = view
+        , subscriptions = always Sub.none
+        }
 
 
 new : Welcome

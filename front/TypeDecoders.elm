@@ -1,9 +1,7 @@
 module TypeDecoders
     exposing
-        ( (<+|), (|+|), (|+<)
-        , (<*|), (|*|), (:*), (:^)
+        ( (<*|), (|*|), (:*), (:^)
         , (:-), (:=)
-        , sumType
         )
 
 {-| #TypeDecoders
@@ -45,11 +43,12 @@ Example:
 
     sumDecoder : J.Decoder Sum
     sumDecoder =
-        sumType
-            <+| "bottom" := Bottom <*| J.string
-            |+| "top" := Top <*| userDecoder
-            |+| "left" := Left <*| userDecoder |*| dateDecoder
-            |+< "right" :- Right
+        J.oneOf
+            [ "bottom" := Bottom <*| J.string
+            , "top" := Top <*| userDecoder
+            , "left" := Left <*| userDecoder |*| dateDecoder
+            , "right" :- Right
+            ]
 
     J.decodeString sumDecoder """{"bottom": "Charlemagne"}"""
     --> Ok (Bottom "Charlemagne")
@@ -137,11 +136,12 @@ Consider the following data type and JSON equivalent:
     -- Decoder:
     decodeChoiceOfFour : J.Decoder ChoiceOfFour
     decodeChoiceOfFour =
-        sumType
-            <+| "top" := Top_ <*| decodeUser_
-            |+| "bottom" := Bottom_ <*| J.string
-            |+| "left" := Left_ <*| 0 :^ decodeUser_ |*| 1 :^ decodeDay
-            |+< "right" :- Right_
+        J.oneOf
+            [ "top" := Top_ <*| decodeUser_
+            , "bottom" := Bottom_ <*| J.string
+            , "left" := Left_ <*| 0 :^ decodeUser_ |*| 1 :^ decodeDay
+            , "right" :- Right_
+            ]
 
     -- Decoding:
     J.decodeString decodeChoiceOfFour topjson
@@ -163,24 +163,11 @@ example: `Top <*| decodeUser_` is the constructor for `Top` with argument
 `decodeUser_`). Compare this to the previous example where we defined
 `decodeDay`.
 
-@docs sumType, (<+|), (|+|), (|+<), (:-), (:=)
+@docs (:-), (:=)
 
 -}
 
 import Json.Decode as J
-
-
-{-| Give a list of decoders, make it a sum type decoder.
-
-this function is a synonym for `Json.Decode.oneOf`
-
-the `|+|` and `|+<` operators are alias for list concatenation of
-decoders, and `<+|` *feeds* the resulting list into this function.
-For sum types, we are in fact *just* constructing a list of possible
-object fields and picking the existing one. There is no magic really.
--}
-sumType : List (J.Decoder a) -> J.Decoder a
-sumType = J.oneOf
 
 
 {-| This is a convenience operator to build empty sum type alternatives.
@@ -222,31 +209,6 @@ It is a synonym for `Json.Decode.field`.
 (:*) = J.field
 
 
-{-| Last term in a sum type expression.
-
-It concatenates the last two arguments and creates a list.
--}
-(|+<) : J.Decoder x -> J.Decoder x -> List (J.Decoder x)
-(|+<) d1 d2 = [d1, d2]
-
-
-{-| Middle terms in sum type expressions.
-
-It's just the concatenation operator `(::)` with a different priority.
--}
-(|+|) : J.Decoder x -> List (J.Decoder x) -> List (J.Decoder x)
-(|+|) = (::)
-
-
-{-| First term in sum type expressions.
-
-It is an alias for `<|`, with different priority. It is here mostly to
-have a consistent pipeline.
--}
-(<+|) : (a -> b) -> a -> b
-(<+|) = (<|)
-
-
 {-| Access an object by index in a product type expression.
 
 It is a synonym for `Json.Decode.index`.
@@ -279,8 +241,4 @@ infixl 4 |*|
 
 infixr 3 :-
 infixr 3 :=
-
-infixr 2 <+|
-infixr 2 |+|
-infixr 2 |+<
 
