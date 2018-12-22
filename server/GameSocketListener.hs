@@ -3,7 +3,7 @@ module GameSocketListener
     , Response(..)
     , Request(..)
     , ReactiveGame(..) -- To implement for games
-    , Game
+    , Game(gameState)
     , CommandM
     , addCmds
     ) where
@@ -326,7 +326,7 @@ log name (Left (channel, request)) = do
         color x = ANSI.setSGR [SetColor Foreground Dull x]
         reset = ANSI.setSGR []
 log name (Right cmds) = do
-    { putStr "< "; color Blue;
+    { putStr "< "; color Blue
     ; putStr $ show name ++ "\n"
     ; reset
     ; Monad.mapM_ showCmd cmds

@@ -14,11 +14,11 @@ import Data.Text.Encoding (encodeUtf8Builder)
 
 import qualified Network.Wai.Handler.Warp as Warp
 import qualified Wai.Routes as Routes
-import Wai.Routes (Handler, created201, notFound404, badRequest400, ok200)
+import Wai.Routes (Handler, created201, notFound404, badRequest400, ok200, conflict409)
 import qualified Network.Wai.Application.Static as SWai
 import qualified Network.Wai as Wai
 
-import qualified Pintclone
+import qualified Pintclone (roomUsers, Room)
 import qualified API
 import API (RoomID)
 import qualified WebSocketGame as WSGame
@@ -114,13 +114,17 @@ postRoomsCreate = Routes.runHandlerM $ do
 postRoomsJoin :: Handler Netpinary
 postRoomsJoin = Routes.runHandlerM $ do
     request <- API.roomsJoin <$> Routes.jsonBody
-    parseRequest request $ \(roomid, _) -> do
+    parseRequest request $ \(roomid, username) -> do
         roomMap <- getServerState
-        case Map.member roomid roomMap of
-            True ->
-                Routes.json API.Pintclone >> Routes.status ok200
-
-            False ->
+        case Map.lookup roomid roomMap of
+            Just room -> do
+                room' <- liftIO $ readMVar room
+                let nameUsed = (any (== username)) $ Pintclone.roomUsers room'
+                if not nameUsed then
+                    Routes.json API.Pintclone >> Routes.status ok200
+                else
+                    Routes.status  conflict409
+            Nothing ->
                 Routes.status notFound404
 
 

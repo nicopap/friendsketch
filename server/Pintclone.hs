@@ -1,4 +1,4 @@
-module Pintclone (Room) where
+module Pintclone (Room, roomUsers) where
 
 {-|
 -}
@@ -11,13 +11,14 @@ import Data.Text (Text)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
+import Data.Function ((&))
 import qualified Data.Set as Set
 
 import qualified API
 import GameSocketListener
     ( Cmd(Broadcast, Reply, ToAllOther), CommandM, addCmds
     , Request(..), Response(..)
-    , Game, ReactiveGame(..)
+    , Game(gameState), ReactiveGame(..)
     )
 
 type Settings = ()
@@ -61,6 +62,13 @@ instance ReactiveGame Pintclone where
     init = init'
 
 type Room = Game Pintclone
+
+roomUsers :: Room -> [API.Name]
+roomUsers room =
+    room
+     & gameState
+     & users
+     & Map.keys
 
 (!) :: Pintclone -> [Cmd] -> CommandM Pintclone
 (!) = flip addCmds
