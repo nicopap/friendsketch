@@ -36,17 +36,9 @@ data GameSection
     deriving (Show)
 
 
-data Connections
-    = CanvasChat
-    | CanvasOnly
-    | ChatOnly
-    | Neither
-    deriving (Show, Eq)
-
-
 data Pintclone
     = Pintclone
-        { users :: Map API.Name ([API.RoundSummary], Connections)
+        { users :: Map API.Name [API.RoundSummary]
         , settings :: Settings
         , section :: GameSection
         , seed :: Random.StdGen
@@ -74,80 +66,40 @@ roomUsers room =
 (!) = flip addCmds
 
 --  TODO: add proper error handling when duplicate websocket connections
-connect'
-    :: API.Channel -> API.Name -> Pintclone
-    -> Either SBS.ByteString (CommandM Pintclone)
-connect' API.Info name state@Pintclone{section=Empty{expecting}}
+connect' :: API.Name -> Pintclone -> Either SBS.ByteString (CommandM Pintclone)
+connect' name state@Pintclone{section=Empty{expecting}}
   | name == expecting =
-    let
-        newState =
-            state
-                { users = Map.singleton name ([], Neither)
-                , section = Lobby{master=name}
-                }
-    in
-        Right $ newState ! [Reply $ toSync name newState]
-  | otherwise =
-    Left "You are not the room creator, how did that happen!?!"
-
-connect' API.Info name state@Pintclone{users}
+        let newState =
+                state{users=Map.singleton name [],section=Lobby{master=name}}
+        in Right $ newState ! [Reply $ toSync name newState]
+  | otherwise = Left "You are not the room creator, how did that happen!?!"
+connect' name state@Pintclone{users}
   | Map.notMember name users =
-    Right $ state { users = Map.insert name ([], Neither) users }
-        ! [ ToAllOther $ InfoResponse $ API.Joined name ]
-  | otherwise =
-    Left "Name already taken"
+    Right $ state { users = Map.insert name [] users }
+        ! [ ToAllOther $ API.MsgInfo $ API.Joined name ]
+  | otherwise = Left "Name already taken"
 
-connect' API.Canvas name state@Pintclone{users} =
-    Right $ return $! state { users = Map.adjust adjust name users }
-    where
-        adjust (x,Neither) = (x, CanvasOnly)
-        adjust (x,ChatOnly) = (x, CanvasChat)
-        adjust _ = undefined
-
-connect' API.Chat name state@Pintclone{users} =
-    Right $ return $! state { users = Map.adjust adjust name users }
-    where
-        adjust (x,Neither) = (x, ChatOnly)
-        adjust (x,CanvasOnly) = (x, CanvasChat)
-        adjust _ = undefined
-
-
-disconnect' :: API.Channel -> API.Name -> Pintclone -> CommandM Pintclone
-disconnect' API.Info name state@Pintclone{users}
+disconnect' :: API.Name -> Pintclone -> CommandM Pintclone
+disconnect' name state@Pintclone{users}
   | Map.member name users =
     state { users = Map.delete name users }
-        ! [ Broadcast $ InfoResponse $ API.Left_ name ]
-
-disconnect' API.Canvas name state@Pintclone{users} =
-    return $! state { users = Map.adjust adjust name users }
-    where
-        adjust (x,CanvasChat) = (x, ChatOnly)
-        adjust (x,CanvasOnly) = (x, Neither)
-        adjust _ = undefined
-
-disconnect' API.Chat name state@Pintclone{users} =
-    return $! state { users = Map.adjust adjust name users }
-    where
-        adjust (x,CanvasChat) = (x, CanvasOnly)
-        adjust (x,ChatOnly) = (x, Neither)
-        adjust _ = undefined
-
+        ! [ Broadcast $ API.MsgInfo $ API.Left_ name ]
 
 receive' :: API.Name -> Request -> Pintclone -> CommandM Pintclone
-receive' name (InfoRequest API.ReqSync) state =
+receive' name (API.ReqInfo API.ReqSync) state =
     state ! [Reply $ toSync name state]
 
-receive' name (InfoRequest API.ReqStart) state@Pintclone{section=Lobby{master}}
+receive' name (API.ReqInfo API.ReqStart) state@Pintclone{section=Lobby{master}}
   | name == master =
     newState ! [ Broadcast $ toSync name newState ]
     where
         newState = state { section = Playing 1 "Antelope" master Set.empty }
 
-receive' name (CanvasRequest msg) state@Pintclone{section=Playing{artist}}
+receive' name (API.ReqCanvas msg) state@Pintclone{section=Playing{artist}}
   | name == artist =
-    state ! [ToAllOther $ CanvasResponse msg]
+    state ! [ToAllOther $ API.MsgCanvas msg]
 
-receive' name (ChatRequest msg) state@Pintclone{section=Playing{}} =
+receive' name (API.ReqChat msg) state@Pintclone{section=Playing{}} =
     undefined
 
 
@@ -164,7 +116,7 @@ init' name =
 
 toSync :: API.Name -> Pintclone -> Response
 toSync name Pintclone{users,section} =
-    InfoResponse $ API.Sync $ case section of
+    API.MsgInfo $ API.Sync $ case section of
         Empty{} ->
             undefined
 
@@ -176,17 +128,11 @@ toSync name Pintclone{users,section} =
 
         Playing{wordToGuess,artist} ->
             API.Round $ API.RoundState
-                { players = toAPIUsers users
+                { players = Map.assocs users
                 , artist = artist
                 , timeout = 10
                 }
 
         Scores ->
-            API.Summary $ API.ScoresState {scores = toAPIUsers users}
-    where
-        toAPIUsers
-            :: Map API.Name ([API.RoundSummary], Connections)
-            -> [(API.Name, [API.RoundSummary])]
-        toAPIUsers =
-            map (\(a,(b,_)) -> (a,b)) . Map.assocs
+            API.Summary $ API.ScoresState {scores = Map.assocs users}
 

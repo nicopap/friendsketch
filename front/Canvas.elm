@@ -6,7 +6,7 @@ module Canvas
         , new
         , view
         , update
-        , subs
+        , subsAdaptor
         )
 
 import Tuple exposing (mapFirst, mapSecond)
@@ -33,7 +33,7 @@ type Pen
 
 type Msg
     = ArtistMsg ArtistMsg
-    | Server (Result String API.CanvasMsg)
+    | Server API.CanvasMsg
     | ToolboxMsg Toolbox.Msg
 
 
@@ -72,8 +72,6 @@ type alias Canvas =
     , width : Float
     , height : Float
     , toolbox : Toolbox
-    , wslisten : Maybe (Result String API.CanvasMsg -> Msg) -> Sub Msg
-    , wssend : API.CanvasMsg -> Cmd Msg
     }
 
 
@@ -89,8 +87,6 @@ new game roomid name state =
     , width = 600
     , height = 400
     , toolbox = Toolbox.new
-    , wslisten = API.wscanvasListen game roomid name
-    , wssend = API.wscanvasSend game roomid name
     }
 
 
@@ -252,8 +248,8 @@ is just hovering over the canvas, then it adjusts the location of the
 hovering mark.
 
 -}
-hover : Point -> Pen -> ( Pen, Maybe Point )
-hover point pen =
+move : Point -> Pen -> ( Pen, Maybe Point )
+move point pen =
     case pen of
         Drawing stroke ->
             case Stroke.drawFeedback point stroke of
@@ -277,69 +273,56 @@ press point color strokeSize =
     Drawing (Stroke.new point color strokeSize)
 
 
-{-| Send `Just point` to server, otherwise Nothing
--}
-continueSend : (API.CanvasMsg -> Cmd msg) -> Maybe Point -> Cmd msg
-continueSend action maybePoint =
-    case maybePoint of
-        Nothing ->
-            Cmd.none
-
-        Just point ->
-            action <| API.CnvContinue point
-
-
 {-| Update function when the canvas state is `Artist`.
 -}
-artistUpdate : ArtistMsg -> Canvas -> ( Canvas, Cmd Msg )
+artistUpdate : ArtistMsg -> Canvas -> ( Canvas, Maybe API.CanvasMsg )
 artistUpdate msg canvas =
     let
         clientPress point pen =
-            { canvas | pen = pen }
-                ! [ canvas.wssend <|
-                        API.CnvStart point canvas.color canvas.strokeSize
-                  ]
+            ( { canvas | pen = pen }
+            , Just <| API.CnvStart point canvas.color canvas.strokeSize
+            )
 
-        clientHover point =
-            hover point canvas.pen
+        clientMove point =
+            move point canvas.pen
                 |> mapFirst (\p -> { canvas | pen = p })
-                |> mapSecond (continueSend canvas.wssend)
+                |> mapSecond ( Maybe.map API.CnvContinue )
     in
         case msg of
             Hover point ->
-                clientHover point
+                clientMove point
 
             Press point ->
                 press point canvas.color canvas.strokeSize
                     |> clientPress point
 
             Lift ->
-                lift canvas ! [ canvas.wssend API.CnvEnd ]
+                ( lift canvas , Just API.CnvEnd )
 
             ChangeColor newcolor ->
-                { canvas | color = newcolor } ! []
+                ( { canvas | color = newcolor } , Nothing )
 
             ChangePenSize newsize ->
-                { canvas | strokeSize = newsize } ! []
+                ( { canvas | strokeSize = newsize } , Nothing )
 
             LeaveCanvas ->
                 case canvas.pen of
                     Drawing _ ->
-                        (lift canvas |> (\c -> { c | pen = Away }))
-                            ! [ canvas.wssend API.CnvEnd ]
-
+                        ( lift canvas |> (\c -> { c | pen = Away })
+                        , Just API.CnvEnd
+                        )
                     _ ->
-                        { canvas | pen = Away } ! []
+                        ( { canvas | pen = Away } , Nothing )
 
             EnterCanvas ( point, True ) ->
                 press point canvas.color canvas.strokeSize
                     |> clientPress point
 
             EnterCanvas ( point, False ) ->
-                clientHover point
+                clientMove point
 
 
-serverUpdate : Result String API.CanvasMsg -> Canvas -> Canvas
+serverUpdate : API.CanvasMsg -> Canvas -> Canvas
 serverUpdate msg canvas =
     let
         continueDrawing point pen =
@@ -351,21 +334,18 @@ serverUpdate msg canvas =
                     pen
     in
         case msg of
-            Ok (API.CnvStart point color size) ->
+            API.CnvStart point color size ->
                 { canvas
                     | strokeSize = size
                     , color = color
                     , pen = Drawing (Stroke.new point color size)
                 }
 
-            Ok (API.CnvContinue point) ->
+            API.CnvContinue point ->
                 { canvas | pen = continueDrawing point canvas.pen }
 
-            Ok API.CnvEnd ->
+            API.CnvEnd ->
                 lift canvas |> (\c -> { c | pen = Away })
-
-            Err errorText ->
-                Debug.log ("Issue in server message: " ++ errorText) canvas
 
 
 {-| A version of the canvas that draws client-side actions but do
@@ -375,7 +355,7 @@ pregameUpdate : ArtistMsg -> Canvas -> Canvas
 pregameUpdate msg canvas =
     case msg of
         Hover point ->
-            hover point canvas.pen
+            move point canvas.pen
                 |> (\( pen, _ ) -> { canvas | pen = pen })
 
         Press point ->
@@ -398,53 +378,46 @@ pregameUpdate msg canvas =
             { canvas | pen = press point canvas.color canvas.strokeSize }
 
         EnterCanvas ( point, False ) ->
-            hover point canvas.pen
+            move point canvas.pen
                 |> (\( pen, _ ) -> { canvas | pen = pen })
 
 
-update : Msg -> Canvas -> ( Canvas, Cmd Msg )
+update : Msg -> Canvas -> ( Canvas, Maybe API.CanvasMsg )
 update msg canvas =
-    case ( msg, canvas.state ) of
+    let
+        updateToolbox msg_ =
+            let (toolbox, color) = Toolbox.update msg_ canvas.toolbox
+            in { canvas | toolbox = toolbox }
+                |> artistUpdate ( ChangeColor color )
+
+    in case ( msg, canvas.state ) of
         ( Server msg_, Spectator ) ->
-            serverUpdate msg_ canvas ! []
+            ( serverUpdate msg_ canvas, Nothing )
 
         ( ToolboxMsg msg_, Artist ) ->
-            let
-                ( toolbox, color ) =
-                    Toolbox.update msg_ canvas.toolbox
-            in
-                { canvas | toolbox = toolbox }
-                    ! [ cmd <| ArtistMsg <| ChangeColor color ]
+            updateToolbox msg_
 
         ( ToolboxMsg msg_, Pregame ) ->
-            let
-                ( toolbox, color ) =
-                    Toolbox.update msg_ canvas.toolbox
-            in
-                { canvas | toolbox = toolbox }
-                    ! [ cmd <| ArtistMsg <| ChangeColor color ]
+            updateToolbox msg_
 
         ( ArtistMsg msg_, Artist ) ->
             artistUpdate msg_ canvas
 
         ( ArtistMsg msg_, Pregame ) ->
-            pregameUpdate msg_ canvas ! []
+            ( pregameUpdate msg_ canvas, Nothing )
 
         ( msg_, state ) ->
-            Debug.log
-                ("Inconsistent state between server and client!")
-                (canvas)
-                ! []
+            ( Debug.log "Inconsistent state!" canvas, Nothing )
 
 
-subs : Canvas -> Sub Msg
-subs { wslisten, state } =
+subsAdaptor : Canvas -> Maybe (API.CanvasMsg -> Msg)
+subsAdaptor { state } =
     case state of
         Spectator ->
-            wslisten <| Just Server
+            Just Server
 
         Artist ->
-            wslisten Nothing
+            Nothing
 
         Pregame ->
-            wslisten Nothing
+            Nothing

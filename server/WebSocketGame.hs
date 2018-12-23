@@ -22,24 +22,23 @@ import qualified API
 
 class WebSocketGame game where
     newConnection
-        :: API.Channel -> API.Name -> WS.PendingConnection
+        :: API.Name -> WS.PendingConnection
         -> MVar game -> IO ()
 
     new :: API.Name -> IO (MVar game)
 
 
-app
-    :: WebSocketGame game
-    => API.Channel -> API.Name -> MVar game
+app :: WebSocketGame game
+    => API.Name -> MVar game
     -> Wai.Application
-app channel name gameState request continuation =
+app name gameState request continuation =
     continuation $ fromMaybe
         (Wai.responseLBS badRequest400 [] "Not a WebSocket request")
         (maybeWaiRespond)
     where
         tryAddPending :: WS.ServerApp
         tryAddPending pending =
-            newConnection channel name pending gameState
+            newConnection name pending gameState
 
         maybeWaiRespond =
             WaiWS.websocketsApp

@@ -6,7 +6,6 @@ module API
     , Validate(valid)
     , Name
     , RoomID
-    , Channel(..)
     , randomRoomID
     , ScoresState(..)
     , LobbyState(..)
@@ -17,6 +16,8 @@ module API
     , CanvasMsg(..)
     , ChatMsg(..)
     , RoundSummary(..)
+    , GameMsg(..)
+    , GameReq(..)
     ) where
 
 {-| Define all types that come directly from the outside world.
@@ -163,19 +164,6 @@ instance ToJSON Game where
     toEncoding Pintclone = toEncoding ("pintclone" :: Text)
     toJSON Pintclone = toJSON ("pintclone" :: Text)
 
-
-data Channel
-    = Info
-    | Canvas
-    | Chat
-    deriving(Show, Eq)
-
-instance Validate Channel where
-    valid text
-        | text == "info" = Right Info
-        | text == "canvas" = Right Canvas
-        | text == "chat" = Right Chat
-        | otherwise = Left "Invalid channel"
 
 
 -- URL request types --
@@ -329,4 +317,27 @@ instance FromJSON ChatMsg
 instance ToJSON ChatMsg where
     toEncoding = genericToEncoding defaultOptions
 
+
+data GameReq
+    = ReqCanvas CanvasMsg
+    | ReqInfo InfoRequest
+    | ReqChat ChatMsg
+    deriving (Generic, Show)
+
+instance FromJSON GameReq where
+    parseJSON = Aeson.genericParseJSON <-|-
+        (\('R':'e':'q':h:tail') -> toLower h : tail')
+
+data GameMsg
+    = MsgCanvas CanvasMsg
+    | MsgInfo InfoMsg
+    | MsgChat ChatMsg
+    deriving (Generic, Show)
+
+instance ToJSON GameMsg where
+    toEncoding = Aeson.genericToEncoding <-|-
+        (\('M':'s':'g':h:tail') -> toLower h : tail')
+
+    toJSON = Aeson.genericToJSON <-|-
+        (\('M':'s':'g':h:tail') -> toLower h : tail')
 

@@ -33,7 +33,7 @@ newtype Netpinary
 
 {-| In the future, we add redirections to the proper WebSockets urls -}
 Routes.mkRoute "Netpinary" [Routes.parseRoutes|
-/ws/games/pintclone/+[Text] WebSocketAPI GET
+/ws/+[Text] WebSocketAPI GET
 /rooms/create RoomsCreate POST
 /rooms/join RoomsJoin POST
 /rooms/showAll RoomsShow GET
@@ -156,16 +156,15 @@ getWebSocketAPI urlparts env req continue = do
         maybeApp
             :: WSGame.WebSocketGame x
             => [Text] -> ServerState x -> Either Text Wai.Application
-        maybeApp [rawroomid, rawchannel, rawname] serverState =
+        maybeApp [rawroomid, rawname] serverState =
             WSGame.app
-                <$> API.valid rawchannel
-                <*> API.valid rawname
+                <$> API.valid rawname
                 <*> (findRoom serverState =<< API.valid rawroomid)
         maybeApp _ _ = Left "Invalid request path"
 
         findRoom :: ServerState x -> API.RoomID -> Either Text (MVar x)
         findRoom ServerState{rooms} roomid =
-            maybe (Left "The given roomid doesn't exist") (Right)
+            maybe (Left "The given roomid doesn't exist") Right
                 (Map.lookup roomid rooms)
 
 

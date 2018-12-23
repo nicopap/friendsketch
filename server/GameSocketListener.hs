@@ -1,7 +1,7 @@
 module GameSocketListener
     ( Cmd(Reply, Broadcast, ToAllOther)
-    , Response(..)
-    , Request(..)
+    , Response
+    , Request
     , ReactiveGame(..) -- To implement for games
     , Game(gameState)
     , CommandM
@@ -68,7 +68,6 @@ import System.Console.ANSI.Types
     )
 
 import WebSocketGame (WebSocketGame(..))
-import API (Channel(..))
 import qualified API
 
 
@@ -84,20 +83,13 @@ infixl 1 |>>
 infixl 1 >=>
 
 class ReactiveGame game where
-    connect
-        :: Channel -> API.Name -> game
-        -> Either SBS.ByteString (CommandM game)
-    disconnect :: Channel -> API.Name -> game -> CommandM game
+    connect :: API.Name -> game -> Either SBS.ByteString (CommandM game)
+    disconnect :: API.Name -> game -> CommandM game
     receive :: API.Name -> Request -> game -> CommandM game
     init :: API.Name -> IO game
 
 
-data Connections
-    = Connections
-        { canvas :: Maybe WS.Connection
-        , info :: Maybe WS.Connection
-        , chat :: Maybe WS.Connection
-        }
+data Connections = Connections { wschan :: WS.Connection }
 
 
 data Game game
@@ -130,17 +122,9 @@ data Cmd
     -- | Timeout Int (game -> CommandM game)
     -- | Random
 
-data Response
-    = CanvasResponse API.CanvasMsg
-    | InfoResponse API.InfoMsg
-    | ChatResponse API.ChatMsg
-    deriving (Show)
+type Response = API.GameMsg
 
-data Request
-    = CanvasRequest API.CanvasMsg
-    | InfoRequest API.InfoRequest
-    | ChatRequest API.ChatMsg
-    deriving (Show)
+type Request = API.GameReq
 
 
 addCmds :: [Cmd] -> x -> CommandM x
@@ -168,23 +152,22 @@ otherwise
 -}
 newGameConnection
     :: ReactiveGame game
-    => Channel -> API.Name -> WS.PendingConnection
+    => API.Name -> WS.PendingConnection
     -> MVar (Game game) -> IO ()
-newGameConnection channel name pendingConn gameref = do
+newGameConnection name pendingConn gameref = do
     waitLock <- newMVar ()
     modifyMVar_ gameref $ transformRoom waitLock
     takeMVar waitLock
     where
-        transformRoom
-            :: ReactiveGame game
+        transformRoom :: ReactiveGame game
             => MVar () -> Game game -> IO (Game game)
         transformRoom deathNotify Game{gameState,connections} = do
-            maybeAccepted <- acceptIf $ connect channel name gameState
+            maybeAccepted <- acceptIf $ connect name gameState
             case maybeAccepted of
                 Just (conn, cmdM) -> do
                     () <- takeMVar deathNotify
                     _ <- Thread.forkFinally
-                        (receiveLoop channel name conn gameref deathNotify)
+                        (receiveLoop name conn gameref deathNotify)
                         (\_ -> putMVar deathNotify ())
                     newState <- execCmds name connections cmdM
                     return $! Game
@@ -195,25 +178,7 @@ newGameConnection channel name pendingConn gameref = do
                 Nothing ->
                     return $! Game{gameState,connections}
 
-        addConn conn =
-            Map.alter (setConn channel conn) name
-
-        setConn
-            :: Channel -> WS.Connection
-            -> Maybe Connections
-            -> Maybe Connections
-        setConn chan conn (Just old) =
-            Just $ case chan of
-                Info -> old {info = Just conn}
-                Chat -> old {chat = Just conn}
-                Canvas -> old {canvas = Just conn}
-        setConn Info conn Nothing =
-            Just Connections{info=Just conn,chat=Nothing,canvas=Nothing}
-        setConn Canvas conn Nothing =
-            Just Connections{info=Nothing,chat=Nothing,canvas=Just conn}
-        setConn Chat conn Nothing =
-            Just Connections{info=Nothing,chat=Just conn,canvas=Nothing}
-
+        addConn conn = Map.insert name (Connections{wschan = conn})
 
         acceptIf :: Either SBS.ByteString a -> IO (Maybe (WS.Connection, a))
         acceptIf response =
@@ -235,30 +200,25 @@ of received data to be.
 -}
 receiveLoop
     :: ReactiveGame game
-    => Channel -> API.Name -> WS.Connection -> MVar (Game game)
+    => API.Name -> WS.Connection -> MVar (Game game)
     -> MVar () -> IO ()
-receiveLoop channel name conn gameref notifyParent =
+receiveLoop name conn gameref notifyParent =
     Monad.finally loop finish
     where
         loop :: IO ()
         loop = Monad.forever $ do
-            request <- decodeRequest channel <$> WS.receiveData conn
+            request <- Aeson.decode <$> WS.receiveData conn
             case request of
                 Nothing ->
                     WS.sendClose conn
                         ("Invalid format, please leave" :: SBS.ByteString)
 
                 Just request' ->
-                    log name (Left (channel, request'))
+                    log name (Left request')
                     >> modifyMVar_ gameref (handleRequest request')
 
         finish :: IO ()
         finish = modifyMVar_ gameref closeConn >> putMVar notifyParent ()
-
-        decodeRequest :: Channel -> LBS.ByteString -> Maybe Request
-        decodeRequest Chat rawData = ChatRequest <$> Aeson.decode rawData
-        decodeRequest Info rawData = InfoRequest <$> Aeson.decode rawData
-        decodeRequest Canvas rawData = CanvasRequest <$> Aeson.decode rawData
 
         handleRequest :: ReactiveGame g => Request -> Game g -> IO (Game g)
         handleRequest request Game{gameState = oldState, connections} =
@@ -268,15 +228,11 @@ receiveLoop channel name conn gameref notifyParent =
 
         closeConn :: ReactiveGame game => Game game -> IO (Game game)
         closeConn Game{gameState = oldState, connections} =
-            disconnect channel name oldState
+            disconnect name oldState
                 |>> execCmds name newConns
                 >=> ( \s -> Game{gameState=s, connections=newConns} )
             where
-                newConns = Map.update (rmConn channel) name connections
-
-                rmConn Info conns = Nothing
-                rmConn Chat conns = Just conns{chat=Nothing}
-                rmConn Canvas conns = Just conns{canvas=Nothing}
+                newConns = Map.delete name connections
 
 
 execCmds :: API.Name -> Map API.Name Connections -> CommandM a -> IO a
@@ -287,39 +243,27 @@ execCmds name connections CommandM{uncommand = (cmds, newState)} =
 
 
 
-sendChan :: Response -> Connections -> IO ()
-sendChan response conns =
-    case (response, conns) of
-        (CanvasResponse msg, Connections{canvas}) ->
-            maybeSend canvas $ Aeson.encode msg
-
-        (InfoResponse msg, Connections{info}) ->
-            maybeSend info $ Aeson.encode msg
-
-        (ChatResponse msg, Connections{chat}) ->
-            maybeSend chat $ Aeson.encode msg
-    where
-        maybeSend Nothing _ = return ()
-        maybeSend (Just chan) textmsg =
-            WS.sendTextData chan textmsg
+send :: Response -> Connections -> IO ()
+send response Connections{wschan} =
+    WS.sendTextData wschan $ Aeson.encode response
 
 
 cmdAction :: API.Name -> Map API.Name Connections -> Cmd -> IO ()
 cmdAction name connections (Reply response) =
     Map.lookup name connections
-        |> maybe (return ()) (sendChan response)
+        |> maybe (return ()) (send response)
 cmdAction _ connections (Broadcast response) =
     Map.elems connections
-        |> Monad.mapM_ (sendChan response)
+        |> Monad.mapM_ (send response)
 cmdAction name connections (ToAllOther response) =
     Map.assocs connections
         |> filter ((/= name) . fst)
-        |> Monad.mapM_ (sendChan response . snd)
+        |> Monad.mapM_ (send response . snd)
 
 
-log :: API.Name -> Either (Channel, Request) [Cmd] -> IO ()
-log name (Left (channel, request)) = do
-    { putStr "> "; color Cyan; putStr $ show channel; reset
+log :: API.Name -> Either Request [Cmd] -> IO ()
+log name (Left request) = do
+    { putStr "> "; color Cyan; reset
     ; color Blue; putStr $ " " ++ show name ++ "\n  "; reset
     ; putStr $ show request ++ "\n"
     } where
@@ -336,21 +280,18 @@ log name (Right cmds) = do
         showCmd (Broadcast x) = do
             { putStr "  "
             ; color White; putStr "broadcast: "; reset
-            ; showResponse x ; putStr "\n"
+            ; toTerm x ; putStr "\n"
             }
         showCmd (ToAllOther x) = do
             { putStr "  "
             ; color White; putStr "toAllOther: "; reset
-            ; showResponse x ; putStr "\n"
+            ; toTerm x ; putStr "\n"
             }
         showCmd (Reply x) = do
             { putStr "  "
             ; color White; putStr "reply: "; reset
-            ; showResponse x ; putStr "\n"
+            ; toTerm x ; putStr "\n"
             }
         toTerm :: Aeson.ToJSON a => a -> IO ()
         toTerm = putStr . Text.unpack . Aeson.encodeToLazyText
-        showResponse (CanvasResponse x) = toTerm x
-        showResponse (ChatResponse x) = toTerm x
-        showResponse (InfoResponse x) = toTerm x
 

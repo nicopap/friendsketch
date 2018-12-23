@@ -14,13 +14,13 @@ import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
 import Canvas exposing (Canvas)
 import Ports
-import API
+import API exposing (GameReq(InfoReq,CanvasReq), GameMsg)
 
 
 type alias LobbyState_T =
     { room : Room
     , canvas : Canvas
-    , passHidden : Bool
+    , hideId : Bool
     }
 
 
@@ -35,8 +35,8 @@ type alias Pintclone =
     { state : GameLobby
     , roomid : API.RoomID
     , username : API.Name
-    , wslisten : Sub Msg
-    , wssend : API.InfoRequest -> Cmd Msg
+    , wslisten : Maybe (Result String GameMsg -> Msg) -> Sub Msg
+    , wssend : API.GameReq -> Cmd Msg
     }
 
 
@@ -52,19 +52,15 @@ type LobbyMsg
 
 
 type Msg
-    = Info (Result String API.InfoMsg)
+    = Info API.InfoMsg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
-
-
-roomiddisplay : String
-roomiddisplay =
-    "roomiddisplay"
+    | ServerError String
 
 
 copyCatch : API.RoomID -> Cmd msg
 copyCatch roomid =
-    Ports.copyCatch ( roomiddisplay, API.showRoomID roomid )
+    Ports.copyCatch ( "roomiddisplay", API.showRoomID roomid )
 
 
 newCanvas : API.RoomID -> API.Name -> Canvas.State -> Canvas
@@ -108,16 +104,15 @@ sanitizeFlags { roomid, username } =
                 ret
 
 
-new : API.RoomID -> API.Name -> ( Pintclone, Cmd msg )
+new : API.RoomID -> API.Name -> ( Pintclone, Cmd Msg )
 new roomid username =
     ( { state = Uninit
       , roomid = roomid
       , username = username
-      , wslisten =
-            API.wsinfoListen API.Pintclone roomid username <| Just Info
-      , wssend = Cmd.map Info << API.wsinfoSend API.Pintclone roomid username
+      , wslisten = API.wsListen roomid username
+      , wssend = API.wsSend roomid username
       }
-    , API.wsinfoSend API.Pintclone roomid username API.ReqSync
+    , API.wsSend roomid username (InfoReq API.ReqSync)
     )
 
 
@@ -142,7 +137,7 @@ newLobby { players, master } ({ roomid, username } as pintclone) =
                 LobbyState
                     { room = Room.newLobby status username players
                     , canvas = newCanvas roomid username Canvas.Pregame
-                    , passHidden = True
+                    , hideId = True
                     }
         }
             ! if master then
@@ -173,32 +168,25 @@ newRound { playerScores, artist } ({ roomid, username } as pintclone) =
         }
 
 
-canvasUpdate : Canvas.Msg -> GameLobby -> ( GameLobby, Cmd Msg )
-canvasUpdate msg state =
+updateCanvas : Canvas.Msg -> GameLobby -> ( GameLobby, Maybe API.CanvasMsg )
+updateCanvas msg state =
     let
-        newState :
-            { a | room : Room, canvas : Canvas }
-            -> ( { a | room : Room, canvas : Canvas }, Cmd Msg )
-        newState ({ room, canvas } as state_) =
+        newState constr state_ =
             let
                 ( newCanvas, response ) =
-                    Canvas.update msg canvas
+                    Canvas.update msg state_.canvas
             in
-                { state_ | room = room, canvas = newCanvas }
-                    ! [ Cmd.map CanvasMsg response ]
+                ( constr { state_ | canvas = newCanvas }, response )
     in
         case state of
-            Uninit ->
-                Uninit ! []
-
             LobbyState state_ ->
-                mapFirst LobbyState <| newState state_
+                newState LobbyState state_
 
             RoundState state_ ->
-                mapFirst RoundState <| newState state_
+                newState RoundState state_
 
-            FinalState state_ ->
-                FinalState state_ ! []
+            anyelse ->
+                ( anyelse, Nothing )
 
 
 roomChange :
@@ -226,7 +214,7 @@ updateInfo : API.InfoMsg -> Pintclone -> ( Pintclone, Cmd Msg )
 updateInfo msg ({ username, state, wssend } as pintclone) =
     let
         mutateRoom name action =
-            roomChange name state action (wssend API.ReqSync)
+            roomChange name state action (wssend <| InfoReq API.ReqSync)
                 |> mapFirst (\newstate -> { pintclone | state = newstate })
     in
         case msg of
@@ -257,27 +245,29 @@ updateInfo msg ({ username, state, wssend } as pintclone) =
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
 update msg pintclone =
-    case ( msg, pintclone.state ) of
-        ( Info (Ok msg_), _ ) ->
+    let
+        toCmd maybeCanvasMsg =
+            case maybeCanvasMsg of
+                Just canvasMsg ->
+                    pintclone.wssend <| CanvasReq canvasMsg
+                Nothing->
+                        Cmd.none
+    in case ( msg, pintclone.state ) of
+        ( Info msg_, _ ) ->
             updateInfo msg_ pintclone
 
-        ( Info (Err error), _ ) ->
-            Debug.log ("A decoder error happend: " ++ error)
-                ( pintclone, Cmd.none )
-
         ( CanvasMsg msg_, state ) ->
-            mapFirst (\x -> { pintclone | state = x })
-                (canvasUpdate msg_ state)
+            updateCanvas msg_ state
+                |> mapFirst (\x -> { pintclone | state = x })
+                |> mapSecond toCmd
 
-        ( LobbyMsg TogglePassView, LobbyState lobby ) ->
-            { pintclone
-                | state =
-                    LobbyState { lobby | passHidden = not lobby.passHidden }
-            }
-                ! []
+        ( LobbyMsg TogglePassView, LobbyState ({ hideId } as lobby) ) ->
+            ( { pintclone | state = LobbyState {lobby | hideId = not hideId} }
+            , Cmd.none
+            )
 
         ( LobbyMsg StartGame, LobbyState _ ) ->
-            pintclone ! [ pintclone.wssend API.ReqStart ]
+            (pintclone, pintclone.wssend <| InfoReq API.ReqStart)
 
         ( anymsg, anystate ) ->
             Debug.log
@@ -286,34 +276,50 @@ update msg pintclone =
                     ++ "||"
                     ++ toString anystate
                 )
-                pintclone
-                ! [ pintclone.wssend API.ReqSync ]
+                (pintclone , pintclone.wssend <| InfoReq API.ReqSync)
 
 
 subs : Pintclone -> Sub Msg
 subs { wslisten, state } =
-    Sub.batch
-        [ wslisten
-        , case state of
+    let
+        listen : Maybe (API.CanvasMsg -> Msg) -> Result String GameMsg -> Msg
+        listen redirectCanvas response =
+            case response of
+                Err error ->
+                    ServerError error
+
+                Ok (API.InfoMsg msg) ->
+                    Info msg
+
+                Ok (API.CanvasMsg msg) ->
+                    case redirectCanvas of
+                        Just redirect -> redirect msg
+                        Nothing -> ServerError "Recieved a canvas message"
+
+
+        cListen canvas =
+            listen <| Maybe.map ((<<) CanvasMsg) <| Canvas.subsAdaptor canvas
+
+    in
+        wslisten <| Just <| case state of
             LobbyState { canvas } ->
-                Sub.map CanvasMsg <| Canvas.subs canvas
+                cListen canvas
 
             FinalState _ ->
-                Sub.none
+                listen Nothing
 
             RoundState { canvas } ->
-                Sub.map CanvasMsg <| Canvas.subs canvas
+                cListen canvas
 
             Uninit ->
-                Sub.none
-        ]
+                listen Nothing
 
 
 masterDialog : Bool -> API.RoomID -> Html Msg
-masterDialog passHidden roomid =
+masterDialog hideId roomid =
     let
         hiddenStateName =
-            if passHidden then
+            if hideId then
                 "password"
             else
                 "input"
@@ -354,11 +360,11 @@ view pintclone =
             Uninit ->
                 div [] [ h1 [] [ text "Loading ..." ] ]
 
-            LobbyState { room, canvas, passHidden } ->
+            LobbyState { room, canvas, hideId } ->
                 div []
                     [ gameView room canvas
                     , if Room.isMaster room then
-                        masterDialog passHidden pintclone.roomid
+                        masterDialog hideId pintclone.roomid
                       else
                         p [] []
                     ]

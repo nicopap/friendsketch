@@ -17,11 +17,11 @@ module API
         , GameState(..)
         , InfoMsg(..)
         , InfoRequest(..)
-        , wsinfoListen
-        , wsinfoSend
+        , GameMsg(..)
+        , GameReq(..)
+        , wsListen
+        , wsSend
         , CanvasMsg(..)
-        , wscanvasListen
-        , wscanvasSend
         )
 
 {-| Exposes the necessary functions and types to access the backend API.
@@ -182,29 +182,22 @@ exitToGame game (RoomID_ roomid) (Name_ username) =
 
 {-| Generic way of accessing (sending to) a game websocket.
 -}
-wssend :
-    String -> (inmsg -> Value)
-    -> Game -> RoomID -> Name
-    -> inmsg -> Cmd msg
-wssend channel encoder game (RoomID_ roomid) (Name_ name) =
+wsSend : RoomID -> Name -> GameReq -> Cmd msg
+wsSend (RoomID_ roomid) (Name_ name) =
     let
         address =
-            "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
+            "ws://localhost:8080/ws" +/+ roomid +/+ name
     in
-        WebSocket.send address << Enc.encode 0 << encoder
+        WebSocket.send address << Enc.encode 0 << encoderGameReq
 
 
 {-| Generic way of accessing (listening to) a game websocket.
 -}
-wslisten :
-    String -> Decoder inmsg
-    -> Game -> RoomID -> Name
-    -> Maybe (Result String inmsg -> outmsg)
-    -> Sub outmsg
-wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
+wsListen : RoomID -> Name -> Maybe (Result String GameMsg -> msg) -> Sub msg
+wsListen (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
-            "ws://localhost:8080/ws/games" +/+ showGame game +/+ roomid +/+ channel +/+ name
+            "ws://localhost:8080/ws" +/+ roomid +/+ name
     in
         case continuation of
             Nothing ->
@@ -212,34 +205,7 @@ wslisten channel decoder game (RoomID_ roomid) (Name_ name) continuation =
 
             Just continuation_ ->
                 WebSocket.listen address <|
-                    continuation_ << Dec.decodeString decoder
-
-
-wscanvasListen :
-    Game -> RoomID -> Name
-    -> Maybe (Result String CanvasMsg -> msg)
-    -> Sub msg
-wscanvasListen =
-    wslisten "canvas" decoderCanvasMsg
-
-
-wscanvasSend : Game -> RoomID -> Name -> CanvasMsg -> Cmd msg
-wscanvasSend =
-    wssend "canvas" encoderCanvasMsg
-
-
-wsinfoListen :
-    Game -> RoomID -> Name
-    -> Maybe (Result String InfoMsg -> msg)
-    -> Sub msg
-wsinfoListen =
-    wslisten "info" decoderInfo
-
-
-wsinfoSend : Game -> RoomID -> Name -> InfoRequest -> Cmd msg
-wsinfoSend =
-    wssend "info" encoderInfoRequest
-
+                    continuation_ << Dec.decodeString decoderGameMsg
 
 
 --- RoundSummary ---
@@ -442,3 +408,27 @@ encoderCanvasMsg msg =
             CnvEnd ->
                 Enc.object [ ( "end", Enc.list [] ) ]
 
+type GameMsg
+    = CanvasMsg CanvasMsg
+    | InfoMsg InfoMsg
+
+type GameReq
+    = CanvasReq CanvasMsg
+    | InfoReq InfoRequest
+
+
+decoderGameMsg : Decoder GameMsg
+decoderGameMsg =
+    oneOf
+        [ "canvas" := CanvasMsg <*| decoderCanvasMsg
+        , "info" := InfoMsg <*| decoderInfo
+        ]
+
+encoderGameReq : GameReq -> Value
+encoderGameReq req =
+    case req of
+        CanvasReq req_ ->
+            Enc.object [ ("canvas", encoderCanvasMsg req_)]
+
+        InfoReq req_ ->
+            Enc.object [ ("info", encoderInfoRequest req_)]

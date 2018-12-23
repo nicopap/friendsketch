@@ -143,21 +143,19 @@ InfoRequest
 	= { sync: [] }
 	| { start: [] }
 	| { warn: LogString }
+
+GameReq
+	= { canvas: CanvasMsg }
+	| { info: InfoRequest }
+
+GameMsg
+	= { canvas: CanvasMsg }
+	| { info: InfoMsg }
 '''
 
 
-==== Canvas ====
-''GET /ws/games/pintclone/:RoomID/canvas/:Name''
-The URL of the canvas websocket for the given room. Describes what is being drawn on the canvas.
-	* Accepts: CanvasMsg (only when the user is artist)
-	* Sends: CanvasMsg (only when the user is spectator)
-
-==== Chat ====
-''GET /ws/games/pintclone/:RoomID/chat/:Name''
-The URL of the chat websocket for the given room.
-
-==== Info ====
-''GET /ws/games/pintclone/:RoomID/info/:Name''
+==== Websockets ====
+''GET /ws/:RoomID/:Name''
 The URL of the information websocket, used to recieve informations about the state of the room. does only send data.
-	* Accepts: InfoRequest
-	* Sends: InfoMsg
+	* Accepts: GameReq
+	* Sends: GameMsg
