@@ -251,6 +251,12 @@ hovering mark.
 move : Point -> Pen -> ( Pen, Maybe Point )
 move point pen =
     case pen of
+        Hovering _ ->
+            ( Hovering point, Nothing )
+
+        Away ->
+            ( Hovering point, Nothing )
+
         Drawing stroke ->
             case Stroke.drawFeedback point stroke of
                 Just newstroke ->
@@ -258,12 +264,6 @@ move point pen =
 
                 Nothing ->
                     ( Drawing stroke, Nothing )
-
-        Hovering _ ->
-            ( Hovering point, Nothing )
-
-        Away ->
-            ( Hovering point, Nothing )
 
 
 {-| What happens when a client goes from unpressed to pressed pen.
@@ -286,7 +286,7 @@ artistUpdate msg canvas =
         clientMove point =
             move point canvas.pen
                 |> mapFirst (\p -> { canvas | pen = p })
-                |> mapSecond ( Maybe.map API.CnvContinue )
+                |> mapSecond (Maybe.map API.CnvContinue)
     in
         case msg of
             Hover point ->
@@ -297,22 +297,13 @@ artistUpdate msg canvas =
                     |> clientPress point
 
             Lift ->
-                ( lift canvas , Just API.CnvEnd )
+                ( lift canvas, Just API.CnvEnd )
 
             ChangeColor newcolor ->
-                ( { canvas | color = newcolor } , Nothing )
+                ( { canvas | color = newcolor }, Nothing )
 
             ChangePenSize newsize ->
-                ( { canvas | strokeSize = newsize } , Nothing )
-
-            LeaveCanvas ->
-                case canvas.pen of
-                    Drawing _ ->
-                        ( lift canvas |> (\c -> { c | pen = Away })
-                        , Just API.CnvEnd
-                        )
-                    _ ->
-                        ( { canvas | pen = Away } , Nothing )
+                ( { canvas | strokeSize = newsize }, Nothing )
 
             EnterCanvas ( point, True ) ->
                 press point canvas.color canvas.strokeSize
@@ -320,6 +311,16 @@ artistUpdate msg canvas =
 
             EnterCanvas ( point, False ) ->
                 clientMove point
+
+            LeaveCanvas ->
+                case canvas.pen of
+                    Drawing _ ->
+                        ( lift canvas |> (\c -> { c | pen = Away })
+                        , Just API.CnvEnd
+                        )
+
+                    _ ->
+                        ( { canvas | pen = Away }, Nothing )
 
 
 serverUpdate : API.CanvasMsg -> Canvas -> Canvas
@@ -386,28 +387,31 @@ update : Msg -> Canvas -> ( Canvas, Maybe API.CanvasMsg )
 update msg canvas =
     let
         updateToolbox msg_ =
-            let (toolbox, color) = Toolbox.update msg_ canvas.toolbox
-            in { canvas | toolbox = toolbox }
-                |> artistUpdate ( ChangeColor color )
+            let
+                ( toolbox, color ) =
+                    Toolbox.update msg_ canvas.toolbox
+            in
+                { canvas | toolbox = toolbox }
+                    |> artistUpdate (ChangeColor color)
+    in
+        case ( msg, canvas.state ) of
+            ( Server msg_, Spectator ) ->
+                ( serverUpdate msg_ canvas, Nothing )
 
-    in case ( msg, canvas.state ) of
-        ( Server msg_, Spectator ) ->
-            ( serverUpdate msg_ canvas, Nothing )
+            ( ToolboxMsg msg_, Artist ) ->
+                updateToolbox msg_
 
-        ( ToolboxMsg msg_, Artist ) ->
-            updateToolbox msg_
+            ( ToolboxMsg msg_, Pregame ) ->
+                updateToolbox msg_
 
-        ( ToolboxMsg msg_, Pregame ) ->
-            updateToolbox msg_
+            ( ArtistMsg msg_, Artist ) ->
+                artistUpdate msg_ canvas
 
-        ( ArtistMsg msg_, Artist ) ->
-            artistUpdate msg_ canvas
+            ( ArtistMsg msg_, Pregame ) ->
+                ( pregameUpdate msg_ canvas, Nothing )
 
-        ( ArtistMsg msg_, Pregame ) ->
-            ( pregameUpdate msg_ canvas, Nothing )
-
-        ( msg_, state ) ->
-            ( Debug.log "Inconsistent state!" canvas, Nothing )
+            ( msg_, state ) ->
+                ( Debug.log "Inconsistent state!" canvas, Nothing )
 
 
 subsAdaptor : Canvas -> Maybe (API.CanvasMsg -> Msg)

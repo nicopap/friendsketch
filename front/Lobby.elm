@@ -6,7 +6,7 @@ import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events exposing (onClick, onInput)
 import Task exposing (Task)
-import Http exposing (Error (Timeout,NetworkError,BadStatus))
+import Http exposing (Error(Timeout, NetworkError, BadStatus))
 import Debug
 import API
 
@@ -46,6 +46,7 @@ validateNameInput input =
 
         Nothing ->
             Err input
+
 
 validateRoomID : String -> Result String API.RoomID
 validateRoomID input =
@@ -116,14 +117,25 @@ attemptCreate username =
 processAnswer : Http.Error -> Status
 processAnswer error =
     case error of
-        Timeout -> OtherError "Request timed out"
-        NetworkError -> OtherError "Cannot connect to server"
-        (BadStatus { status }) ->
+        Timeout ->
+            OtherError "Request timed out"
+
+        NetworkError ->
+            OtherError "Cannot connect to server"
+
+        BadStatus { status } ->
             case status.code of
-                404 -> InexistantRoom
-                409 -> AlreadyTakenName
-                _ -> OtherError status.message
-        anyelse -> OtherError (toString anyelse)
+                404 ->
+                    InexistantRoom
+
+                409 ->
+                    AlreadyTakenName
+
+                _ ->
+                    OtherError status.message
+
+        anyelse ->
+            OtherError (toString anyelse)
 
 
 update : Msg -> Welcome -> ( Welcome, Cmd Msg )
@@ -149,7 +161,6 @@ update msg welcome =
             , Cmd.none
             )
 
-
         OpenGame game roomid username ->
             ( welcome
             , API.exitToGame game roomid username
@@ -165,16 +176,15 @@ update msg welcome =
 -- VIEW --
 
 
-
 hbutton : Maybe Msg -> String -> Html Msg
 hbutton maybemsg buttonLabel =
     let
         button attrib =
-            H.p [] [H.button attrib [H.text buttonLabel ] ]
+            H.p [] [ H.button attrib [ H.text buttonLabel ] ]
     in
         maybemsg
-            |> Maybe.map (\msg -> [onClick msg])
-            |> Maybe.withDefault [HA.disabled True]
+            |> Maybe.map (\msg -> [ onClick msg ])
+            |> Maybe.withDefault [ HA.disabled True ]
             |> button
 
 
@@ -195,60 +205,73 @@ inputField label msg status content =
                     [ H.text content ]
                 ]
     in
-        basicTextfield <| case status of
-            Disabled -> [ HA.disabled True ]
-            Bad -> [ HA.class "badinput", onInput msg ]
-            Neutral -> [ onInput msg ]
+        basicTextfield <|
+            case status of
+                Disabled ->
+                    [ HA.disabled True ]
+
+                Bad ->
+                    [ HA.class "badinput", onInput msg ]
+
+                Neutral ->
+                    [ onInput msg ]
+
+
+toRaw : (a -> x) -> Result x a -> x
+toRaw translator value =
+    case value of
+        Ok v ->
+            translator v
+
+        Err e ->
+            e
 
 
 view : Welcome -> Html Msg
 view { username, roomInput, status } =
     let
         nameValue =
-            case username of
-                Err value -> value
-                Ok value -> API.showName value
+            toRaw API.showName username
 
         roomValue =
-            case roomInput of
-                Err value -> value
-                Ok value -> API.showRoomID value
+            toRaw API.showRoomID roomInput
 
-        page {roomStatus, nameStatus} =
+        page { roomStatus, nameStatus } =
             [ inputField "Your username:" UpdateUserName nameStatus nameValue
             , hbutton
                 (Maybe.map CreateGame <| toMaybe username)
                 "Create a new game room"
             , H.div
-                [HA.class "joinbox"]
+                [ HA.class "joinbox" ]
                 [ hbutton
-                (Maybe.map2 JoinGame (toMaybe roomInput) (toMaybe username))
+                    (Maybe.map2 JoinGame (toMaybe roomInput) (toMaybe username))
                     "Join an existing room"
                 , inputField "Room name:" UpdateRoom roomStatus roomValue
                 ]
             ]
 
         info extraClass message =
-            [ H.div [HA.class ("info" ++ extraClass)] [H.text message]]
+            [ H.div [ HA.class ("info" ++ extraClass) ] [ H.text message ] ]
+
         form =
             case status of
                 AlreadyTakenName ->
-                    page {roomStatus = Disabled, nameStatus = Bad}
-                    ++ info " info-warning" "Name is aleady taken"
+                    page { roomStatus = Disabled, nameStatus = Bad }
+                        ++ info " info-warning" "Name is aleady taken"
 
                 AttemptingConnection ->
-                    page {roomStatus = Disabled, nameStatus = Disabled}
-                    ++ info "" "Connecting ..."
+                    page { roomStatus = Disabled, nameStatus = Disabled }
+                        ++ info "" "Connecting ..."
 
                 NotFailedYet ->
-                    page {roomStatus = Neutral, nameStatus = Neutral}
+                    page { roomStatus = Neutral, nameStatus = Neutral }
 
                 InexistantRoom ->
-                    page {roomStatus = Bad, nameStatus = Neutral}
-                    ++ info " info-warning" "That room doesn't exist!"
+                    page { roomStatus = Bad, nameStatus = Neutral }
+                        ++ info " info-warning" "That room doesn't exist!"
 
                 OtherError errmsg ->
-                    page {roomStatus = Neutral, nameStatus = Neutral}
-                    ++ info " info-warning" ("Error: " ++ errmsg)
+                    page { roomStatus = Neutral, nameStatus = Neutral }
+                        ++ info " info-warning" ("Error: " ++ errmsg)
     in
         H.div [] form
