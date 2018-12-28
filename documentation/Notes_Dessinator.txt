@@ -24,6 +24,11 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
+> Concider using assayer crate for validation
+> concider accepting an RC in GameMsg send channel as to avoid copying data
+> Concider moving game logic in its own module
+> Figure out how to URL-decode URLs so as to avoid surprises with %20 etc
+
 ===== Websocket spec to implement =====
 * 1009 terminating because message is too big
 * 1008 Generic termminate (ie: did not respect API spec)

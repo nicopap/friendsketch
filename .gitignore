@@ -1,8 +1,5 @@
 elm-stuff
 build
-dist
-cabal.sandbox.config
-.cabal-sandbox
+target
 tests
-.stack-work
 documentation

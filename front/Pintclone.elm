@@ -8,8 +8,8 @@ accordingly.
 import Tuple exposing (mapSecond, mapFirst)
 import Maybe
 import Debug
-import Html as H exposing (Html, programWithFlags, div, p, b, h1, text)
-import Html.Attributes as HA exposing (id, class)
+import Html as H exposing (Html, programWithFlags, div, p, b, h1, h3, text, pre)
+import Html.Attributes as HA exposing (id, class, href)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
 import Canvas exposing (Canvas)
@@ -29,6 +29,7 @@ type GameLobby
     | LobbyState LobbyState_T
     | RoundState { room : Room, canvas : Canvas }
     | FinalState { room : Room, scores : List ( API.Name, Int ) }
+    | ErrorState { message : String }
 
 
 type alias Pintclone =
@@ -37,6 +38,7 @@ type alias Pintclone =
     , username : API.Name
     , wslisten : Maybe (Result String GameMsg -> Msg) -> Sub Msg
     , wssend : API.GameReq -> Cmd Msg
+    , syncRetries : Int
     }
 
 
@@ -111,6 +113,7 @@ new roomid username =
       , username = username
       , wslisten = API.wsListen roomid username
       , wssend = API.wsSend roomid username
+      , syncRetries = 0
       }
     , API.wsSend roomid username (InfoReq API.ReqSync)
     )
@@ -192,19 +195,26 @@ updateCanvas msg state =
 
 
 roomMod : i -> GameLobby -> (i -> Room -> Room) -> Cmd m -> ( GameLobby, Cmd m )
-roomMod name state change ifError =
-    case state of
-        Uninit ->
-            state ! [ ifError ]
+roomMod name state change ifUninit =
+    let
+        mod f state_ room =
+            ( f { state_ | room = change name room }, Cmd.none )
+    in
+        case state of
+            Uninit ->
+                state ! [ ifUninit ]
 
-        LobbyState ({ room } as state_) ->
-            LobbyState { state_ | room = change name room } ! []
+            LobbyState ({ room } as state_) ->
+                mod LobbyState state_ room
 
-        RoundState ({ room } as state_) ->
-            RoundState { state_ | room = change name room } ! []
+            RoundState ({ room } as state_) ->
+                mod RoundState state_ room
 
-        FinalState ({ room } as state_) ->
-            FinalState { state_ | room = change name room } ! []
+            FinalState ({ room } as state_) ->
+                mod FinalState state_ room
+
+            ErrorState _ ->
+                ( state, Cmd.none )
 
 
 updateInfo : API.InfoMsg -> Pintclone -> ( Pintclone, Cmd Msg )
@@ -239,7 +249,7 @@ updateInfo msg ({ username, state, wssend } as pintclone) =
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
-update msg pintclone =
+update msg pintclone_ =
     let
         toCmd maybeCanvasMsg =
             case maybeCanvasMsg of
@@ -248,6 +258,17 @@ update msg pintclone =
 
                 Nothing ->
                     Cmd.none
+
+        pintclone =
+            { pintclone_ | syncRetries = 0 }
+
+        syncPintclone =
+            { pintclone_ | syncRetries = pintclone_.syncRetries + 1 }
+
+        errorWith message =
+            ( { pintclone_ | state = ErrorState { message = message } }
+            , pintclone.wssend <| InfoReq <| API.ReqWarn message
+            )
     in
         case ( msg, pintclone.state ) of
             ( Info msg_, _ ) ->
@@ -268,10 +289,19 @@ update msg pintclone =
             ( LobbyMsg StartGame, LobbyState _ ) ->
                 ( pintclone, pintclone.wssend <| InfoReq API.ReqStart )
 
+            ( ServerError message, _) ->
+                errorWith message
+
             ( anymsg, anystate ) ->
-                Debug.log
-                    ("Inconsistent message:" ++ toString (anymsg, anystate))
-                    ( pintclone, pintclone.wssend <| InfoReq API.ReqSync )
+                if syncPintclone.syncRetries > 5 then
+                    errorWith
+                        ("Failure to sync:" ++ toString ( anymsg, anystate ))
+                else
+                    Debug.log
+                        ("Inconsistency:" ++ toString ( anymsg, anystate ))
+                        ( syncPintclone
+                        , pintclone.wssend <| InfoReq API.ReqSync
+                        )
 
 
 subs : Pintclone -> Sub Msg
@@ -309,6 +339,9 @@ subs { wslisten, state } =
                     cListen canvas
 
                 Uninit ->
+                    listen Nothing
+
+                ErrorState _ ->
                     listen Nothing
     in
         wslisten <| Just toSend
@@ -373,3 +406,36 @@ view pintclone =
 
             FinalState { room, scores } ->
                 div [] [ h1 [] [ text "NOT IMPLEMENTED YET" ] ]
+
+            ErrorState { message } ->
+                div []
+                    [ h3 [] [ text "Game error" ]
+                    , p []
+                        [ text
+                            ("An inconsistency between the game server"
+                                ++ " and the app occured, leading to the"
+                                ++ " forecefull shutdown of your party."
+                                ++ " Clearing the cache for this site and"
+                                ++ " refreshing might help (ctrl+F5)"
+                            )
+                        ]
+                    , p []
+                        [ text
+                            ("We are sorry for the inconvenience"
+                                ++ " this causes you."
+                            )
+                        ]
+                    , H.a
+                        [ href "/lobby/index.html"]
+                        [ H.button [] [ text "Join a different game" ]
+                        ]
+                    , p []
+                        [ text
+                            ("A copy of the following error message has"
+                                ++ " already been sent to the developers."
+                                ++ " We will take care that you won't"
+                                ++ " experience this in the future."
+                            )
+                        ]
+                    , pre [] [ text message ]
+                    ]

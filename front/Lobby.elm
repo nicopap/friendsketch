@@ -6,7 +6,7 @@ import Html as H exposing (Html)
 import Html.Attributes as HA
 import Html.Events exposing (onClick, onInput)
 import Task exposing (Task)
-import Http exposing (Error(Timeout, NetworkError, BadStatus))
+import Http exposing (Error(Timeout, NetworkError, BadStatus, BadPayload))
 import Debug
 import API
 
@@ -80,6 +80,8 @@ new =
 -- UPDATE --
 
 
+{-| Tries to POST /rooms/join {username: name, roomid: roomid}.
+-}
 attemptJoin :
     API.Name
     -> API.RoomID
@@ -100,9 +102,9 @@ openLink result =
             HttpError errmsg
 
 
-{-| Tries to POST /rooms/create { game: "pintclone", settings: settings}
-With the answer (the room id), directly attempts to join with given username.
-This will redirect the browser to the new page, in case of failure, cry?
+{-| Tries to POST /rooms/create { game: "pintclone", username: username}
+With the answer (the room id), then attempts to join with given username.
+This will redirect the browser to the new page if the join is successful.
 -}
 attemptCreate : API.Name -> Cmd Msg
 attemptCreate username =
@@ -133,6 +135,9 @@ processAnswer error =
 
                 _ ->
                     OtherError status.message
+
+        BadPayload reason _ ->
+            OtherError reason
 
         anyelse ->
             OtherError (toString anyelse)

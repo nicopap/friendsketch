@@ -13,7 +13,6 @@ Created Tuesday 12 September 2017
 
 /lobby
 	/index.html : welcome page for connecting to a game
-	/join/index.html : If user decided to join an existing game, brings up this page
 
 -- GAMES --
 
@@ -24,7 +23,7 @@ Created Tuesday 12 September 2017
 
 /rooms
 	/create POST json : create a new room and get the room name as return value
-	/join POST json : Get the URI of a websocket to info channel for given room, as given username
+	/join POST json : Attempt to join a room, return the game type if successful
 
 -- MISC --
 /ws : Base url for all websocket endpoints
@@ -53,7 +52,7 @@ A user name. Can be arbitrary unicode alphanumericals.
 * Will be refused if the size (in bytes, as opposed to characters) is greater than a certain ammount
 
 === RoomID ===
-''RoomID ~= [a-z0-9]{5}''
+''RoomID ~= [A-Z][a-z]+\\.[A-Z][a-z]*[A-Z]?[a-z]+''
 A room id, let identify a unique party going on currently.
 * Server-generated. Only values that you got (directly or indirectly) from the server will be accepted,  most likely.
 
@@ -82,7 +81,7 @@ Create a room for given ''game''.
 
 ==== Join a Room ====
 ''POST /rooms/join {roomid: RoomID, username: Name}''
-Attempts to join an existing room ''roomid'' as ''username'' .
+Attempts to join an existing room ''roomid'' as ''username'' . This will "open" a websocket port at location ''/ws/:roomid/:username'' that the user can connect to to play the game
 	* Returns:
 		* __200 success__ Game | The game you are connecting to.
 		* __404 not found__ | ''roomid'' is not a room.
@@ -156,6 +155,10 @@ GameMsg
 
 ==== Websockets ====
 ''GET /ws/:RoomID/:Name''
+'''
+/ws/:RoomID/:Name
+'''
+ is only available after having ''Post''ed the '':Name'' in the right '':RoomID'' using the ''/rooms/join'' resource.
 The URL of the information websocket, used to recieve informations about the state of the room. does only send data.
 	* Accepts: GameReq
 	* Sends: GameMsg

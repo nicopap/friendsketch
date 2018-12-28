@@ -1,7 +1,6 @@
 BROWSER ?= firefox
 BUILD_DIR = build
 NET_DIR = assets
-ALT_WAI_ROUTES = ~/code/gitimpo/wai-routes
 
 # --- Goals ---
 .DEFAULT_GOAL = experiment
@@ -18,7 +17,7 @@ CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(shell find $(NET_DIR) -type f
 
 # --- Javascript content ---
 ELM_SOURCE = $(shell find front -type f)
-HASKELL_SOURCE = $(shell find server -type f)
+RUST_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/pintclone/code.js : front/Pintclone.elm $(ELM_SOURCE)
 	elm-make $(ELM_FLAGS) $< --output $@
@@ -33,13 +32,15 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 
 experiment : backend frontend
-	(sleep 2 ; $(BROWSER) "http://localhost:8080/lobby") &
-	stack exec netpinary-server
+	(sleep 1 ; $(BROWSER) "http://localhost:8080/") &
+	cargo build
+	RUST_LOG=debug ./target/debug/friendsketch
 
 
 frontend : $(JS_TARGETS) $(CONTENT)
-backend : $(HASKELL_SOURCE) friendsketch-server.cabal
-	stack build
+backend : $(RUST_SOURCE) Cargo.toml
+	cargo build
 
 clean:
 	rm -rf $(BUILD_DIR)/*
+	cargo clean

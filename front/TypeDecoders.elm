@@ -179,7 +179,15 @@ Note:
 
 -}
 (:-) : String -> x -> J.Decoder x
-(:-) field constr = field := J.succeed constr
+(:-) field constr =
+    J.string
+        |> J.andThen (\stringName ->
+            if stringName == field then
+                J.succeed constr
+            else
+                J.fail ("expected a field with name \""++ field ++ "\""
+                    ++ " instead got: \"" ++ stringName ++ "\"")
+        )
 
 
 {-| What to do with a given field in a sum type decoder declaration.

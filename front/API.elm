@@ -1,7 +1,6 @@
 module API
     exposing
-        ( exitToJoin
-        , Game(..)
+        ( Game(..)
         , exitToGame
         , RoomID
         , validRoomID
@@ -111,15 +110,7 @@ showRoomID (RoomID_ stringrep) =
 
 validRoomID : String -> Maybe RoomID
 validRoomID =
-    Maybe.map RoomID_ << regexValidate "^[a-z0-9]{5}$"
-
-
-exitToJoin : Name -> Cmd msg
-exitToJoin (Name_ username) =
-    Ports.stashAndOpen
-        ( [("username", username)]
-        , "/lobby/join/index.html"
-        )
+    Maybe.map RoomID_ << regexValidate "^[A-Z][a-z]+\\.[A-Z][a-z]*[A-Z]?[a-z]+$"
 
 
 roomsCreate : String
@@ -172,7 +163,7 @@ exitToGame : Game -> RoomID -> Name -> Cmd msg
 exitToGame game (RoomID_ roomid) (Name_ username) =
     Ports.stashAndOpen
         ( [("roomid", roomid), ("username", username)]
-        , "/games" +/+ showGame game
+        , "/games" +/+ showGame game +/+ "index.html"
         )
 
 
@@ -198,6 +189,15 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
             "ws://localhost:8080/ws" +/+ roomid +/+ name
+
+        decodeWithNiceError toDecode =
+            Dec.decodeString decoderGameMsg toDecode
+                |> Result.mapError (\decodeErr ->
+                    "{\"json\":"
+                        ++ toString decodeErr
+                        ++ ",\"msg\":"++toDecode
+                        ++ "}"
+                )
     in
         case continuation of
             Nothing ->
@@ -205,7 +205,7 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
 
             Just continuation_ ->
                 WebSocket.listen address <|
-                    continuation_ << Dec.decodeString decoderGameMsg
+                    continuation_ << decodeWithNiceError
 
 
 --- RoundSummary ---
@@ -337,18 +337,15 @@ decoderInfo =
 type InfoRequest
     = ReqSync
     | ReqStart
+    | ReqWarn String
 
 
 encoderInfoRequest : InfoRequest -> Value
 encoderInfoRequest infoRequest =
-    let
-        type_ =
-            case infoRequest of
-                ReqSync -> "sync"
-                ReqStart -> "start"
-    in
-        Enc.object [ ( type_, Enc.list [] ) ]
-
+    case infoRequest of
+        ReqSync -> Enc.string "sync"
+        ReqStart -> Enc.string "start"
+        ReqWarn msg -> Enc.object [("warn", Enc.string msg)]
 
 
 --- CanvasMsg ---
@@ -406,7 +403,7 @@ encoderCanvasMsg msg =
                 Enc.object [ ( "continue", encoderPoint point ) ]
 
             CnvEnd ->
-                Enc.object [ ( "end", Enc.list [] ) ]
+                Enc.string "end"
 
 type GameMsg
     = CanvasMsg CanvasMsg
