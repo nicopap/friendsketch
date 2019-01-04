@@ -1,6 +1,7 @@
 BROWSER ?= firefox
-BUILD_DIR = build
+BUILD_DIR = build/friendk
 NET_DIR = assets
+LOG_LEVEL = info
 
 # --- Goals ---
 .DEFAULT_GOAL = experiment
@@ -32,9 +33,9 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 
 experiment : backend frontend
-	(sleep 1 ; $(BROWSER) "http://localhost:8080/") &
-	cargo build
-	RUST_LOG=debug ./target/debug/friendsketch
+	$(BROWSER) "http://localhost:8080/friendk/lobby" &
+	caddy -conf Caddyfile  -log /dev/stdout &
+	RUST_LOG=$(LOG_LEVEL) ./target/debug/friendsketch
 
 
 frontend : $(JS_TARGETS) $(CONTENT)

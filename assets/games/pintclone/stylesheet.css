@@ -59,19 +59,19 @@ input[type=color] {
 }
 
 .artist-empty #canvas{
-	background-image: url('/icons/stripbg.svg');
+	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
 }
 
 
 .pregame #canvas{
-	background-image: url('/icons/stripbg.svg');
+	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
 }
 
 
 .pregame #canvas::before {
-	content: "The round didn't start yet";
+	content: "The round hasn't started yet";
 	color: #dedede;
 	font-size: 4em;
 	font-weight: bold;

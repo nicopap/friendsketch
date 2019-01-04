@@ -24,6 +24,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
+[[+devops]]
+
 > Concider using assayer crate for validation
 > concider accepting an RC in GameMsg send channel as to avoid copying data
 > Concider moving game logic in its own module

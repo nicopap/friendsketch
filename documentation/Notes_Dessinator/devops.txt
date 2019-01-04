@@ -1,0 +1,22 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2018-12-28T17:38:03+01:00
+
+====== devops ======
+Created Friday 28 December 2018
+
+How to deploy to the rpi?
+
+problem 1: handling nginx
+* Can serve static files → if using nginx, remove ''dir'' facility for release? >Seems helpful, should do that
+	* Redirect ''fkch/rooms'' and ''fkch/ws'' to the server software ports
+* Setup dev tooling to use nginx for live testing → settled to use ''caddy'' for testing on the dev machine
+
+problem 2: managing user access rights to game static pages + server user right
+* Write a small script that does all of it in one go, and ask for password to execute that script
+* Server must be able to generate log and responde to requests on his own port (8073)
+→ Settled on dedicating ''friendk'' as a directory owned by ''nicola'' and just move automatically all the files there
+
+problem 3: restarting server
+* Terminate previous version, replace the binary, launch
+* Make sure to properly set RUST_LOG=warn env variable and redirect stderr to log file

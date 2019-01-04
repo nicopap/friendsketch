@@ -11,9 +11,8 @@ use serde::Deserialize;
 use warp::{
     self,
     filters::ws::Ws2,
-    fs::dir,
     http::{response::Response, StatusCode},
-    path, reply, Filter,
+    path, Filter,
 };
 
 use self::{api::Name, games::GameManager, roomids::RoomId};
@@ -84,17 +83,13 @@ fn main() {
     let server = Arc::new(ServerState::new());
     let server_ref = warp::any().map(move || server.clone());
 
-    let root = path::end().map(reply).map(|r| {
-        let r = reply::with_header(r, "Location", "/lobby/index.html");
-        reply::with_status(r, StatusCode::FOUND)
-    });
     macro_rules! json_body {
         () => {
             warp::body::content_length_limit(1024 * 16).and(warp::body::json())
         };
     };
 
-    let room_path = warp::post2().and(path("rooms"));
+    let room_path = warp::post2().and(path!("friendk" / "rooms"));
 
     let room_join = room_path
         .and(path("join"))
@@ -110,18 +105,16 @@ fn main() {
         .and(server_ref.clone())
         .and_then(handle_create);
 
-    let chat = path!("ws" / String / String)
+    let websockets = path!("friendk" / "ws" / String / String)
         .and(warp::ws2())
         .and(server_ref.clone())
         .and_then(accept_conn);
 
-    let routes = root
+    let routes = websockets
         .or(room_join)
         .or(room_create)
-        .or(chat)
-        .or(dir("build"))
         .with(warp::log("friendsketch"));
-    warp::serve(routes).run(([127, 0, 0, 1], 8080));
+    warp::serve(routes).run(([127, 0, 0, 1], 8073));
 }
 
 fn handle_create(

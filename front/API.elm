@@ -115,7 +115,7 @@ validRoomID =
 
 roomsCreate : String
 roomsCreate =
-    "/rooms/create"
+    "/friendk/rooms/create"
 
 
 roomsCreateRequest : Game -> Name -> Http.Request RoomID
@@ -136,7 +136,7 @@ roomsCreateRequest game (Name_ name) =
 
 roomsJoin : String
 roomsJoin =
-    "/rooms/join"
+    "/friendk/rooms/join"
 
 
 roomsJoinRequest : RoomID -> Name -> Http.Request Game
@@ -163,7 +163,7 @@ exitToGame : Game -> RoomID -> Name -> Cmd msg
 exitToGame game (RoomID_ roomid) (Name_ username) =
     Ports.stashAndOpen
         ( [("roomid", roomid), ("username", username)]
-        , "/games" +/+ showGame game +/+ "index.html"
+        , "/friendk/games" +/+ showGame game +/+ "index.html"
         )
 
 
@@ -177,7 +177,7 @@ wsSend : RoomID -> Name -> GameReq -> Cmd msg
 wsSend (RoomID_ roomid) (Name_ name) =
     let
         address =
-            "ws://localhost:8080/ws" +/+ roomid +/+ name
+            "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
     in
         WebSocket.send address << Enc.encode 0 << encoderGameReq
 
@@ -188,7 +188,7 @@ wsListen : RoomID -> Name -> Maybe (Result String GameMsg -> msg) -> Sub msg
 wsListen (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
-            "ws://localhost:8080/ws" +/+ roomid +/+ name
+            "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
 
         decodeWithNiceError toDecode =
             Dec.decodeString decoderGameMsg toDecode
