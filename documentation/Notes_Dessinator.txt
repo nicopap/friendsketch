@@ -29,27 +29,13 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Concider using assayer crate for validation
 > concider accepting an RC in GameMsg send channel as to avoid copying data
 > Concider moving game logic in its own module
-> Figure out how to URL-decode URLs so as to avoid surprises with %20 etc
+> Figure out how to URL-decode URLs so as to avoid surprises with %20 and / **(IMPORTANT)**
+	> Do that in the client as well as the server
+	> Manage malformed URLs in server properly
 
-===== Websocket spec to implement =====
-* 1009 terminating because message is too big
-* 1008 Generic termminate (ie: did not respect API spec)
-* Use ''sub-protocol'' fields to specify which version of the API (and which data) is being transmitted)
-* Use binary data using something like ''protobuff'' 
-
-===== Dreams =====
-* Handle explicitely user names in Main.hs.
-	* Issue being that information is redundant.
-	* This solves the problem of incoherent REST API calls for connecting to rooms.
-* Implement test suite based on specification state machines / formally test the state machines
 
 ===== Current roadmap =====
-* Mask room input in join page
 * Make sure client handles properly joining in middle of Drawing & leaving artist
-* Improve readability of logging for websockets:
-	* Implement show in API.hs
-	* merge into single entry request+response
-	* better look for requests
 * In join page, when changing name, put a confirmation button instead of automatically redirecting
 * Improve how the backend handles stuff
 	* Sanitize names and roomids in backend
@@ -61,8 +47,4 @@ Some sections relates to the design and the choices behind it, other to the expe
 * Fix chat
 	* Frontend: create interface (for chat, and word to guess etc)
 	* Backend: handle guesses and stuff, implement "SendTo"
-* Study Haskell websocket package to see if the following is possible:
-	* Be aware of ping between server and client
-	* Use this to slow down packet redistribution according to average ping.
-	* Compute "real" guess time according to ping  so it is fair to everyone.
 

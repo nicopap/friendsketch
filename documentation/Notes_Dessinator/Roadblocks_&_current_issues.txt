@@ -5,22 +5,10 @@ Creation-Date: 2017-09-26T18:05:55+02:00
 ====== Roadblocks & current issues ======
 Created Tuesday 26 September 2017
 
-====== Haskell ======
-
-I need to figure out how to test properly my code.
-
-===== Leads =====
-* quickcheck
-
 ====== REST API ======
 
 * Resource to see if one with given username can join a room //and then// redirect to info websocket for the room.
-	* Issue: possible lack of consistency: 
-		1. Someone requests ''/room/join/#RoomID'' and get a //303 see other//  ''websocket url'' 
-		2. Someone else (with the same username) requests ''/room/join/#RoomID'' and get the ''websocket url'' 
-		3. The one else connects to ''websocket url'' with given username, he is accepted
-		4. The former one tries to get hold of ''websocket url'' but is refused because he got the grass cut under him.
-		5. The issue is mitigated by the fact that the the websocket resource will return an error if it is already occupied. But I'm not sure how to handle that in the Elm part. (Possible solution is having the Room.view function returning a ''Result'' and forcing the caller to handle failure conditions)
+	* The frontend still needs to handle the rejection more gracefully when trying to connect to a room where they are not expected
 
 ====== Game design ======
 
@@ -32,3 +20,15 @@ Here are the troubles I'm currently having:
 	Or if I fail to implement the server specs correctly (I guess that identifies the backend as a good test target)
 
 * State machines are weak to specify a distributed system, in fact, they only describe the state of a single client based on "commands" (which would be arcs in the graph) that the server sends them. This causes formal verification issues.
+
+====== Server Game API ======
+
+Difficult to split the game logic in two: (actual game logic vs. player/session management)
+
+Already have a convinient elm-like reactive system ''fn oversee'' . We however, need to separate pure game logic from communication logic.
+
+* Communication logic **requires** an up-to-date list of the partecipants of the game, so we need to pass that as an argument, instead of keeping track of them in the game state.
+* Game needs to be able to handle partecipant quitting and joining. Wouldn't want to accept a connection to someone that is not accepted in the game, so game needs to be able to refuse on connection and ask for disconnection.
+* Manage better copying/usernames:
+	* Should the game need to handle the user Id's? What about overhead copying names? Can this be worked around with ''Rc''?
+		* → Game should be able to access player names.

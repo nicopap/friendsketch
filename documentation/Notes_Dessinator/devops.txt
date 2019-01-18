@@ -20,3 +20,5 @@ problem 2: managing user access rights to game static pages + server user right
 problem 3: restarting server
 * Terminate previous version, replace the binary, launch
 * Make sure to properly set RUST_LOG=warn env variable and redirect stderr to log file
+
+⇒ Solved :)
