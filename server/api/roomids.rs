@@ -2,16 +2,17 @@ mod adjective;
 mod animal;
 
 use rand::{thread_rng, Rng};
+use serde::{de, Deserialize, Deserializer};
 
 use self::{adjective::LIST as ADJECTIVES, animal::LIST as ANIMALS};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub(crate) struct RoomId {
+#[derive(Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Clone)]
+pub(in crate::api) struct RoomId {
     adjective: u8,
     animal:    u8,
 }
 impl RoomId {
-    pub(crate) fn try_from(name: &str) -> Option<Self> {
+    pub(in crate::api) fn try_from(name: &str) -> Option<Self> {
         let dot_index = name.find('.')?;
         let (adj_val, ani_val) = name.split_at(dot_index + 1);
         let adjective = adjective::from(adj_val)?;
@@ -47,9 +48,22 @@ impl From<&RoomId> for String {
     }
 }
 
-pub(crate) fn gen() -> RoomId {
+pub(in crate::api) fn gen() -> RoomId {
     let (adjective, animal): (u8, u8) = thread_rng().gen();
     RoomId { adjective, animal }
+}
+
+impl<'de> Deserialize<'de> for RoomId {
+    fn deserialize<D>(deserializer: D) -> Result<RoomId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: &str = <&str>::deserialize(deserializer)?;
+        RoomId::try_from(s).ok_or(de::Error::invalid_value(
+            de::Unexpected::Str(s),
+            &"a proper room name",
+        ))
+    }
 }
 
 #[cfg(test)]

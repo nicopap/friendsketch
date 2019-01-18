@@ -1,13 +1,11 @@
 mod api;
 mod games;
-mod roomids;
 
 use std::{collections::BTreeSet, sync::Arc};
 
 use chashmap::CHashMap;
 use log::{info, warn};
 use pretty_env_logger;
-use serde::Deserialize;
 use warp::{
     self,
     filters::ws::Ws2,
@@ -15,7 +13,10 @@ use warp::{
     path, Filter,
 };
 
-use self::{api::Name, games::GameManager, roomids::RoomId};
+use self::{
+    api::{Name, RoomId},
+    games::GameManager,
+};
 
 type ServerState = CHashMap<RoomId, Room>;
 
@@ -24,23 +25,11 @@ type ServerState = CHashMap<RoomId, Room>;
 /// A `Room` wraps a `GameManager`.
 struct Room {
     newcomings: BTreeSet<Name>,
-    presents:   BTreeSet<Name>,
+    presents:   BTreeSet<Name>, // TODO: use GameManager user management system
     game:       GameManager,
 }
 
 type Server = Arc<ServerState>;
-
-#[derive(Debug, Deserialize)]
-struct JoinReq {
-    roomid:   String,
-    username: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateReq {
-    username: String,
-    game:     String,
-}
 
 impl Room {
     /// Create a new empty room.
@@ -105,7 +94,7 @@ fn main() {
         .and(server_ref.clone())
         .and_then(handle_create);
 
-    let websockets = path!("friendk" / "ws" / String / String)
+    let websockets = path!("friendk" / "ws" / RoomId / Name)
         .and(warp::ws2())
         .and(server_ref.clone())
         .and_then(accept_conn);
@@ -118,53 +107,34 @@ fn main() {
 }
 
 fn handle_create(
-    CreateReq { username, .. }: CreateReq,
+    api::CreateReq { username, .. }: api::CreateReq,
     server: Server,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let mut response = Response::builder();
-    match api::Name::try_from(username) {
-        Ok(valid) => {
-            // TODO: guarenteed to cause collision of room names at one point
-            // checking that the roomid isn't already taken would be ideal
-            let roomid = roomids::gen();
-            let mut room_name = String::with_capacity(32);
-            room_name.push('"');
-            let actual_name: String = (&roomid).into();
-            room_name.push_str(&actual_name);
-            room_name.push('"');
-            info!("Room created: {} by user {}", &actual_name, &valid);
-            server.insert(roomid, Room::new(actual_name));
-            response
-                .status(StatusCode::CREATED)
-                .header("Content-Type", "text/json")
-                .body(room_name)
-                .map_err(|_| unreachable!())
-        }
-        Err(_) => {
-            warn!("user with malformed name attempted to create a room");
-            response
-                .status(StatusCode::BAD_REQUEST)
-                .body("".to_owned())
-                .map_err(|_| unreachable!())
-        }
-    }
+    // TODO: guarenteed to cause collision of room names at one point
+    // checking that the roomid isn't already taken would be ideal
+    let roomid = RoomId::new_random();
+    let room_name = format!("{}", roomid);
+    let sanitized_room_name = format!("\"{}\"", &room_name);
+    info!("Room created: {} by user {}", &room_name, &username);
+    server.insert(roomid, Room::new(room_name));
+    response
+        .status(StatusCode::CREATED)
+        .header("Content-Type", "text/json")
+        .body(sanitized_room_name)
+        .map_err(|_| unreachable!())
 }
 
 fn handle_join(
-    JoinReq { roomid, username }: JoinReq,
-    srv: Server,
+    api::JoinReq { roomid, username }: api::JoinReq,
+    server: Server,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let result = (move || -> Result<_, StatusCode> {
-        // room is a valid value
-        let valid = RoomId::try_from(&roomid).ok_or(StatusCode::NOT_FOUND)?;
-        // name is valid
-        let name =
-            Name::try_from(username).or(Err(StatusCode::BAD_REQUEST))?;
-        let logmsg = format!("User {} is now expected to join", &name);
+        let logmsg = format!("User {} is now expected to join", &username);
         // room exists
-        let mut room = srv.get_mut(&valid).ok_or(StatusCode::NOT_FOUND)?;
-        // name is not already taken (TODO: figure out how to handle leavers)
-        room.expect(name).or(Err(StatusCode::CONFLICT))?;
+        let mut room = server.get_mut(&roomid).ok_or(StatusCode::NOT_FOUND)?;
+        // name is not already taken
+        room.expect(username).or(Err(StatusCode::CONFLICT))?;
         info!("{}", logmsg);
         let mut response = Response::builder();
         Ok(response
@@ -181,19 +151,15 @@ fn handle_join(
 }
 
 fn accept_conn(
-    roomid: String,
-    name: String,
+    roomid: RoomId,
+    name: api::Name,
     ws: Ws2,
     server: Server,
 ) -> Result<impl warp::reply::Reply, warp::Rejection> {
     let url = format!("/ws/{}/{}", &roomid, &name);
     let result = (move || {
-        // room is a valid value
-        let validated = RoomId::try_from(&roomid)?;
         // room exists
-        let mut room = server.get_mut(&validated)?;
-        // name is valid
-        let name = Name::try_from(name).ok()?;
+        let mut room = server.get_mut(&roomid)?;
         // name is expected to join & accept connection
         let (game, name) = room.accept(name)?;
         Some(ws.on_upgrade(move |socket| game.join(name, socket)))
