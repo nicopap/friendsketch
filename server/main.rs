@@ -1,7 +1,7 @@
 mod api;
 mod games;
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use chashmap::CHashMap;
 use log::{info, warn};
@@ -15,56 +15,12 @@ use warp::{
 
 use self::{
     api::{Name, RoomId},
-    games::GameManager,
+    games::GameRoom,
 };
 
-type ServerState = CHashMap<RoomId, Room>;
-
-/// Manage what players has access to a specific instance of a game party.
-/// One must first be "expected" to then be "accepted" into the game.
-/// A `Room` wraps a `GameManager`.
-struct Room {
-    newcomings: BTreeSet<Name>,
-    presents:   BTreeSet<Name>, // TODO: use GameManager user management system
-    game:       GameManager,
-}
+type ServerState = CHashMap<RoomId, GameRoom>;
 
 type Server = Arc<ServerState>;
-
-impl Room {
-    /// Create a new empty room.
-    fn new(room_name: String) -> Self {
-        Room {
-            game:       GameManager::new(room_name),
-            newcomings: BTreeSet::new(),
-            presents:   BTreeSet::new(),
-        }
-    }
-
-    /// Add `user` to the list of people to expect
-    /// returns an `Err` if the user was already present in the expected list
-    /// or is present in the room
-    fn expect(&mut self, user: Name) -> Result<(), ()> {
-        if (!self.presents.contains(&user)) && self.newcomings.insert(user) {
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    /// If `accepted` is in the list of expected users, returns the GameManager
-    /// and validated name, necessary to accept the connection,
-    /// Otherwise returns `Err`.
-    fn accept(&mut self, accepted: Name) -> Option<(GameManager, Name)> {
-        if self.newcomings.remove(&accepted) {
-            self.presents.insert(accepted.clone());
-            let game = self.game.clone();
-            Some((game, accepted))
-        } else {
-            None
-        }
-    }
-}
 
 fn main() {
     pretty_env_logger::init();
@@ -117,7 +73,7 @@ fn handle_create(
     let room_name = format!("{}", roomid);
     let sanitized_room_name = format!("\"{}\"", &room_name);
     info!("Room created: {} by user {}", &room_name, &username);
-    server.insert(roomid, Room::new(room_name));
+    server.insert(roomid, GameRoom::new(room_name));
     response
         .status(StatusCode::CREATED)
         .header("Content-Type", "text/json")
@@ -161,8 +117,7 @@ fn accept_conn(
         // room exists
         let mut room = server.get_mut(&roomid)?;
         // name is expected to join & accept connection
-        let (game, name) = room.accept(name)?;
-        Some(ws.on_upgrade(move |socket| game.join(name, socket)))
+        room.accept(name, ws)
     })();
     result.ok_or_else(|| {
         warn!("Rejected connection to {}", &url);

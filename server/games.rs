@@ -2,9 +2,10 @@ use futures::{stream, sync::mpsc, Future, Sink, Stream};
 use log::{debug, error, info, warn};
 use serde_json::{de::from_slice, ser::to_string};
 use slotmap::{hop::HopSlotMap, DefaultKey};
+use std::collections::BTreeSet;
 use warp::{
     self,
-    ws::{Message, WebSocket},
+    ws::{Message, WebSocket, Ws2},
 };
 
 use crate::api::{self, Name};
@@ -60,7 +61,7 @@ fn oversee(
                         let players = game
                             .players
                             .iter()
-                            .map(|(_, p)| (p.name.clone()))
+                            .map(|(_, p)| p.name.clone())
                             .collect();
                         let master = id == room_leader;
                         api::GameState::Lobby { players, master }
@@ -111,7 +112,6 @@ fn oversee(
                 warn!("{}: {}", &game.players[id].name, to_log);
                 game
             }
-
             GameReq::Canvas(msg) => {
                 game.broadcast_except(GameMsg::Canvas(msg), id);
                 game
@@ -128,9 +128,16 @@ fn oversee(
     })
 }
 
-#[derive(Clone)]
-pub struct GameManager(mpsc::Sender<ClientReq>);
-impl GameManager {
+/// Manage what players has access to a specific instance of a game party.
+/// One must first be "expected" to then be "accepted" into the game.
+pub struct GameRoom {
+    game:       mpsc::Sender<ClientReq>,
+    newcomings: BTreeSet<Name>,
+    presents:   BTreeSet<Name>,
+}
+
+impl GameRoom {
+    /// Create a new empty game room.
     pub fn new(room_name: String) -> Self {
         let (client_chan, receiv_chan) = mpsc::channel(128);
         let game = GameInternal {
@@ -140,18 +147,43 @@ impl GameManager {
             game_state: GameState::Empty,
         };
         warp::spawn(receiv_chan.fold(game, oversee).map(|_| ()));
-        GameManager(client_chan)
+        GameRoom {
+            game:       client_chan,
+            newcomings: BTreeSet::new(),
+            presents:   BTreeSet::new(),
+        }
     }
 
-    pub fn join(
-        self,
-        name: Name,
-        ws: WebSocket,
-    ) -> impl Future<Item = (), Error = ()> {
-        self.0
-            .send(ClientReq::Join(name, ws))
-            .map_err(|_| ())
-            .map(|_| ())
+    /// Add `user` to the list of people to expect
+    /// returns an `Err` if the user was already present in the expected list
+    /// or is present in the room
+    pub fn expect(&mut self, user: Name) -> Result<(), ()> {
+        if (!self.presents.contains(&user)) && self.newcomings.insert(user) {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    /// If `accepted` is in the list of expected users, returns the GameRoom
+    /// and validated name, necessary to accept the connection,
+    /// Otherwise returns `Err`.
+    pub fn accept(
+        &mut self,
+        accepted: Name,
+        ws: Ws2,
+    ) -> Option<impl warp::reply::Reply> {
+        if self.newcomings.remove(&accepted) {
+            self.presents.insert(accepted.clone());
+            let game = self.game.clone();
+            Some(ws.on_upgrade(move |socket| {
+                game.send(ClientReq::Join(accepted, socket))
+                    .map_err(|_| ())
+                    .map(|_| ())
+            }))
+        } else {
+            None
+        }
     }
 }
 
