@@ -34,7 +34,6 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 experiment : backend frontend
 	$(BROWSER) "http://localhost:8080/friendk/lobby" &
-	caddy -conf Caddyfile  -log /dev/stdout &
 	RUST_LOG=$(LOG_LEVEL) ./target/debug/friendsketch
 
 
