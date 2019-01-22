@@ -29,7 +29,7 @@ quick_error! {
 }
 
 #[derive(
-    Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Serialize, Deserialize,
+    Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Serialize, Deserialize, Hash,
 )]
 pub struct Name(String);
 

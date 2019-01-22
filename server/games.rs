@@ -1,156 +1,162 @@
+mod game;
+mod sketchfighters;
+
+use fnv::FnvHashMap;
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
+use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
 use serde_json::{de::from_slice, ser::to_string};
-use slotmap::{hop::HopSlotMap, DefaultKey};
-use std::collections::BTreeSet;
+use std::{sync, time::Duration};
+use tokio_timer::sleep;
 use warp::{
     self,
     ws::{Message, WebSocket, Ws2},
 };
 
-use crate::api::{self, Name};
+use crate::{
+    api::{self, Name},
+    games::{
+        game::{Game, JoinResponse},
+        sketchfighters::Id,
+    },
+};
 
-type Slab<T> = HopSlotMap<DefaultKey, T>;
-type Id = DefaultKey;
-
+/// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
-enum ClientReq {
+enum ManagerRequest {
     Msg(Id, api::GameReq),
     Terminate(Id),
     Join(Name, WebSocket),
+    Expects(Name),
+    GiveUp(Name),
 }
 
-enum GameState {
-    Empty,
-    Lobby { room_leader: Id },
-    Playing { artist: Id },
+pub enum ManagerResponse {
+    Accepted,
+    Refused,
+    ManagerEmpty,
 }
-struct GameInternal {
+
+struct ConnectionManager<G> {
     room_name:   String,
-    players:     Slab<Player>,
-    client_chan: mpsc::Sender<ClientReq>,
-    game_state:  GameState,
+    connections: FnvHashMap<Id, Connection>,
+    client_chan: mpsc::Sender<ManagerRequest>,
+    respond:     sync::mpsc::SyncSender<ManagerResponse>,
+    newcomings:  FxHashMap<Name, Id>,
+    game:        G,
 }
 
-struct Player {
-    connection: mpsc::UnboundedSender<api::GameMsg>,
-    name:       Name,
-}
+struct Connection(mpsc::UnboundedSender<api::GameMsg>);
 
-fn oversee(
-    mut game: GameInternal,
-    msg: ClientReq,
-) -> Result<GameInternal, ()> {
-    use self::api::{GameMsg, GameReq, InfoMsg, InfoRequest};
-    Ok(match msg {
-        ClientReq::Join(name, ws) => {
-            info!("Adding {} to {}", &name, &game.room_name);
-            game.broadcast(GameMsg::Info(InfoMsg::Joined(name.clone())));
-            game.join(name, ws);
-            game
-        }
-        ClientReq::Msg(id, msg_val) => match msg_val {
-            GameReq::Info(InfoRequest::Sync_) => {
-                use self::GameState::*;
-                let api_state = match game.game_state {
-                    Empty => api::GameState::Lobby {
-                        players: vec![],
-                        master:  false,
-                    },
-                    Lobby { room_leader } => {
-                        let players = game
-                            .players
-                            .iter()
-                            .map(|(_, p)| p.name.clone())
-                            .collect();
-                        let master = id == room_leader;
-                        api::GameState::Lobby { players, master }
-                    }
-                    Playing { artist } => {
-                        let players = game
-                            .players
-                            .iter()
-                            .map(|(_, p)| (p.name.clone(), vec![]))
-                            .collect();
-                        let artist = game.players[artist].name.clone();
-                        let timeout = 30;
-                        api::GameState::Round {
-                            players,
-                            artist,
-                            timeout,
-                        }
-                    }
-                };
-                let msg = GameMsg::Info(InfoMsg::Sync_(api_state));
-                (&mut game.players[id].connection).send(msg).wait();
-                game
+fn oversee<G: Game<Id, Error = ()>>(
+    mut manager: ConnectionManager<G>,
+    msg: ManagerRequest,
+) -> Result<ConnectionManager<G>, ()>
+where
+    G::Response: Into<api::GameMsg> + Clone,
+    G::Request: From<api::GameReq>,
+{
+    use self::api::{GameMsg, InfoMsg};
+    match msg {
+        ManagerRequest::Join(name, ws) => {
+            if let Some(id) = manager.newcomings.remove(&name) {
+                info!("Connection with {} established", &name);
+                manager.join(id, ws);
+            } else {
+                warn!("Unexpected player {} attempted to connect", &name);
             }
-            GameReq::Info(InfoRequest::Start) => {
-                if let GameState::Lobby { room_leader } = game.game_state {
-                    let send_players: Vec<_> = game
-                        .players
-                        .iter()
-                        .map(|(_, player)| (player.name.clone(), vec![]))
-                        .collect();
-                    let artist = game.players[room_leader].name.clone();
-                    game.broadcast(GameMsg::Info(InfoMsg::Sync_(
-                        api::GameState::Round {
-                            players: send_players,
-                            artist,
-                            timeout: 60,
-                        },
-                    )));
-                    game.game_state = GameState::Playing {
-                        artist: room_leader,
+        }
+        ManagerRequest::Msg(id, msg_val) => {
+            let response = manager.game.tells(id, msg_val.into())?;
+            manager.broadcast(&response);
+        }
+        ManagerRequest::Terminate(id) => {
+            match manager.game.leaves(id) {
+                Ok((name, response)) => {
+                    if let None = manager.connections.remove(&id) {
+                        error!(
+                            "{} attempts to leave {}, yet they aren't in it",
+                            &name, &manager.room_name
+                        )
+                    } else {
+                        info!("{} left {}", name, &manager.room_name)
                     };
-                    game
-                } else {
-                    game
+                    manager.broadcast(&response);
+                }
+                Err(()) => {
+                    warn!(
+                        "Attempt to terminate innexistant {:?} in {}",
+                        id, &manager.room_name
+                    );
+                }
+            };
+        }
+        ManagerRequest::Expects(name) => {
+            match manager.game.joins(name.clone()) {
+                JoinResponse::Accept(id) => {
+                    info!("Adding {} to {}", &name, &manager.room_name);
+                    manager.broadcast_to_all(GameMsg::Info(InfoMsg::Joined(
+                        name.clone(),
+                    )));
+                    manager.newcomings.insert(name, id);
+                    manager.respond.send(ManagerResponse::Accepted);
+                }
+                JoinResponse::Refuse => {
+                    warn!("{} refused {}", &manager.room_name, &name);
+                    manager.respond.send(ManagerResponse::Refused);
                 }
             }
-            GameReq::Info(InfoRequest::Warn(to_log)) => {
-                warn!("{}: {}", &game.players[id].name, to_log);
-                game
-            }
-            GameReq::Canvas(msg) => {
-                game.broadcast_except(GameMsg::Canvas(msg), id);
-                game
-            }
-        },
-        ClientReq::Terminate(id) => {
-            let sender_name = game.players.remove(id).unwrap().name;
-            info!("{} left {}", &sender_name, &game.room_name);
-            game.broadcast(api::GameMsg::Info(api::InfoMsg::Left(
-                sender_name,
-            )));
-            game
         }
-    })
+        ManagerRequest::GiveUp(name) => {
+            if let Some(id) = manager.newcomings.remove(&name) {
+                match manager.game.leaves(id) {
+                    Ok((name, response)) => {
+                        info!(
+                            "canceled {} connection's to {}",
+                            name, &manager.room_name
+                        );
+                        manager.broadcast(&response);
+                    }
+                    Err(()) => {
+                        warn!(
+                            "Failed to cancel {}'s connection to {}",
+                            name, &manager.room_name
+                        );
+                    }
+                }
+            }
+        }
+    };
+    Ok(manager)
 }
 
 /// Manage what players has access to a specific instance of a game party.
 /// One must first be "expected" to then be "accepted" into the game.
 pub struct GameRoom {
-    game:       mpsc::Sender<ClientReq>,
-    newcomings: BTreeSet<Name>,
-    presents:   BTreeSet<Name>,
+    send_manager: mpsc::Sender<ManagerRequest>,
+    recv_manager: sync::Mutex<sync::mpsc::Receiver<ManagerResponse>>,
 }
 
 impl GameRoom {
     /// Create a new empty game room.
     pub fn new(room_name: String) -> Self {
-        let (client_chan, receiv_chan) = mpsc::channel(128);
-        let game = GameInternal {
+        let (send_manager, receiv_chan) = mpsc::channel(64);
+        let (respond, recv_manager) = sync::mpsc::sync_channel(8);
+        let manager = ConnectionManager {
             room_name,
-            players: Slab::with_capacity(8),
-            client_chan: client_chan.clone(),
-            game_state: GameState::Empty,
+            respond,
+            connections: FnvHashMap::with_capacity_and_hasher(
+                16,
+                Default::default(),
+            ),
+            client_chan: send_manager.clone(),
+            game: sketchfighters::Game::new(),
+            newcomings: FxHashMap::default(),
         };
-        warp::spawn(receiv_chan.fold(game, oversee).map(|_| ()));
+        warp::spawn(receiv_chan.fold(manager, oversee).map(|_| ()));
         GameRoom {
-            game:       client_chan,
-            newcomings: BTreeSet::new(),
-            presents:   BTreeSet::new(),
+            send_manager,
+            recv_manager: sync::Mutex::new(recv_manager),
         }
     }
 
@@ -158,37 +164,58 @@ impl GameRoom {
     /// returns an `Err` if the user was already present in the expected list
     /// or is present in the room
     pub fn expect(&mut self, user: Name) -> Result<(), ()> {
-        if (!self.presents.contains(&user)) && self.newcomings.insert(user) {
-            Ok(())
+        let mut send_chan = self.send_manager.clone();
+        send_chan.start_send(ManagerRequest::Expects(user.clone()));
+        send_chan.poll_complete();
+        // FIXME: expect(X) -> join(X) -> leaves(X) -> expect(X) -> Giveup(X)
+        //           v---> wait 10 seconds ----------------------^
+        warp::spawn(
+            sleep(Duration::new(10, 0))
+                .then(move |_| send_chan.send(ManagerRequest::GiveUp(user)))
+                .map(|_| ())
+                .map_err(|_| ()),
+        );
+        if let Ok(response) = self.recv_manager.lock().unwrap().recv() {
+            match response {
+                ManagerResponse::Accepted => Ok(()),
+                ManagerResponse::Refused => Err(()),
+                ManagerResponse::ManagerEmpty => Err(()),
+            }
         } else {
-            Err(())
+            panic!(
+                "Error communicating with game manager. The game state is \
+                 corrupted, there is no point keeping this game room up."
+            )
         }
     }
 
-    /// If `accepted` is in the list of expected users, returns the GameRoom
-    /// and validated name, necessary to accept the connection,
-    /// Otherwise returns `Err`.
+    /// If `accepted` is in the list of expected users, accept the connection
+    /// to the websocket `ws` and returns `Some(Reply)`. Otherwise, `None`
     pub fn accept(
         &mut self,
         accepted: Name,
         ws: Ws2,
-    ) -> Option<impl warp::reply::Reply> {
-        if self.newcomings.remove(&accepted) {
-            self.presents.insert(accepted.clone());
-            let game = self.game.clone();
-            Some(ws.on_upgrade(move |socket| {
-                game.send(ClientReq::Join(accepted, socket))
-                    .map_err(|_| ())
-                    .map(|_| ())
-            }))
-        } else {
-            None
-        }
+    ) -> impl warp::reply::Reply {
+        let game_chan = self.send_manager.clone();
+        ws.on_upgrade(move |socket| {
+            game_chan
+                .send(ManagerRequest::Join(accepted, socket))
+                .map_err(|_| ())
+                .map(|_| ())
+        })
     }
 }
 
-impl GameInternal {
-    fn join(&mut self, name: Name, ws: WebSocket) {
+impl<G> ConnectionManager<G>
+where
+    G: Game<Id>,
+{
+    fn join(&mut self, id: Id, ws: WebSocket) {
+        macro_rules! validation_error {
+            ($err:expr, $msg:expr) => {
+                error!("message validation error: {}/ `{:?}`", $err, $msg)
+            };
+        }
         // Split the socket into a sender and receive of messages.
         let (ws_send, ws_recv) = ws.split();
 
@@ -207,15 +234,9 @@ impl GameInternal {
                 .map(|_| ())
                 .map_err(|ws_err| error!("websocket send error: {}", ws_err)),
         );
-        let my_id = self.players.insert(Player { connection, name });
-        match self.game_state {
-            GameState::Empty => {
-                self.game_state = GameState::Lobby { room_leader: my_id };
-            }
-            _ => {}
-        };
+        self.connections.insert(id, Connection(connection));
         let client_stream =
-            ws_recv.then(move |msg| -> Result<ClientReq, ()> {
+            ws_recv.then(move |msg| -> Result<ManagerRequest, ()> {
                 let msg = match msg {
                     Ok(msg) => msg,
                     Err(err) => {
@@ -224,47 +245,39 @@ impl GameInternal {
                     }
                 };
                 from_slice(msg.as_bytes())
-                    .map(|validated| {
-                        debug!("ws recieve: {:?}", validated);
-                        ClientReq::Msg(my_id, validated)
-                    })
-                    .map_err(|err| {
-                        error!(
-                            "websocket recieve error: {}/ `{:?}`",
-                            err,
-                            msg.to_str()
-                        )
-                    })
+                    .map(|v| ManagerRequest::Msg(id, v))
+                    .map_err(|err| validation_error!(err, msg.to_str()))
             });
         warp::spawn(
             client_stream
-                .chain(stream::once(Ok(ClientReq::Terminate(my_id))))
+                .chain(stream::once(Ok(ManagerRequest::Terminate(id))))
                 .forward(self.client_chan.clone().sink_map_err(|_| ()))
                 .map(|_| ()),
         );
     }
 
-    fn broadcast_except(&mut self, message: api::GameMsg, to_skip: Id) {
-        for (id, Player { connection, .. }) in self.players.iter_mut() {
-            let msg = message.clone();
-            if id != to_skip {
-                connection.start_send(msg).expect("everything is fine120");
-            }
+    fn broadcast<Msg>(&mut self, targets: &[(Id, Msg)])
+    where
+        Msg: Into<api::GameMsg> + Clone,
+    {
+        for (id, message) in targets.iter() {
+            let mut connection = &self.connections[id].0;
+            let msg = message.clone().into();
+            connection.start_send(msg).expect("everything is fine133");
         }
-        for (id, Player { connection, .. }) in self.players.iter_mut() {
-            if id != to_skip {
-                connection.poll_complete().expect("everything is fine125");
-            }
+        for (id, _) in targets {
+            let mut connection = &self.connections[id].0;
+            connection.poll_complete().expect("everything is fine136");
         }
     }
 
-    fn broadcast(&mut self, message: api::GameMsg) {
-        for (_, Player { connection, .. }) in self.players.iter_mut() {
+    fn broadcast_to_all(&mut self, message: api::GameMsg) {
+        for connection in self.connections.values_mut() {
             let msg = message.clone();
-            connection.start_send(msg).expect("everything is fine133");
+            connection.0.start_send(msg).expect("everything is fine154");
         }
-        for (_, Player { connection, .. }) in self.players.iter_mut() {
-            connection.poll_complete().expect("everything is fine136");
+        for connection in self.connections.values_mut() {
+            connection.0.poll_complete().expect("everything is fine144");
         }
     }
 }

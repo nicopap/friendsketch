@@ -30,20 +30,22 @@ Some sections relates to the design and the choices behind it, other to the expe
 > concider accepting an RC in GameMsg send channel as to avoid copying data
 > Concider moving game logic in its own module
 > Figure out how to URL-decode URLs so as to avoid surprises with %20 and / **(IMPORTANT)**
-	> Do that in the client as well as the server
-	> Manage malformed URLs in server properly
+	> Do that in the client, for names containing '/'
+	> Test server for how it handles it
+> Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
+> Better Error management with warp::Rejection and custom errors https://github.com/seanmonstar/warp/blob/master/examples/errors.rs
+
 
 
 ===== Current roadmap =====
 * Make sure client handles properly joining in middle of Drawing & leaving artist
-* In join page, when changing name, put a confirmation button instead of automatically redirecting
 * Improve how the backend handles stuff
 	* Sanitize names and roomids in backend
 	* Implement game logic
 	* Clean up when Rooms stay empty for too long
-* Update API (Lobby master [bool → name]) so lobby broadcasting is independent of the connected it is sending to.
 * Implement "cooldown" on people leaving so they have a chance to rejoin.
-* Add tests to the backend
+* Add tests
+* Improve client layout: room name field etc.
 * Fix chat
 	* Frontend: create interface (for chat, and word to guess etc)
 	* Backend: handle guesses and stuff, implement "SendTo"

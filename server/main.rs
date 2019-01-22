@@ -113,14 +113,11 @@ fn accept_conn(
     server: Server,
 ) -> Result<impl warp::reply::Reply, warp::Rejection> {
     let url = format!("/ws/{}/{}", &roomid, &name);
-    let result = (move || {
-        // room exists
-        let mut room = server.get_mut(&roomid)?;
-        // name is expected to join & accept connection
-        room.accept(name, ws)
-    })();
-    result.ok_or_else(|| {
+    // room exists
+    let mut room = server.get_mut(&roomid).ok_or_else(|| {
         warn!("Rejected connection to {}", &url);
         warp::reject::not_found()
-    })
+    })?;
+    // name is expected to join & accept connection
+    Ok(room.accept(name, ws))
 }

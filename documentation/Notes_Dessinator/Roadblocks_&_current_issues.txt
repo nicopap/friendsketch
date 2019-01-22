@@ -7,8 +7,8 @@ Created Tuesday 26 September 2017
 
 ====== REST API ======
 
-* Resource to see if one with given username can join a room //and then// redirect to info websocket for the room.
-	* The frontend still needs to handle the rejection more gracefully when trying to connect to a room where they are not expected
+
+* The frontend still needs to handle the rejection more gracefully when trying to connect to a room where they are not expected
 
 ====== Game design ======
 
@@ -32,3 +32,42 @@ Already have a convinient elm-like reactive system ''fn oversee'' . We however, 
 * Manage better copying/usernames:
 	* Should the game need to handle the user Id's? What about overhead copying names? Can this be worked around with ''Rc''?
 		* → Game should be able to access player names.
+* Merge handling of players in ''GameInternal'' and ''GameRoom''
+	* GameRoom.game == GameInternal.client_chan
+
+problem:
+	- sharing state information between GameInternal and GameRoom
+	- GameInternal is a single value that is folded over by a channel
+		- Any other mean to communicate with GameInternal is ripe for 
+		  race conditions (in fact, GameInternal is single-threaded)
+	- WS has access to game receiv_chan
+
+	- How to give feedback through channel?
+		→ Game logic (needs to process request) is in GameInternals, while
+		   the server must respond.
+		 + Closing a room when no one remains
+		→ possible: feedback channel (is it?)
+	- Separating game logic from comm logic
+	  - GameInternal::join can become GameRoom::join
+	- Necessary to associate Player to Connection in GameInternal?
+	
+Solution:
+	* First separate game logic from connection logic in ''oversee''
+	* Handle all connection logic in ''oversee'' (instead of GameManager)
+	* Use a channel to send feedback in case a connection must be handled
+
+==== Game specification ====
+ideal goal: having Room management logic in ''ConnectionManager'' and game logic in ''Game'' .
+
+Problem: difficulty separating game logic from room management logic.
+	* Already-defined data structures do not separate them. 
+	* Changing API is high friction, because I coupled the API data structures with the code.
+Potential solution: Use wrappers in client API file, so as to be able to change API, without having to change client code
+
+
+
+
+
+
+
+
