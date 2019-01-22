@@ -58,8 +58,8 @@ pub struct RoomId(roomids::RoomId);
 
 impl RoomId {
     pub fn try_from(raw: &str) -> Result<Self, RoomIdError> {
-        let validated = roomids::RoomId::try_from(raw)
-            .ok_or(RoomIdError::InvalidRoomId)?;
+        let validated =
+            roomids::RoomId::try_from(raw).ok_or(RoomIdError::InvalidRoomId)?;
         Ok(RoomId(validated))
     }
 

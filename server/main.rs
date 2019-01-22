@@ -109,7 +109,7 @@ fn handle_join(
                     .status(StatusCode::OK)
                     .header("Content-Type", "text/json")
                     .body("\"pintclone\"")
-                    .map_err(|_| unreachable!())
+                    .map_err(|_| unreachable!());
             }
             Handle::Refuse => StatusCode::CONFLICT,
             Handle::EmptyRoom => {
@@ -120,7 +120,10 @@ fn handle_join(
     };
     warn!("Join failed with status code: {}", &err_code);
     let mut response = Response::builder();
-    response.status(err_code).body("").map_err(|_| unreachable!())
+    response
+        .status(err_code)
+        .body("")
+        .map_err(|_| unreachable!())
 }
 
 fn accept_conn(
