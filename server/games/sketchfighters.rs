@@ -1,4 +1,4 @@
-use super::game::{self, JoinResponse};
+use super::game::{self, JoinResponse, LeaveResponse};
 use crate::api::{self, Name};
 use log::warn;
 use slotmap::{new_key_type, SlotMap};
@@ -38,7 +38,6 @@ macro_rules! broadcast {
 }
 
 pub type TellsResp = Result<Vec<(Id, api::GameMsg)>, ()>;
-pub type LeavesResp = Result<(api::Name, Vec<(Id, api::GameMsg)>), ()>;
 
 impl game::Game<Id> for Game {
     type Error = ();
@@ -68,17 +67,16 @@ impl game::Game<Id> for Game {
         }
     }
 
-    fn leaves(&mut self, player: Id) -> LeavesResp {
+    fn leaves(&mut self, player: Id) -> LeaveResponse<()> {
         match self.players.remove(player) {
-            Some(Player { name }) => Ok((
-                name.clone(),
-                broadcast!(
-                    to_all,
-                    self.players,
-                    api::GameMsg::Info(api::InfoMsg::Left(name.clone()))
-                ),
-            )),
-            None => Err(()),
+            Some(Player { name }) => {
+                if self.players.is_empty() {
+                    LeaveResponse::Empty(name)
+                } else {
+                    LeaveResponse::Successfully(name)
+                }
+            }
+            None => LeaveResponse::Failed(()),
         }
     }
 

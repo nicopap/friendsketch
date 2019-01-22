@@ -5,6 +5,7 @@ use fnv::FnvHashMap;
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
 use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
+use quick_error::quick_error;
 use serde_json::{de::from_slice, ser::to_string};
 use std::{sync, time::Duration};
 use tokio_timer::sleep;
@@ -16,10 +17,20 @@ use warp::{
 use crate::{
     api::{self, Name},
     games::{
-        game::{Game, JoinResponse},
+        game::{Game, JoinResponse, LeaveResponse},
         sketchfighters::Id,
     },
 };
+
+quick_error! {
+    #[derive(Debug)]
+    enum GameInteruption {
+        EverybodyLeft {}
+        GameError(err: ()) {
+            from()
+        }
+    }
+}
 
 /// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
@@ -31,10 +42,12 @@ enum ManagerRequest {
     GiveUp(Name),
 }
 
+/// The result of an attempt to add an user to a game room.
+#[derive(Debug)]
 pub enum ManagerResponse {
-    Accepted,
-    Refused,
-    ManagerEmpty,
+    Accept,
+    Refuse,
+    Empty,
 }
 
 struct ConnectionManager<G> {
@@ -51,7 +64,7 @@ struct Connection(mpsc::UnboundedSender<api::GameMsg>);
 fn oversee<G: Game<Id, Error = ()>>(
     mut manager: ConnectionManager<G>,
     msg: ManagerRequest,
-) -> Result<ConnectionManager<G>, ()>
+) -> Result<ConnectionManager<G>, GameInteruption>
 where
     G::Response: Into<api::GameMsg> + Clone,
     G::Request: From<api::GameReq>,
@@ -72,57 +85,48 @@ where
         }
         ManagerRequest::Terminate(id) => {
             match manager.game.leaves(id) {
-                Ok((name, response)) => {
+                LeaveResponse::Successfully(name) => {
                     if let None = manager.connections.remove(&id) {
                         error!(
                             "{} attempts to leave {}, yet they aren't in it",
                             &name, &manager.room_name
                         )
                     } else {
-                        info!("{} left {}", name, &manager.room_name)
+                        info!("{} leaves {}", &name, &manager.room_name)
                     };
-                    manager.broadcast(&response);
+                    let msg = GameMsg::Info(InfoMsg::Left(name));
+                    manager.broadcast_to_all(msg);
                 }
-                Err(()) => {
-                    warn!(
-                        "Attempt to terminate innexistant {:?} in {}",
-                        id, &manager.room_name
-                    );
+                LeaveResponse::Empty(_) => {
+                    manager.respond.send(ManagerResponse::Empty);
+                    return Err(GameInteruption::EverybodyLeft);
                 }
+                LeaveResponse::Failed(()) => warn!(
+                    "Attempt to terminate innexistant {:?} in {}",
+                    id, &manager.room_name
+                ),
             };
+        }
+        ManagerRequest::GiveUp(name) => {
+            if let Some(id) = manager.newcomings.remove(&name) {
+                manager
+                    .client_chan
+                    .start_send(ManagerRequest::Terminate(id));
+                manager.client_chan.poll_complete();
+            }
         }
         ManagerRequest::Expects(name) => {
             match manager.game.joins(name.clone()) {
                 JoinResponse::Accept(id) => {
                     info!("Adding {} to {}", &name, &manager.room_name);
-                    manager.broadcast_to_all(GameMsg::Info(InfoMsg::Joined(
-                        name.clone(),
-                    )));
+                    let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
+                    manager.broadcast_to_all(msg);
                     manager.newcomings.insert(name, id);
-                    manager.respond.send(ManagerResponse::Accepted);
+                    manager.respond.send(ManagerResponse::Accept);
                 }
                 JoinResponse::Refuse => {
                     warn!("{} refused {}", &manager.room_name, &name);
-                    manager.respond.send(ManagerResponse::Refused);
-                }
-            }
-        }
-        ManagerRequest::GiveUp(name) => {
-            if let Some(id) = manager.newcomings.remove(&name) {
-                match manager.game.leaves(id) {
-                    Ok((name, response)) => {
-                        info!(
-                            "canceled {} connection's to {}",
-                            name, &manager.room_name
-                        );
-                        manager.broadcast(&response);
-                    }
-                    Err(()) => {
-                        warn!(
-                            "Failed to cancel {}'s connection to {}",
-                            name, &manager.room_name
-                        );
-                    }
+                    manager.respond.send(ManagerResponse::Refuse);
                 }
             }
         }
@@ -143,7 +147,7 @@ impl GameRoom {
         let (send_manager, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
         let manager = ConnectionManager {
-            room_name,
+            room_name: room_name.clone(),
             respond,
             connections: FnvHashMap::with_capacity_and_hasher(
                 16,
@@ -153,7 +157,15 @@ impl GameRoom {
             game: sketchfighters::Game::new(),
             newcomings: FxHashMap::default(),
         };
-        warp::spawn(receiv_chan.fold(manager, oversee).map(|_| ()));
+        warp::spawn(
+            receiv_chan
+                .from_err::<GameInteruption>()
+                .fold(manager, oversee)
+                .map(|_| unreachable!("Completed an infinite stream"))
+                .map_err(move |close_cond| {
+                    info!("Closing {} because: {}", room_name, close_cond);
+                }),
+        );
         GameRoom {
             send_manager,
             recv_manager: sync::Mutex::new(recv_manager),
@@ -163,7 +175,7 @@ impl GameRoom {
     /// Add `user` to the list of people to expect
     /// returns an `Err` if the user was already present in the expected list
     /// or is present in the room
-    pub fn expect(&mut self, user: Name) -> Result<(), ()> {
+    pub fn expect(&mut self, user: Name) -> ManagerResponse {
         let mut send_chan = self.send_manager.clone();
         send_chan.start_send(ManagerRequest::Expects(user.clone()));
         send_chan.poll_complete();
@@ -175,18 +187,10 @@ impl GameRoom {
                 .map(|_| ())
                 .map_err(|_| ()),
         );
-        if let Ok(response) = self.recv_manager.lock().unwrap().recv() {
-            match response {
-                ManagerResponse::Accepted => Ok(()),
-                ManagerResponse::Refused => Err(()),
-                ManagerResponse::ManagerEmpty => Err(()),
-            }
-        } else {
-            panic!(
-                "Error communicating with game manager. The game state is \
-                 corrupted, there is no point keeping this game room up."
-            )
-        }
+        self.recv_manager.lock().unwrap().recv().expect(
+            "Error communicating with game manager. The game state is \
+             corrupted, there is no point keeping this game room up.",
+        )
     }
 
     /// If `accepted` is in the list of expected users, accept the connection

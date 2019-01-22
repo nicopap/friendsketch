@@ -15,7 +15,7 @@ use warp::{
 
 use self::{
     api::{Name, RoomId},
-    games::GameRoom,
+    games::{GameRoom, ManagerResponse},
 };
 
 type ServerState = CHashMap<RoomId, GameRoom>;
@@ -81,29 +81,46 @@ fn handle_create(
         .map_err(|_| unreachable!())
 }
 
+enum Handle {
+    NoRoom,
+    EmptyRoom,
+    Refuse,
+    Accept,
+}
 fn handle_join(
     api::JoinReq { roomid, username }: api::JoinReq,
     server: Server,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let result = (move || -> Result<_, StatusCode> {
+    let err_code = {
         let logmsg = format!("User {} is now expected to join", &username);
-        // room exists
-        let mut room = server.get_mut(&roomid).ok_or(StatusCode::NOT_FOUND)?;
-        // name is not already taken
-        room.expect(username).or(Err(StatusCode::CONFLICT))?;
-        info!("{}", logmsg);
-        let mut response = Response::builder();
-        Ok(response
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/json")
-            .body("\"pintclone\"")
-            .map_err(|_| unreachable!()))
-    })();
-    result.unwrap_or_else(|code| {
-        warn!("Join failed with status code: {}", &code);
-        let mut response = Response::builder();
-        response.status(code).body("").map_err(|_| unreachable!())
-    })
+        let handle = match server.get_mut(&roomid) {
+            Some(mut room) => match room.expect(username) {
+                ManagerResponse::Accept => Handle::Accept,
+                ManagerResponse::Refuse => Handle::Refuse,
+                ManagerResponse::Empty => Handle::EmptyRoom,
+            },
+            None => Handle::NoRoom,
+        };
+        match handle {
+            Handle::NoRoom => StatusCode::NOT_FOUND,
+            Handle::Accept => {
+                info!("{}", logmsg);
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", "text/json")
+                    .body("\"pintclone\"")
+                    .map_err(|_| unreachable!())
+            }
+            Handle::Refuse => StatusCode::CONFLICT,
+            Handle::EmptyRoom => {
+                server.remove(&roomid);
+                StatusCode::NOT_FOUND
+            }
+        }
+    };
+    warn!("Join failed with status code: {}", &err_code);
+    let mut response = Response::builder();
+    response.status(err_code).body("").map_err(|_| unreachable!())
 }
 
 fn accept_conn(
