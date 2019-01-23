@@ -28,13 +28,18 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Concider using assayer crate for validation
 > concider accepting an RC in GameMsg send channel as to avoid copying data
-> Concider moving game logic in its own module
 > Figure out how to URL-decode URLs so as to avoid surprises with %20 and / **(IMPORTANT)**
 	> Do that in the client, for names containing '/'
 	> Test server for how it handles it
+	> Concider leaking the ''Id'' of the player through API. This way, the server controls the URL the player has to visit, instead of the user.
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
 > Better Error management with warp::Rejection and custom errors https://github.com/seanmonstar/warp/blob/master/examples/errors.rs
 
+> Better handle unexpected runtime errors such as broken connections and game errors
+	> Investigate error "unreachable code has been reached" that happens after a while
+	> Investigate how to garbage-collect empty rooms that result from a broken disconnection
+	> Concider using an extra item to ''ManagerResponse'' enum.
+> Concider having a simpler way to get someone to join game (for exemple with URL)
 
 
 ===== Current roadmap =====
@@ -43,7 +48,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 	* Sanitize names and roomids in backend
 	* Implement game logic
 	* Clean up when Rooms stay empty for too long
-* Implement "cooldown" on people leaving so they have a chance to rejoin.
 * Add tests
 * Improve client layout: room name field etc.
 * Fix chat

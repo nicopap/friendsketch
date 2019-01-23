@@ -28,8 +28,13 @@ Here are the troubles I'm currently having:
 		* → Game should be able to access player names.
 * modify server, while keeping track of why we did it.
 
+==== Challenges + Newcomings ====
+> Concider extracting this into its own structure
+
 ==== Game specification ====
+(very long term)
 Problem: difficulty separating game logic from room management logic.
 	* Already-defined data structures do not separate them. 
 	* Changing API is high friction, because I coupled the API data structures with the code.
 Potential solution: Use wrappers in client API file, so as to be able to change API, without having to change client code
+

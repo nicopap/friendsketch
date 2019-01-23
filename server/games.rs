@@ -7,6 +7,7 @@ use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
 use quick_error::quick_error;
 use serde_json::{de::from_slice, ser::to_string};
+use slotmap::{new_key_type, SlotMap};
 use std::{sync, time::Duration};
 use tokio_timer::sleep;
 use warp::{
@@ -32,21 +33,37 @@ quick_error! {
     }
 }
 
+new_key_type! { struct Challenge; }
+
 /// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
 enum ManagerRequest {
+    /// A message sent through a connected player
     Msg(Id, api::GameReq),
+    /// Order the game to drop the given player `Id`
     Terminate(Id),
+    /// A connection with given player `Name` has been established
     Join(Name, WebSocket),
+    /// A player `Name` is joining, with an imminent connection
     Expects(Name),
-    GiveUp(Name),
+    /// player `Name` was expected to connect in too long, tell the game
+    /// to drop them. `challenge` identifies the
+    GiveUp {
+        name:      Name,
+        challenge: Challenge,
+    },
+    /// Player `Id` disconnected.
+    Disconnect(Id),
 }
 
 /// The result of an attempt to add an user to a game room.
 #[derive(Debug)]
 pub enum ManagerResponse {
+    /// The player was accepted into the room
     Accept,
+    /// The player wasn't accepted into the room
     Refuse,
+    /// The room should be closed
     Empty,
 }
 
@@ -55,7 +72,9 @@ struct ConnectionManager<G> {
     connections: FnvHashMap<Id, Connection>,
     client_chan: mpsc::Sender<ManagerRequest>,
     respond:     sync::mpsc::SyncSender<ManagerResponse>,
-    newcomings:  FxHashMap<Name, Id>,
+    newcomings:  FxHashMap<Name, (Id, Challenge)>,
+    remaining:   FnvHashMap<Id, Name>,
+    challenges:  SlotMap<Challenge, ()>,
     game:        G,
 }
 
@@ -72,8 +91,10 @@ where
     use self::api::{GameMsg, InfoMsg};
     match msg {
         ManagerRequest::Join(name, ws) => {
-            if let Some(id) = manager.newcomings.remove(&name) {
+            if let Some((id, challenge)) = manager.newcomings.remove(&name) {
                 info!("Connection with {} established", &name);
+                manager.remaining.insert(id, name);
+                manager.challenges.remove(challenge);
                 manager.join(id, ws);
             } else {
                 warn!("Unexpected player {} attempted to connect", &name);
@@ -82,6 +103,15 @@ where
         ManagerRequest::Msg(id, msg_val) => {
             let response = manager.game.tells(id, msg_val.into())?;
             manager.broadcast(&response);
+        }
+        ManagerRequest::Disconnect(id) => {
+            if let Some(name) = manager.remaining.remove(&id) {
+                info!("{} in {} temporarly dropped", name, manager.room_name);
+                let client_chan = manager.client_chan.clone();
+                let challenge = manager.challenges.insert(());
+                manager.newcomings.insert(name.clone(), (id, challenge));
+                drop_newcoming_in(client_chan, 3, name, challenge);
+            }
         }
         ManagerRequest::Terminate(id) => {
             match manager.game.leaves(id) {
@@ -94,6 +124,7 @@ where
                     } else {
                         info!("{} leaves {}", &name, &manager.room_name)
                     };
+                    manager.remaining.remove(&id);
                     let msg = GameMsg::Info(InfoMsg::Left(name));
                     manager.broadcast_to_all(msg);
                 }
@@ -107,12 +138,16 @@ where
                 ),
             };
         }
-        ManagerRequest::GiveUp(name) => {
-            if let Some(id) = manager.newcomings.remove(&name) {
-                manager
-                    .client_chan
-                    .start_send(ManagerRequest::Terminate(id));
-                manager.client_chan.poll_complete();
+        ManagerRequest::GiveUp { name, challenge } => {
+            use self::ManagerRequest::Terminate;
+            if let Some((id, challenged)) = manager.newcomings.remove(&name) {
+                if challenge == challenged {
+                    manager.challenges.remove(challenged);
+                    manager.client_chan.start_send(Terminate(id));
+                    manager.client_chan.poll_complete();
+                } else {
+                    manager.newcomings.insert(name, (id, challenged));
+                }
             }
         }
         ManagerRequest::Expects(name) => {
@@ -121,7 +156,10 @@ where
                     info!("Adding {} to {}", &name, &manager.room_name);
                     let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
                     manager.broadcast_to_all(msg);
-                    manager.newcomings.insert(name, id);
+                    let client_chan = manager.client_chan.clone();
+                    let challenge = manager.challenges.insert(());
+                    manager.newcomings.insert(name.clone(), (id, challenge));
+                    drop_newcoming_in(client_chan, 30, name, challenge);
                     manager.respond.send(ManagerResponse::Accept);
                 }
                 JoinResponse::Refuse => {
@@ -144,18 +182,22 @@ pub struct GameRoom {
 impl GameRoom {
     /// Create a new empty game room.
     pub fn new(room_name: String) -> Self {
+        macro_rules! default {
+            () => {
+                Default::default()
+            };
+        }
         let (send_manager, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
         let manager = ConnectionManager {
             room_name: room_name.clone(),
             respond,
-            connections: FnvHashMap::with_capacity_and_hasher(
-                16,
-                Default::default(),
-            ),
+            connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
             client_chan: send_manager.clone(),
             game: sketchfighters::Game::new(),
-            newcomings: FxHashMap::default(),
+            newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
+            remaining: FnvHashMap::with_capacity_and_hasher(16, default!()),
+            challenges: SlotMap::with_capacity_and_key(4),
         };
         warp::spawn(
             receiv_chan
@@ -172,21 +214,11 @@ impl GameRoom {
         }
     }
 
-    /// Add `user` to the list of people to expect
-    /// returns an `Err` if the user was already present in the expected list
-    /// or is present in the room
+    /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
         let mut send_chan = self.send_manager.clone();
         send_chan.start_send(ManagerRequest::Expects(user.clone()));
         send_chan.poll_complete();
-        // FIXME: expect(X) -> join(X) -> leaves(X) -> expect(X) -> Giveup(X)
-        //           v---> wait 10 seconds ----------------------^
-        warp::spawn(
-            sleep(Duration::new(10, 0))
-                .then(move |_| send_chan.send(ManagerRequest::GiveUp(user)))
-                .map(|_| ())
-                .map_err(|_| ()),
-        );
         self.recv_manager.lock().unwrap().recv().expect(
             "Error communicating with game manager. The game state is \
              corrupted, there is no point keeping this game room up.",
@@ -208,6 +240,21 @@ impl GameRoom {
                 .map(|_| ())
         })
     }
+}
+
+fn drop_newcoming_in(
+    chan: mpsc::Sender<ManagerRequest>,
+    seconds: u64,
+    name: Name,
+    challenge: Challenge,
+) {
+    let giveup_request = ManagerRequest::GiveUp { challenge, name };
+    warp::spawn(
+        sleep(Duration::new(seconds, 0))
+            .then(move |_| chan.send(giveup_request))
+            .map(|_| ())
+            .map_err(|_| ()),
+    );
 }
 
 impl<G> ConnectionManager<G>
@@ -254,7 +301,7 @@ where
             });
         warp::spawn(
             client_stream
-                .chain(stream::once(Ok(ManagerRequest::Terminate(id))))
+                .chain(stream::once(Ok(ManagerRequest::Disconnect(id))))
                 .forward(self.client_chan.clone().sink_map_err(|_| ()))
                 .map(|_| ()),
         );
