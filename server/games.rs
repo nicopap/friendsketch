@@ -203,7 +203,7 @@ impl GameRoom {
             receiv_chan
                 .from_err::<GameInteruption>()
                 .fold(manager, oversee)
-                .map(|_| unreachable!("Completed an infinite stream"))
+                .map(|_| panic!("Completed an infinite stream"))
                 .map_err(move |close_cond| {
                     info!("Closing {} because: {}", room_name, close_cond);
                 }),
@@ -271,7 +271,9 @@ where
         let (connection, buffed_recv) = mpsc::unbounded();
         warp::spawn(
             buffed_recv
-                .map_err(|()| -> warp::Error { unreachable!() })
+                .map_err(|()| -> warp::Error {
+                    panic!("unreachable at {}:{}", module_path!(), line!());
+                })
                 .map(|msg: api::GameMsg| {
                     let sereilized = to_string(&msg).unwrap();
                     debug!("ws send: {}", sereilized);

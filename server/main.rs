@@ -65,7 +65,7 @@ fn handle_create(
         .status(StatusCode::CREATED)
         .header("Content-Type", "text/json")
         .body(sanitized_room_name)
-        .map_err(|_| unreachable!())
+        .map_err(|_| panic!("unreachable at {}:{}", module_path!(), line!()))
 }
 
 enum Handle {
@@ -96,7 +96,9 @@ fn handle_join(
                     .status(StatusCode::OK)
                     .header("Content-Type", "text/json")
                     .body("\"pintclone\"")
-                    .map_err(|_| unreachable!());
+                    .map_err(|_| {
+                        panic!("unreachable at {}:{}", module_path!(), line!())
+                    });
             }
             Handle::Refuse => StatusCode::CONFLICT,
             Handle::EmptyRoom => {
@@ -110,7 +112,7 @@ fn handle_join(
     response
         .status(err_code)
         .body("")
-        .map_err(|_| unreachable!())
+        .map_err(|_| panic!("unreachable at {}:{}", module_path!(), line!()))
 }
 
 fn accept_conn(
