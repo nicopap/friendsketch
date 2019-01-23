@@ -23,11 +23,22 @@ use crate::{
     },
 };
 
+type ManagerChannel = mpsc::Sender<ManagerRequest>;
+
+macro_rules! default {
+    () => {
+        Default::default()
+    };
+}
+
 quick_error! {
     #[derive(Debug)]
     enum GameInteruption {
         EverybodyLeft {}
         GameError(err: ()) {
+            from()
+        }
+        ManagerChannelError(err: mpsc::SendError<ManagerRequest>) {
             from()
         }
     }
@@ -46,14 +57,20 @@ enum ManagerRequest {
     Join(Name, WebSocket),
     /// A player `Name` is joining, with an imminent connection
     Expects(Name),
-    /// player `Name` was expected to connect in too long, tell the game
-    /// to drop them. `challenge` identifies the
-    GiveUp {
-        name:      Name,
-        challenge: Challenge,
-    },
+    /// A player was expected to connect a while ago, tell the game
+    /// to drop them if they didn't connect.
+    GiveUp(GiveUp),
     /// Player `Id` disconnected.
     Disconnect(Id),
+}
+
+/// player `Name` was expected to connect a while ago, tell the game
+/// to drop them if they didn't connect. `challenge` identifies the exact
+/// connection to give up.
+#[derive(Debug)]
+struct GiveUp {
+    name:      Name,
+    challenge: Challenge,
 }
 
 /// The result of an attempt to add an user to a game room.
@@ -67,14 +84,86 @@ pub enum ManagerResponse {
     Empty,
 }
 
+/// Specialized structure to manage how the server reacts to people leaving and
+/// joining temporarly.
+struct HangupChallenger {
+    newcomings: FxHashMap<Name, (Id, Challenge)>,
+    remaining:  FnvHashMap<Id, Name>,
+    challenges: SlotMap<Challenge, ()>,
+    chan:       ManagerChannel,
+}
+
+impl HangupChallenger {
+    fn new(manager_channel: ManagerChannel) -> Self {
+        HangupChallenger {
+            newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
+            remaining:  FnvHashMap::with_capacity_and_hasher(16, default!()),
+            challenges: SlotMap::with_capacity_and_key(4),
+            chan:       manager_channel,
+        }
+    }
+
+    fn accept(&mut self, name: Name, id: Id) {
+        self.drop_in(30, name, id);
+    }
+
+    fn challenge(
+        &mut self,
+        GiveUp { name, challenge }: GiveUp,
+    ) -> Result<(), GameInteruption> {
+        use self::ManagerRequest::Terminate;
+        if let Some((id, challenged)) = self.newcomings.remove(&name) {
+            if challenge == challenged {
+                self.challenges.remove(challenged);
+                self.chan.start_send(Terminate(id))?;
+                self.chan.poll_complete()?;
+            } else {
+                self.newcomings.insert(name, (id, challenged));
+            }
+        }
+        Ok(())
+    }
+
+    fn drop_in(&mut self, delay: u64, name: Name, id: Id) {
+        let challenge = self.challenges.insert(());
+        self.newcomings.insert(name.clone(), (id, challenge));
+        let request = ManagerRequest::GiveUp(GiveUp { challenge, name });
+        let chan = self.chan.clone();
+        warp::spawn(
+            sleep(Duration::new(delay, 0))
+                .then(move |_| chan.send(request))
+                .map(|_| ())
+                .map_err(|_| ()),
+        );
+    }
+
+    fn join(&mut self, name: Name) -> Option<Id> {
+        self.newcomings.remove(&name).map(|(id, challenge)| {
+            info!("Connection with {} established", &name);
+            self.remaining.insert(id, name);
+            self.challenges.remove(challenge);
+            id
+        })
+    }
+
+    fn disconnect(&mut self, id: Id) -> Option<Name> {
+        self.remaining.remove(&id).map(|name| {
+            self.drop_in(3, name.clone(), id);
+            name
+        })
+    }
+
+    fn remove(&mut self, id: &Id) {
+        self.remaining.remove(&id);
+    }
+}
+
 struct ConnectionManager<G> {
     room_name:   String,
     connections: FnvHashMap<Id, Connection>,
-    client_chan: mpsc::Sender<ManagerRequest>,
+    client_chan: ManagerChannel,
     respond:     sync::mpsc::SyncSender<ManagerResponse>,
-    newcomings:  FxHashMap<Name, (Id, Challenge)>,
-    remaining:   FnvHashMap<Id, Name>,
-    challenges:  SlotMap<Challenge, ()>,
+    hangups:     HangupChallenger,
     game:        G,
 }
 
@@ -91,13 +180,8 @@ where
     use self::api::{GameMsg, InfoMsg};
     match msg {
         ManagerRequest::Join(name, ws) => {
-            if let Some((id, challenge)) = manager.newcomings.remove(&name) {
-                info!("Connection with {} established", &name);
-                manager.remaining.insert(id, name);
-                manager.challenges.remove(challenge);
+            if let Some(id) = manager.hangups.join(name) {
                 manager.join(id, ws);
-            } else {
-                warn!("Unexpected player {} attempted to connect", &name);
             }
         }
         ManagerRequest::Msg(id, msg_val) => {
@@ -105,12 +189,8 @@ where
             manager.broadcast(&response);
         }
         ManagerRequest::Disconnect(id) => {
-            if let Some(name) = manager.remaining.remove(&id) {
+            if let Some(name) = manager.hangups.disconnect(id) {
                 info!("{} in {} temporarly dropped", name, manager.room_name);
-                let client_chan = manager.client_chan.clone();
-                let challenge = manager.challenges.insert(());
-                manager.newcomings.insert(name.clone(), (id, challenge));
-                drop_newcoming_in(client_chan, 3, name, challenge);
             }
         }
         ManagerRequest::Terminate(id) => {
@@ -124,7 +204,7 @@ where
                     } else {
                         info!("{} leaves {}", &name, &manager.room_name)
                     };
-                    manager.remaining.remove(&id);
+                    manager.hangups.remove(&id);
                     let msg = GameMsg::Info(InfoMsg::Left(name));
                     manager.broadcast_to_all(msg);
                 }
@@ -138,17 +218,8 @@ where
                 ),
             };
         }
-        ManagerRequest::GiveUp { name, challenge } => {
-            use self::ManagerRequest::Terminate;
-            if let Some((id, challenged)) = manager.newcomings.remove(&name) {
-                if challenge == challenged {
-                    manager.challenges.remove(challenged);
-                    manager.client_chan.start_send(Terminate(id));
-                    manager.client_chan.poll_complete();
-                } else {
-                    manager.newcomings.insert(name, (id, challenged));
-                }
-            }
+        ManagerRequest::GiveUp(give_up) => {
+            manager.hangups.challenge(give_up)?;
         }
         ManagerRequest::Expects(name) => {
             match manager.game.joins(name.clone()) {
@@ -156,10 +227,7 @@ where
                     info!("Adding {} to {}", &name, &manager.room_name);
                     let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
                     manager.broadcast_to_all(msg);
-                    let client_chan = manager.client_chan.clone();
-                    let challenge = manager.challenges.insert(());
-                    manager.newcomings.insert(name.clone(), (id, challenge));
-                    drop_newcoming_in(client_chan, 30, name, challenge);
+                    manager.hangups.accept(name, id);
                     manager.respond.send(ManagerResponse::Accept);
                 }
                 JoinResponse::Refuse => {
@@ -175,18 +243,13 @@ where
 /// Manage what players has access to a specific instance of a game party.
 /// One must first be "expected" to then be "accepted" into the game.
 pub struct GameRoom {
-    send_manager: mpsc::Sender<ManagerRequest>,
+    send_manager: ManagerChannel,
     recv_manager: sync::Mutex<sync::mpsc::Receiver<ManagerResponse>>,
 }
 
 impl GameRoom {
     /// Create a new empty game room.
     pub fn new(room_name: String) -> Self {
-        macro_rules! default {
-            () => {
-                Default::default()
-            };
-        }
         let (send_manager, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
         let manager = ConnectionManager {
@@ -194,10 +257,8 @@ impl GameRoom {
             respond,
             connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
             client_chan: send_manager.clone(),
+            hangups: HangupChallenger::new(send_manager.clone()),
             game: sketchfighters::Game::new(),
-            newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
-            remaining: FnvHashMap::with_capacity_and_hasher(16, default!()),
-            challenges: SlotMap::with_capacity_and_key(4),
         };
         warp::spawn(
             receiv_chan
@@ -217,8 +278,10 @@ impl GameRoom {
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
         let mut send_chan = self.send_manager.clone();
-        send_chan.start_send(ManagerRequest::Expects(user.clone()));
-        send_chan.poll_complete();
+        send_chan
+            .start_send(ManagerRequest::Expects(user.clone()))
+            .unwrap();
+        send_chan.poll_complete().unwrap();
         self.recv_manager.lock().unwrap().recv().expect(
             "Error communicating with game manager. The game state is \
              corrupted, there is no point keeping this game room up.",
@@ -236,21 +299,6 @@ impl GameRoom {
                 .map(|_| ())
         })
     }
-}
-
-fn drop_newcoming_in(
-    chan: mpsc::Sender<ManagerRequest>,
-    seconds: u64,
-    name: Name,
-    challenge: Challenge,
-) {
-    let giveup_request = ManagerRequest::GiveUp { challenge, name };
-    warp::spawn(
-        sleep(Duration::new(seconds, 0))
-            .then(move |_| chan.send(giveup_request))
-            .map(|_| ())
-            .map_err(|_| ()),
-    );
 }
 
 impl<G> ConnectionManager<G>

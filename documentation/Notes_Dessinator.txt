@@ -38,7 +38,7 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Better handle unexpected runtime errors such as broken connections and game errors
 	> Investigate error "unreachable code has been reached" that happens after a while
 	> Investigate how to garbage-collect empty rooms that result from a broken disconnection
-	> Concider using an extra item to ''ManagerResponse'' enum.
+	> Concider using an extra item in ''ManagerResponse'' enum.
 > Concider having a simpler way to get someone to join game (for exemple with URL)
 
 

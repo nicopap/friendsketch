@@ -28,9 +28,6 @@ Here are the troubles I'm currently having:
 		* → Game should be able to access player names.
 * modify server, while keeping track of why we did it.
 
-==== Challenges + Newcomings ====
-> Concider extracting this into its own structure
-
 ==== Game specification ====
 (very long term)
 Problem: difficulty separating game logic from room management logic.
