@@ -225,17 +225,13 @@ impl GameRoom {
         )
     }
 
-    /// If `accepted` is in the list of expected users, accept the connection
-    /// to the websocket `ws` and returns `Some(Reply)`. Otherwise, `None`
-    pub fn accept(
-        &mut self,
-        accepted: Name,
-        ws: Ws2,
-    ) -> impl warp::reply::Reply {
+    /// Tell the game to accept a given connection from `user`.
+    /// Returns the server response to the connection
+    pub fn accept(&mut self, user: Name, ws: Ws2) -> impl warp::reply::Reply {
         let game_chan = self.send_manager.clone();
         ws.on_upgrade(move |socket| {
             game_chan
-                .send(ManagerRequest::Join(accepted, socket))
+                .send(ManagerRequest::Join(user, socket))
                 .map_err(|_| ())
                 .map(|_| ())
         })
