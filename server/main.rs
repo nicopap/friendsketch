@@ -58,8 +58,8 @@ fn handle_create(
     // checking that the roomid isn't already taken would be ideal
     let roomid = RoomId::new_random();
     let room_name = format!("{}", roomid);
-    let sanitized_room_name = format!("\"{}\"", &room_name);
-    info!("Room created: {} by user {}", &room_name, &username);
+    let sanitized_room_name = format!("\"{}\"", room_name);
+    info!("Room created: {} by user {}", room_name, username);
     server.insert(roomid, GameRoom::new(room_name));
     response
         .status(StatusCode::CREATED)
@@ -107,7 +107,7 @@ fn handle_join(
             }
         }
     };
-    warn!("Join failed with status code: {}", &err_code);
+    warn!("Join failed with status code: {}", err_code);
     let mut response = Response::builder();
     response
         .status(err_code)
@@ -121,10 +121,10 @@ fn accept_conn(
     ws: Ws2,
     server: Server,
 ) -> Result<impl warp::reply::Reply, warp::Rejection> {
-    let url = format!("/ws/{}/{}", &roomid, &name);
+    let url = format!("/ws/{}/{}", roomid, name);
     // room exists
     let mut room = server.get_mut(&roomid).ok_or_else(|| {
-        warn!("Rejected connection to {}", &url);
+        warn!("Rejected connection to {}", url);
         warp::reject::not_found()
     })?;
     // name is expected to join & accept connection

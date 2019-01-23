@@ -139,7 +139,7 @@ impl HangupChallenger {
 
     fn join(&mut self, name: Name) -> Option<Id> {
         self.newcomings.remove(&name).map(|(id, challenge)| {
-            info!("Connection with {} established", &name);
+            info!("Connection with {} established", name);
             self.remaining.insert(id, name);
             self.challenges.remove(challenge);
             id
@@ -193,49 +193,42 @@ where
                 info!("{} in {} temporarly dropped", name, manager.room_name);
             }
         }
-        ManagerRequest::Terminate(id) => {
-            match manager.game.leaves(id) {
-                LeaveResponse::Successfully(name) => {
-                    if let None = manager.connections.remove(&id) {
-                        error!(
-                            "{} attempts to leave {}, yet they aren't in it",
-                            &name, &manager.room_name
-                        )
-                    } else {
-                        info!("{} leaves {}", &name, &manager.room_name)
-                    };
-                    manager.hangups.remove(&id);
-                    let msg = GameMsg::Info(InfoMsg::Left(name));
-                    manager.broadcast_to_all(msg);
-                }
-                LeaveResponse::Empty(_) => {
-                    manager.respond.send(ManagerResponse::Empty);
-                    return Err(GameInteruption::EverybodyLeft);
-                }
-                LeaveResponse::Failed(()) => warn!(
-                    "Attempt to terminate innexistant {:?} in {}",
-                    id, &manager.room_name
-                ),
-            };
-        }
+        ManagerRequest::Terminate(id) => match manager.game.leaves(id) {
+            LeaveResponse::Successfully(name) => {
+                if let None = manager.connections.remove(&id) {
+                    error!("{} fails to leave {}", name, manager.room_name)
+                } else {
+                    info!("{} leaves {}", name, manager.room_name)
+                };
+                manager.hangups.remove(&id);
+                let msg = GameMsg::Info(InfoMsg::Left(name));
+                manager.broadcast_to_all(msg);
+            }
+            LeaveResponse::Empty(_) => {
+                manager.respond.send(ManagerResponse::Empty);
+                return Err(GameInteruption::EverybodyLeft);
+            }
+            LeaveResponse::Failed(()) => {
+                warn!("Fail to terminate {:?} in {}", id, manager.room_name)
+            }
+        },
         ManagerRequest::GiveUp(give_up) => {
             manager.hangups.challenge(give_up)?;
         }
-        ManagerRequest::Expects(name) => {
-            match manager.game.joins(name.clone()) {
-                JoinResponse::Accept(id) => {
-                    info!("Adding {} to {}", &name, &manager.room_name);
-                    let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
-                    manager.broadcast_to_all(msg);
-                    manager.hangups.accept(name, id);
-                    manager.respond.send(ManagerResponse::Accept);
-                }
-                JoinResponse::Refuse => {
-                    warn!("{} refused {}", &manager.room_name, &name);
-                    manager.respond.send(ManagerResponse::Refuse);
-                }
+        ManagerRequest::Expects(name) => match manager.game.joins(name.clone())
+        {
+            JoinResponse::Accept(id) => {
+                info!("Adding {} to {}", name, manager.room_name);
+                let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
+                manager.broadcast_to_all(msg);
+                manager.hangups.accept(name, id);
+                manager.respond.send(ManagerResponse::Accept);
             }
-        }
+            JoinResponse::Refuse => {
+                warn!("{} refused {}", manager.room_name, name);
+                manager.respond.send(ManagerResponse::Refuse);
+            }
+        },
     };
     Ok(manager)
 }
@@ -277,11 +270,10 @@ impl GameRoom {
 
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
-        let mut send_chan = self.send_manager.clone();
-        send_chan
-            .start_send(ManagerRequest::Expects(user.clone()))
+        let mut chan = self.send_manager.clone();
+        chan.start_send(ManagerRequest::Expects(user.clone()))
             .unwrap();
-        send_chan.poll_complete().unwrap();
+        chan.poll_complete().unwrap();
         self.recv_manager.lock().unwrap().recv().expect(
             "Error communicating with game manager. The game state is \
              corrupted, there is no point keeping this game room up.",
