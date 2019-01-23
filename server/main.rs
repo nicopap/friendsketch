@@ -28,37 +28,24 @@ fn main() {
     let server = Arc::new(ServerState::new());
     let server_ref = warp::any().map(move || server.clone());
 
-    macro_rules! json_body {
+    macro_rules! json {
         () => {
             warp::body::content_length_limit(1024 * 16).and(warp::body::json())
         };
     };
+    macro_rules! url {
+        {($($path:tt)*), $body:expr, $handler:expr $(,)?} => (
+            path!($($path)*)
+                .and($body)
+                .and(server_ref.clone())
+                .and_then($handler)
+        )
+    }
+    let join = url! {("friendk"/"rooms"/"join"), json!(), handle_join};
+    let create = url! {("friendk"/"rooms"/"create"), json!(), handle_create};
+    let ws_url = url! {("friendk"/"ws"/RoomId/Name), warp::ws2(), accept_conn};
 
-    let room_path = warp::post2().and(path!("friendk" / "rooms"));
-
-    let room_join = room_path
-        .and(path("join"))
-        .and(path::end())
-        .and(json_body!())
-        .and(server_ref.clone())
-        .and_then(handle_join);
-
-    let room_create = room_path
-        .and(path("create"))
-        .and(path::end())
-        .and(json_body!())
-        .and(server_ref.clone())
-        .and_then(handle_create);
-
-    let websockets = path!("friendk" / "ws" / RoomId / Name)
-        .and(warp::ws2())
-        .and(server_ref.clone())
-        .and_then(accept_conn);
-
-    let routes = websockets
-        .or(room_join)
-        .or(room_create)
-        .with(warp::log("friendsketch"));
+    let routes = ws_url.or(join).or(create).with(warp::log("friendsketch"));
     warp::serve(routes).run(([127, 0, 0, 1], 8073));
 }
 
