@@ -1,9 +1,0 @@
-Content-Type: text/x-zim-wiki
-Wiki-Format: zim 0.4
-Creation-Date: 2017-09-24T07:48:21+02:00
-
-====== market research ======
-Created Sunday 24 September 2017
-
-
-Scribble.io

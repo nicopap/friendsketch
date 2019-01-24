@@ -2,29 +2,23 @@ Content-Type: text/x-zim-wiki
 Wiki-Format: zim 0.4
 Creation-Date: 2017-09-12T16:28:47+02:00
 
-====== Notes Dessinator ======
+====== Notes Friendsketch ======
 Created Tuesday 12 September 2017
 
-This notebook relates to the Dessinator website game.
+This notebook relates to the Friendsketch website game.
 It is a collection of web-based games around drawing with multiple people over the web.
 
 Some sections relates to the design and the choices behind it, other to the experiences learn from making the application, what where the roadblocks and what is to plan
 
-[[+Create A room Page]]
-
 [[+Pintclone game design]]
+
+[[+sketchfighters game design]]
 
 [[+Backend API specification]]
 
-[[+market research]]
-
 [[+Roadblocks & current issues]]
 
-[[+Potential names]]
-
 [[+Devlog]]
-
-[[+devops]]
 
 > Concider using assayer crate for validation
 > concider accepting an RC in GameMsg send channel as to avoid copying data
