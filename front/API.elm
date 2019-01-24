@@ -13,6 +13,8 @@ module API
         , LobbyState
         , RoundState
         , ScoresState
+        , Stroke
+        , Drawing
         , GameState(..)
         , InfoMsg(..)
         , InfoRequest(..)
@@ -31,6 +33,7 @@ module.
 
 -}
 
+import List.Nonempty as NE
 import Color exposing (Color)
 import ColorMath exposing (hexToColor, colorToHex)
 import ElementRelativeMouseEvents exposing (Point)
@@ -267,7 +270,7 @@ decoderScoresState =
 
 type alias LobbyState =
     { players : List Name
-    , master : Bool
+    , master : Name
     }
 
 
@@ -275,7 +278,7 @@ decoderLobbyState : Decoder LobbyState
 decoderLobbyState =
     LobbyState
         <*| "players" :* Dec.list decoderName
-        |*| "master" :* Dec.bool
+        |*| "master" :* decoderName
 
 
 
@@ -285,7 +288,6 @@ decoderLobbyState =
 type alias RoundState =
     { playerScores : List (Name, List RoundSummary)
     , artist : Name
-    , timeout : Int
     }
 
 
@@ -294,16 +296,43 @@ decoderRoundState =
     RoundState
         <*| "players" :* decoderScore
         |*| "artist" :* decoderName
-        |*| "timeout" :* Dec.int
 
 
+
+--- CanvasState ---
+
+
+type alias Stroke =
+    { points : NE.Nonempty Point
+    , color : Color
+    , size : Float
+    }
+
+decoderStroke : Decoder Stroke
+decoderStroke =
+    let
+        toStroke : Point -> List Point -> Color -> Float -> Stroke
+        toStroke head tail =
+            Stroke (NE.Nonempty head tail)
+    in
+        toStroke
+            <*| 0 :^ decoderPoint
+            |*| 1 :^ Dec.list decoderPoint
+            |*| 2 :^ decoderColor
+            |*| 3 :^ Dec.float
+
+type alias Drawing = List Stroke
+
+decoderDrawing : Decoder Drawing
+decoderDrawing =
+    Dec.list decoderStroke
 
 --- GameState ---
 
 
 type GameState
     = Summary ScoresState
-    | Round RoundState
+    | Round Drawing RoundState
     | Lobby LobbyState
 
 
@@ -311,7 +340,9 @@ decoderGameState : Decoder GameState
 decoderGameState =
     oneOf
         [ "summary" := Summary <*| decoderScoresState
-        , "round" := Round <*| decoderRoundState
+        , "round" := Round
+            <*| 0 :^ decoderDrawing
+            |*| 1 :^ decoderRoundState
         , "lobby" := Lobby <*| decoderLobbyState
         ]
 
@@ -363,26 +394,26 @@ type CanvasMsg
     | CnvContinue Point
     | CnvEnd
 
+decoderPoint : Decoder Point
+decoderPoint =
+    Point <*| 0 :^ Dec.float |*| 1 :^ Dec.float
+
+decoderColor : Decoder Color
+decoderColor =
+    Dec.map
+        (Result.withDefault Color.black << hexToColor)
+        Dec.string
 
 decoderCanvasMsg : Decoder CanvasMsg
 decoderCanvasMsg =
-    let
-        decoderPoint =
-            Point <*| 0 :^ Dec.float |*| 1 :^ Dec.float
-
-        decoderColor =
-            Dec.map
-                (Result.withDefault Color.black << hexToColor)
-                Dec.string
-    in
-        oneOf
-            [ "start" := CnvStart
-                <*| 0 :^ decoderPoint
-                |*| 1 :^ decoderColor
-                |*| 2 :^ Dec.float
-            , "continue" := CnvContinue <*| decoderPoint
-            , "end" :- CnvEnd
-            ]
+    oneOf
+        [ "start" := CnvStart
+            <*| 0 :^ decoderPoint
+            |*| 1 :^ decoderColor
+            |*| 2 :^ Dec.float
+        , "continue" := CnvContinue <*| decoderPoint
+        , "end" :- CnvEnd
+        ]
 
 
 encoderCanvasMsg : CanvasMsg -> Value

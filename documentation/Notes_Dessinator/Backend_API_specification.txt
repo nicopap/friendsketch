@@ -93,54 +93,56 @@ Attempts to join an existing room ''roomid'' as ''username'' . This will "open" 
 ===== Pintclone =====
 
 ==== Types ====
+note: list of things between () is represented as a list of fixed size in json
 '''
-Point ~= [X, Y] where X = Y = [-2^31; 2^31[ : Int
+Point ~= (X, Y) where X = Y = [-2^31; 2^31[ : Int
 Score = Int
 Color ~= #[0-9a-f]{6}
 LogString ~= .{10000}
 Size = Float
+
 RoundSummary
 	= { artist: Score}
 	| { guessed: Score}
-	| { failed: [] }
-	| { absent: [] }
+	| { failed: () }
+	| { absent: () }
 	
 
 LobbyState =
 	{ players: [Name]
-	, master: Bool
+	, master: Name
 	}
 
 RoundState =
-	{ players: [ [Name, [RoundSummary]] ]
+	{ players: [ (Name, [RoundSummary]) ]
 	, artist: Name
-	, timeout: Int
 	}
 
 ScoresState =
-	{ scores: [ [Name, [RoundSummary]] ]
-	, timeout: Int
+	{ scores: [ (Name, [RoundSummary]) ]
 	}
+
+Drawing = [ (Point, [ Point ], Color, Size) ]
 
 GameState
 	= { summary: ScoresState }
-	| { round: RoundState }
+	| { round: (Drawing, RoundState) }
 	| { lobby: LobbyState }
 
 CanvasMsg
 	= { start: [ Point, Color, Size ] }
-	| { end: [] }
+	| { end: () }
 	| { continue: Point }
 
 InfoMsg
 	= { joined: Name }
 	| { left: Name }
 	| { sync: GameState }
-	| { mastery: [] }
+	| { mastery: () }
 
 InfoRequest
-	= { sync: [] }
-	| { start: [] }
+	= { sync: () }
+	| { start: () }
 	| { warn: LogString }
 
 GameReq

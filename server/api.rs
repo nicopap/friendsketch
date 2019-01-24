@@ -83,9 +83,7 @@ impl fmt::Display for RoomId {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Deserialize)]
-pub struct Size(pub f32);
-
+pub type Size = f32;
 pub type LogString = String;
 pub type Score = i32;
 pub type Color = String;
@@ -101,20 +99,24 @@ pub enum RoundSummary {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct RoundState {
+    pub players: Vec<(Name, Vec<RoundSummary>)>,
+    pub artist:  Name,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Stroke(pub Point, pub Vec<Point>, pub Color, pub Size);
+
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum GameState {
     Summary {
-        scores:  Vec<(Name, Vec<RoundSummary>)>,
-        timeout: i32,
+        scores: Vec<(Name, Vec<RoundSummary>)>,
     },
-    Round {
-        players: Vec<(Name, Vec<RoundSummary>)>,
-        artist:  Name,
-        timeout: i32,
-    },
+    Round(Vec<Stroke>, RoundState),
     Lobby {
         players: Vec<Name>,
-        master:  bool,
+        master:  Name,
     },
 }
 

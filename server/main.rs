@@ -1,3 +1,4 @@
+#![feature(uniform_paths)]
 mod api;
 mod games;
 

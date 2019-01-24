@@ -20,9 +20,9 @@ import Collage
 import Element as GraphElement
 import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
-import Canvas.Stroke as Stroke exposing (Stroke)
+import Canvas.Stroke as Stroke
 import Canvas.Toolbox as Toolbox exposing (Toolbox)
-import API
+import API exposing (Stroke)
 
 
 type Pen
@@ -77,9 +77,9 @@ type alias Canvas =
 
 {-| An initial canvas.
 -}
-new : API.Game -> API.RoomID -> API.Name -> State -> Canvas
-new game roomid name state =
-    { strokes = []
+new : List Stroke -> State -> Canvas
+new strokes state =
+    { strokes = strokes
     , state = state
     , pen = Away
     , color = Color.black

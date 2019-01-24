@@ -1,4 +1,4 @@
-module Canvas.Stroke exposing (Stroke, new, draw, drawFeedback, head)
+module Canvas.Stroke exposing (new, draw, drawFeedback, head)
 
 {-| Represents a simple paint stroke.
 
@@ -18,6 +18,7 @@ import Color
 import Color exposing (Color)
 import List.Nonempty as NE exposing (Nonempty)
 import ElementRelativeMouseEvents exposing (Point)
+import API exposing (Stroke)
 
 
 {-| Expand a stroke to include a new point.
@@ -43,15 +44,6 @@ drawFeedback newpoint stroke =
             Just { stroke | points = NE.cons newpoint stroke.points }
         else
             Nothing
-
-
-{-| A Stroke, can be of any Color and has a given size.
--}
-type alias Stroke =
-    { points : Nonempty Point
-    , color : Color
-    , size : Float
-    }
 
 
 {-| A stroke starting at a given Point, with given color and size.

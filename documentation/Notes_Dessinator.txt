@@ -35,22 +35,19 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
 > Better Error management with warp::Rejection and custom errors https://github.com/seanmonstar/warp/blob/master/examples/errors.rs
 
-> Better handle unexpected runtime errors such as broken connections and game errors
+> Better handle unexpected runtime errors such as broken connections
 	> Investigate error "unreachable code has been reached" that happens after a while
 	> Investigate how to garbage-collect empty rooms that result from a broken disconnection
-	> Concider using an extra item in ''ManagerResponse'' enum.
 > Concider having a simpler way to get someone to join game (for exemple with URL)
 
 
 ===== Current roadmap =====
-* Make sure client handles properly joining in middle of Drawing & leaving artist
 * Improve how the backend handles stuff
 	* Sanitize names and roomids in backend
 	* Implement game logic
-	* Clean up when Rooms stay empty for too long
 * Add tests
 * Improve client layout: room name field etc.
 * Fix chat
 	* Frontend: create interface (for chat, and word to guess etc)
-	* Backend: handle guesses and stuff, implement "SendTo"
+	* Backend: handle guesses and stuff,
 

@@ -65,10 +65,6 @@ copyCatch roomid =
     Ports.copyCatch ( "roomiddisplay", API.showRoomID roomid )
 
 
-newCanvas : API.RoomID -> API.Name -> Canvas.State -> Canvas
-newCanvas =
-    Canvas.new API.Pintclone
-
 
 main : Program Flags Pintclone Msg
 main =
@@ -129,48 +125,42 @@ newScores _ pintclone =
 newLobby : API.LobbyState -> Pintclone -> ( Pintclone, Cmd msg )
 newLobby { players, master } ({ roomid, username } as pintclone) =
     let
-        status =
-            if master then
-                Room.Master
+        (status, commands) =
+            if master == username then
+                (Room.Master, copyCatch roomid)
             else
-                Room.Peasant
+                (Room.Peasant, Cmd.none)
+
+        newState =
+            LobbyState
+                { room = Room.newLobby status username players
+                , canvas = Canvas.new [] Canvas.Pregame
+                , hideId = True
+                }
     in
-        ( { pintclone
-            | state =
-                LobbyState
-                    { room = Room.newLobby status username players
-                    , canvas = newCanvas roomid username Canvas.Pregame
-                    , hideId = True
-                    }
-          }
-        , if master then
-            copyCatch roomid
-          else
-            Cmd.none
-        )
+        ( { pintclone | state = newState }, commands )
 
 
 {-| Start a new round of Pintclone.
 -}
-newRound : API.RoundState -> Pintclone -> Pintclone
-newRound { playerScores, artist } ({ roomid, username } as pintclone) =
+newRound : API.Drawing -> API.RoundState -> Pintclone -> Pintclone
+newRound drawing { playerScores, artist } ({ username } as pintclone) =
     let
         scores =
             List.map Tuple.first playerScores
 
-        newState room canvas =
+        newInnerState room canvasState =
             { room = Room.newRound username scores room
-            , canvas = newCanvas roomid username canvas
+            , canvas = Canvas.new drawing canvasState
             }
+
+        newGameState =
+            if username == artist then
+                newInnerState Room.Me Canvas.Artist
+            else
+                newInnerState (Room.Another artist) Canvas.Spectator
     in
-        { pintclone
-            | state =
-                RoundState <|
-                    if username == artist then
-                        newState Room.Me Canvas.Artist
-                    else
-                        newState (Room.Another artist) Canvas.Spectator
-        }
+        { pintclone | state = RoundState newGameState }
 
 
 updateCanvas : Canvas.Msg -> GameLobby -> ( GameLobby, Maybe API.CanvasMsg )
@@ -241,8 +231,8 @@ updateInfo msg ({ username, state, wssend } as pintclone) =
                     API.Summary scores ->
                         ( newScores scores pintclone, Cmd.none )
 
-                    API.Round round ->
-                        ( newRound round pintclone, Cmd.none )
+                    API.Round drawing round ->
+                        ( newRound drawing round pintclone, Cmd.none )
 
                     API.Lobby lobby ->
                         newLobby lobby pintclone
