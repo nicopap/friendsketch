@@ -46,7 +46,7 @@ view colormsg sizemsg { palette } =
 colorList : Array Color
 colorList =
     Array.fromList
-        [ white, grey, lightGrey, darkGrey, charcoal, lightCharcoal, darkCharcoal, red, lightRed, darkRed, orange, lightOrange, darkOrange, yellow, lightYellow, darkYellow, green, lightGreen, darkGreen, blue, lightBlue, darkBlue, purple, lightPurple, darkPurple, brown, lightBrown, darkBrown, black ]
+        [ white, lightGrey, grey, darkGrey,  lightCharcoal, charcoal, darkCharcoal, lightRed, red, darkRed, lightOrange, orange, darkOrange, lightYellow, yellow, darkYellow, lightGreen, green, darkGreen, lightBlue, blue, darkBlue, lightPurple, purple, darkPurple, lightBrown, brown, darkBrown, black ]
 
 
 viewPalette : (Color -> msg) -> Array ColorBox -> Html (Result Msg msg)

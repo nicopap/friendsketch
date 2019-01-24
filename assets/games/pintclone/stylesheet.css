@@ -4,7 +4,8 @@
 }
 
 .colorbox:focus {
-	box-shadow: 0 3px blue;
+	box-shadow: 0 0 5px 5px white;
+	z-index:3;
 }
 
 .colorbox {
@@ -28,12 +29,12 @@ input[type=color] {
 	padding: 0;
 }
 
-#artcontainer {
-	display: flex;
-	flex-direction: column;
-	flex-wrap: nowrap;
+.top-layout {
 	border-style: solid;
-	border-radius: 10px;
+	border-width: 3px;
+}
+
+#artcontainer {
 	height : auto;
 	width : auto;
 	margin-left: 5px;
@@ -43,8 +44,6 @@ input[type=color] {
 	padding: 5px;
 	max-width: 600px;
 	box-sizing: border-box;
-	border-bottom-right-radius: inherit;
-	border-bottom-left-radius: inherit;
 	display: flex;
 	flex-wrap: nowrap;
 	height: auto;
@@ -54,8 +53,6 @@ input[type=color] {
 	border-bottom: solid;
 	width: 600px;
 	height: 400px;
-	border-top-right-radius: inherit;
-	border-top-left-radius: inherit;
 }
 
 .artist-empty #canvas{
@@ -104,13 +101,10 @@ input[type=color] {
 
 #masterlayout {
 	display: flex;
-	flex-direction: row;
 	flex-wrap: nowrap;
 }
 
 #userlist {
-	border-style: solid;
-	border-radius: 10px;
 	height: auto;
 	margin: 0;
 	list-style-type: none;
@@ -118,13 +112,13 @@ input[type=color] {
 }
 
 #userlist .userentry {
-	padding-bottom: 1.6em;
+	padding: 4px 10px;
 	border-bottom-style: solid;
 	border-width: 1px;
 	border-color: grey;
 	transition: color 0.1s;
 }
-#userlist .userentry-me .username { text-decoration: underline; }
+#userlist .userentry-me .username::before { content:"me:" }
 #userlist .userentry-artist { background-color: #cce9b6; }
 
 
@@ -136,17 +130,24 @@ input[type=color] {
 	left: 30%;
 	top: 1em;
 	z-index: 2;
-	background-color: #e9b7b8;
-	border-radius: 10px;
-	width: auto;
+	background-color: #000d;
+	color: #abb2bf;
+	box-shadow: 0 0 10px 10px #000d;
+	width: 300px;
 	height: auto;
 }
 
+#roomiddialog h3 { margin:0 }
+#roomiddialog p { margin:0; line-height: 1}
+
 #roomiddialog input[type=checkbox] { width: auto; }
-#roomiddialog button { margin: 5px; }
+#roomiddialog button { 
+	margin: auto; 
+	padding: 1px 40px;
+}
 
 #roomiddialog input {
-	width: 3.5em;
 	margin-right: 0;
 	padding: 0;
+	font-size:17px;
 }

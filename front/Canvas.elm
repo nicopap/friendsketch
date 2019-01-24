@@ -213,7 +213,7 @@ view ({ toolbox, state, strokes, pen } as canvas) =
                 Spectator ->
                     "spectator"
     in
-        div [ id "artcontainer", class stateClass ]
+        div [ id "artcontainer", class (stateClass ++ " top-layout") ]
             [ Html.map ArtistMsg <| canvasView canvas
             , Html.map adaptToolbox <|
                 Toolbox.view ChangeColor ChangePenSize toolbox

@@ -259,7 +259,7 @@ view ({ me, state } as room) =
             toList opponents
                 |> sortBy API.showName
                 |> map (userRow maybeartist)
-                |> ul [ id "userlist" ]
+                |> ul [ id "userlist", class "top-layout" ]
     in
         case state of
             Alone ->
