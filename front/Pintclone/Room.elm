@@ -266,7 +266,7 @@ view ({ me, state } as room) =
                 nameList Nothing <| fromElement me
 
             NormalWith opponents ->
-                nameList Nothing opponents
+                nameList Nothing (me ::: opponents)
 
             MasterOf opponents ->
                 nameList Nothing (me ::: opponents)

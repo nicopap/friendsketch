@@ -4,7 +4,7 @@ import Json.Decode as Json
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
-import WebSocket
+import NeatSocket
 import Chat.Message as Message exposing (Message)
 import Chat.InputField as InputField
 import Room exposing (Room)
@@ -27,7 +27,7 @@ type Msg
 subs : Chat -> Sub Msg
 subs { room } =
     Sub.batch
-        [ WebSocket.listen (Room.chatUrl room) NewMessage
+        [ NeatSocket.listen (Room.chatUrl room) NewMessage
         ]
 
 
@@ -54,7 +54,9 @@ update msg chat =
                   ]
 
         SendInput tosend ->
-            chat ! [ WebSocket.send (Room.chatUrl chat.room) tosend ]
+            ( chat
+            , NeatSocket.send (Room.chatUrl chat.room) tosend
+            )
 
 
 onEnter : Msg -> Attribute Msg

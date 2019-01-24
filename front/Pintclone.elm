@@ -36,7 +36,7 @@ type alias Pintclone =
     { state : GameLobby
     , roomid : API.RoomID
     , username : API.Name
-    , wslisten : Maybe (Result String GameMsg -> Msg) -> Sub Msg
+    , wslisten : Maybe (Result API.ListenError GameMsg -> Msg) -> Sub Msg
     , wssend : API.GameReq -> Cmd Msg
     , syncRetries : Int
     }
@@ -57,7 +57,7 @@ type Msg
     = Info API.InfoMsg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
-    | ServerError String
+    | ListenError API.ListenError
 
 
 copyCatch : API.RoomID -> Cmd msg
@@ -266,9 +266,15 @@ update msg pintclone_ =
             { pintclone_ | syncRetries = pintclone_.syncRetries + 1 }
 
         errorWith message =
-            ( { pintclone_ | state = ErrorState { message = message } }
-            , pintclone.wssend <| InfoReq <| API.ReqWarn message
-            )
+            case message of
+                API.BadSend ->
+                    ( { pintclone_ | state = ErrorState { message = "Failed Connection to websocket" } }
+                    , Cmd.none
+                    )
+                API.DecodeError msg ->
+                    ( { pintclone_ | state = ErrorState { message = msg } }
+                    , pintclone.wssend <| InfoReq <| API.ReqWarn msg
+                    )
     in
         case ( msg, pintclone.state ) of
             ( Info msg_, _ ) ->
@@ -289,13 +295,13 @@ update msg pintclone_ =
             ( LobbyMsg StartGame, LobbyState _ ) ->
                 ( pintclone, pintclone.wssend <| InfoReq API.ReqStart )
 
-            ( ServerError message, _) ->
+            ( ListenError message, _) ->
                 errorWith message
 
             ( anymsg, anystate ) ->
                 if syncPintclone.syncRetries > 5 then
                     errorWith
-                        ("Failure to sync:" ++ toString ( anymsg, anystate ))
+                        (API.DecodeError <| toString ( anymsg, anystate ))
                 else
                     Debug.log
                         ("Inconsistency:" ++ toString ( anymsg, anystate ))
@@ -307,11 +313,11 @@ update msg pintclone_ =
 subs : Pintclone -> Sub Msg
 subs { wslisten, state } =
     let
-        listen : Maybe (API.CanvasMsg -> Msg) -> Result String GameMsg -> Msg
+        listen : Maybe (API.CanvasMsg -> Msg) -> Result API.ListenError GameMsg -> Msg
         listen redirectCanvas response =
             case response of
                 Err error ->
-                    ServerError error
+                    ListenError error
 
                 Ok (API.InfoMsg msg) ->
                     Info msg
@@ -322,7 +328,7 @@ subs { wslisten, state } =
                             redirect msg
 
                         Nothing ->
-                            ServerError "Recieved a canvas message"
+                            ListenError <| API.DecodeError "Recieved a canvas message"
 
         cListen canvas =
             listen <| Maybe.map ((<<) CanvasMsg) <| Canvas.subsAdaptor canvas
@@ -350,21 +356,19 @@ subs { wslisten, state } =
 masterDialog : Bool -> API.RoomID -> Html Msg
 masterDialog hideId roomid =
     let
-        hiddenStateName =
-            if hideId then
-                "password"
-            else
-                "input"
+        roomdisplayAttributes =
+            [ HA.type_ "text"
+            , class (if hideId then "hidden-roomid" else "display-roomid")
+            , HA.value <| API.showRoomID roomid
+            , HA.attribute "data-autoselect" ""
+            , HA.readonly True
+            ]
     in
         div [ id "roomiddialog" ]
             [ div []
-                [ text "Room name:"
-                , H.input
-                    [ HA.type_ hiddenStateName
-                    , HA.readonly True
-                    , HA.value <| API.showRoomID roomid
-                    ]
-                    []
+                [ H.h3 [] [text "Room name"]
+                , H.p [] [text "share this with people to let them join your game"]
+                , H.input roomdisplayAttributes []
                 , H.input
                     [ HA.type_ "checkbox"
                     , HE.onClick <| LobbyMsg TogglePassView
@@ -426,7 +430,7 @@ view pintclone =
                             )
                         ]
                     , H.a
-                        [ href "/lobby/index.html"]
+                        [ href "/friendk/lobby/index.html"]
                         [ H.button [] [ text "Join a different game" ]
                         ]
                     , p []

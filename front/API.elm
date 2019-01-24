@@ -21,6 +21,7 @@ module API
         , wsListen
         , wsSend
         , CanvasMsg(..)
+        , ListenError(DecodeError, BadSend)
         )
 
 {-| Exposes the necessary functions and types to access the backend API.
@@ -39,7 +40,7 @@ import TypeDecoders exposing ((<*|),(|*|),(:=),(:-),(:^), (:*))
 import Http exposing (encodeUri)
 import Regex as Re
 import Maybe
-import WebSocket
+import NeatSocket
 import Ports
 
 
@@ -168,7 +169,7 @@ exitToGame game (RoomID_ roomid) (Name_ username) =
 
 
 
---- WebSocket API ---
+--- NeatSocket API ---
 
 
 {-| Generic way of accessing (sending to) a game websocket.
@@ -179,32 +180,38 @@ wsSend (RoomID_ roomid) (Name_ name) =
         address =
             "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
     in
-        WebSocket.send address << Enc.encode 0 << encoderGameReq
+        NeatSocket.send address << Enc.encode 0 << encoderGameReq
 
+type ListenError
+    = DecodeError String
+    | BadSend
 
 {-| Generic way of accessing (listening to) a game websocket.
 -}
-wsListen : RoomID -> Name -> Maybe (Result String GameMsg -> msg) -> Sub msg
+wsListen : RoomID -> Name -> Maybe (Result ListenError GameMsg -> msg) -> Sub msg
 wsListen (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
             "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
 
-        decodeWithNiceError toDecode =
-            Dec.decodeString decoderGameMsg toDecode
-                |> Result.mapError (\decodeErr ->
-                    "{\"json\":"
-                        ++ toString decodeErr
-                        ++ ",\"msg\":"++toDecode
-                        ++ "}"
-                )
+        decodeWithNiceError serverResponse =
+            case serverResponse of
+                NeatSocket.Message toDecode ->
+                    Dec.decodeString decoderGameMsg toDecode
+                        |> Result.mapError (\decodeErr ->
+                            "{\"json\":" ++ toString decodeErr ++ ",\"msg\":"++toDecode ++ "}"
+                                |> DecodeError
+                        )
+
+                NeatSocket.Refused ->
+                    Err BadSend
     in
         case continuation of
             Nothing ->
-                WebSocket.keepAlive address
+                NeatSocket.keepAlive address
 
             Just continuation_ ->
-                WebSocket.listen address <|
+                NeatSocket.listen address <|
                     continuation_ << decodeWithNiceError
 
 
