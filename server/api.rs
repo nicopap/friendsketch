@@ -28,9 +28,7 @@ quick_error! {
     }
 }
 
-#[derive(
-    Debug, PartialEq, PartialOrd, Eq, Ord, Clone, Serialize, Deserialize, Hash,
-)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub struct Name(String);
 
 impl Name {
