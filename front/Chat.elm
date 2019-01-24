@@ -43,15 +43,19 @@ update : Msg -> Chat -> ( Chat, Cmd Msg )
 update msg chat =
     case msg of
         NewMessage content ->
-            { chat | history = chat.history ++ [ Message.decode content ] } ! []
+            ( { chat | history = chat.history ++ [ Message.decode content ] }
+            , Cmd.none
+            )
 
         UpdateInput newtext ->
-            { chat | inputContent = newtext } ! []
+            ( { chat | inputContent = newtext }
+            , Cmd.none
+            )
 
         SubmitInput ->
-            { chat | inputContent = "" }
-                ! [ InputField.prepareMessage chat.inputContent SendInput
-                  ]
+            ( { chat | inputContent = "" }
+            , InputField.prepareMessage chat.inputContent SendInput
+            )
 
         SendInput tosend ->
             ( chat

@@ -202,7 +202,7 @@ roomMod name state change ifUninit =
     in
         case state of
             Uninit ->
-                state ! [ ifUninit ]
+                ( state , ifUninit )
 
             LobbyState ({ room } as state_) ->
                 mod LobbyState state_ room
@@ -239,10 +239,10 @@ updateInfo msg ({ username, state, wssend } as pintclone) =
             API.Sync gamestate ->
                 case gamestate of
                     API.Summary scores ->
-                        newScores scores pintclone ! []
+                        ( newScores scores pintclone, Cmd.none )
 
                     API.Round round ->
-                        newRound round pintclone ! []
+                        ( newRound round pintclone, Cmd.none )
 
                     API.Lobby lobby ->
                         newLobby lobby pintclone
