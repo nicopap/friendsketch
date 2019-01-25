@@ -161,7 +161,7 @@ impl HangupChallenger {
 struct ConnectionManager<G> {
     room_name:   String,
     connections: FnvHashMap<Id, Connection>,
-    client_chan: ManagerChannel,
+    client_sink: ManagerChannel,
     respond:     sync::mpsc::SyncSender<ManagerResponse>,
     hangups:     HangupChallenger,
     game:        G,
@@ -236,21 +236,21 @@ where
 /// Manage what players has access to a specific instance of a game party.
 /// One must first be "expected" to then be "accepted" into the game.
 pub struct GameRoom {
-    send_manager: ManagerChannel,
+    manager_sink: ManagerChannel,
     recv_manager: sync::Mutex<sync::mpsc::Receiver<ManagerResponse>>,
 }
 
 impl GameRoom {
     /// Create a new empty game room.
     pub fn new(room_name: String) -> Self {
-        let (send_manager, receiv_chan) = mpsc::channel(64);
+        let (manager_sink, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
         let manager = ConnectionManager {
             room_name: room_name.clone(),
             respond,
             connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
-            client_chan: send_manager.clone(),
-            hangups: HangupChallenger::new(send_manager.clone()),
+            client_sink: manager_sink.clone(),
+            hangups: HangupChallenger::new(manager_sink.clone()),
             game: sketchfighters::Game::new(),
         };
         warp::spawn(
@@ -263,14 +263,14 @@ impl GameRoom {
                 }),
         );
         GameRoom {
-            send_manager,
+            manager_sink,
             recv_manager: sync::Mutex::new(recv_manager),
         }
     }
 
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
-        let mut chan = self.send_manager.clone();
+        let mut chan = self.manager_sink.clone();
         chan.start_send(ManagerRequest::Expects(user.clone()))
             .unwrap();
         chan.poll_complete().unwrap();
@@ -283,7 +283,7 @@ impl GameRoom {
     /// Tell the game to accept a given connection from `user`.
     /// Returns the server response to the connection
     pub fn accept(&mut self, user: Name, ws: Ws2) -> impl warp::reply::Reply {
-        let game_chan = self.send_manager.clone();
+        let game_chan = self.manager_sink.clone();
         ws.on_upgrade(move |socket| {
             game_chan
                 .send(ManagerRequest::Join(user, socket))
@@ -340,7 +340,7 @@ where
         warp::spawn(
             client_stream
                 .chain(stream::once(Ok(ManagerRequest::Disconnect(id))))
-                .forward(self.client_chan.clone().sink_map_err(|_| ()))
+                .forward(self.client_sink.clone().sink_map_err(|_| ()))
                 .map(|_| ()),
         );
     }
