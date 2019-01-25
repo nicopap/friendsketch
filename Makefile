@@ -9,6 +9,7 @@ LOG_LEVEL ?= info
 
 ELM_FLAGS = --warn
 debug : ELM_FLAGS += --debug
+debug : LOG_LEVEL = debug
 debug : experiment
 debug-frontend : ELM_FLAGS += --debug
 debug-frontend : frontend
