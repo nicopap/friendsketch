@@ -204,7 +204,8 @@ where
                 let msg = GameMsg::Info(InfoMsg::Left(name));
                 manager.broadcast_to_all(msg);
             }
-            LeaveResponse::Empty(_) => {
+            LeaveResponse::Empty(name) => {
+                info!("{} leaves {} empty", name, manager.room_name);
                 manager.respond.send(ManagerResponse::Empty);
                 return Err(GameInteruption::EverybodyLeft);
             }
@@ -300,7 +301,7 @@ where
     fn join(&mut self, id: Id, ws: WebSocket) {
         macro_rules! validation_error {
             ($err:expr, $msg:expr) => {
-                error!("message validation error: {}/ `{:?}`", $err, $msg)
+                error!("message validation: {}/ `{:?}`", $err, $msg)
             };
         }
         // Split the socket into a sender and receive of messages.
@@ -321,7 +322,7 @@ where
                 })
                 .forward(ws_send)
                 .map(|_| ())
-                .map_err(|ws_err| error!("websocket send error: {}", ws_err)),
+                .map_err(|ws_err| error!("ws send: {}", ws_err)),
         );
         self.connections.insert(id, Connection(connection));
         let client_stream =
@@ -329,7 +330,7 @@ where
                 let msg = match msg {
                     Ok(msg) => msg,
                     Err(err) => {
-                        error!("websocket recieve error: {}", err);
+                        error!("ws recieve: {}", err);
                         return Ok(ManagerRequest::Terminate(id));
                     }
                 };
@@ -352,11 +353,13 @@ where
         for (id, message) in targets.iter() {
             let mut connection = &self.connections[id].0;
             let msg = message.clone().into();
+            debug!("sending {:?} to {:?}", msg, id);
             connection.start_send(msg).unwrap_or_else(|e| {
                 panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
             });
         }
         for (id, _) in targets {
+            debug!("polling {:?}", id);
             let mut connection = &self.connections[id].0;
             connection.poll_complete().unwrap_or_else(|e| {
                 panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
@@ -365,6 +368,7 @@ where
     }
 
     fn broadcast_to_all(&mut self, message: api::GameMsg) {
+        debug!("sending {:?} to all", message);
         for connection in self.connections.values_mut() {
             let msg = message.clone();
             connection.0.start_send(msg).unwrap_or_else(|e| {
