@@ -1,7 +1,7 @@
 BROWSER ?= firefox
 BUILD_DIR = build/friendk
 NET_DIR = assets
-LOG_LEVEL = info
+LOG_LEVEL ?= info
 
 # --- Goals ---
 .DEFAULT_GOAL = experiment
