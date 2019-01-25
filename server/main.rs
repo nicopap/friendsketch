@@ -2,13 +2,14 @@
 mod api;
 mod games;
 
+use bytes::buf::Buf;
 use std::sync::Arc;
 
 use chashmap::CHashMap;
 use log::{info, warn};
 use pretty_env_logger;
 use warp::{
-    self,
+    self, body,
     filters::ws::Ws2,
     http::{response::Response, StatusCode},
     path, Filter,
@@ -29,9 +30,14 @@ fn main() {
     let server = Arc::new(ServerState::new());
     let server_ref = warp::any().map(move || server.clone());
 
+    macro_rules! plaintext {
+        () => {
+            warp::body::content_length_limit(1024 * 16).and(body::concat())
+        };
+    };
     macro_rules! json {
         () => {
-            warp::body::content_length_limit(1024 * 16).and(warp::body::json())
+            warp::body::content_length_limit(1024 * 16).and(body::json())
         };
     };
     macro_rules! url {
@@ -45,9 +51,13 @@ fn main() {
     let join = url! {("friendk"/"rooms"/"join"), json!(), handle_join};
     let create = url! {("friendk"/"rooms"/"create"), json!(), handle_create};
     let ws_url = url! {("friendk"/"ws"/RoomId/Name), warp::ws2(), accept_conn};
+    let report = path!("friendk" / "report")
+        .and(plaintext!())
+        .and_then(handle_report);
 
-    let routes = ws_url.or(join).or(create).with(warp::log("friendsketch"));
-    warp::serve(routes).run(([127, 0, 0, 1], 8073));
+    let routes = ws_url.or(join).or(create).or(report);
+    warp::serve(routes.with(warp::log("friendsketch")))
+        .run(([127, 0, 0, 1], 8073));
 }
 
 fn handle_create(
@@ -114,6 +124,18 @@ fn handle_join(
         .status(err_code)
         .body("")
         .map_err(|_| panic!("unreachable at {}:{}", module_path!(), line!()))
+}
+
+fn handle_report(
+    report: body::FullBody,
+) -> Result<impl warp::reply::Reply, warp::Rejection> {
+    let report_message = String::from_utf8_lossy(report.bytes());
+    warn!("{}", report_message);
+    let mut response = Response::builder();
+    response
+        .status(StatusCode::OK)
+        .body("")
+        .map_err(|_| panic!("unreachable at main.rs:{}", line!()))
 }
 
 fn accept_conn(

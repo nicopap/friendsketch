@@ -88,6 +88,10 @@ Attempts to join an existing room ''roomid'' as ''username'' . This will "open" 
 		* __409 conflict__ | ''roomid'' is indeed a room, but ''username'' already taken.
 		* __400 bad request__ | ''username'' is not a valid name.
 
+==== Report an error ====
+''POST /report plaintext''
+Send to server an error report, to log. Note that the log string must not be larger than 2^14 bytes
+
 ====== Websockets ======
 
 ===== Pintclone =====
@@ -98,7 +102,6 @@ note: list of things between () is represented as a list of fixed size in json
 Point ~= (X, Y) where X = Y = [-2^31; 2^31[ : Int
 Score = Int
 Color ~= #[0-9a-f]{6}
-LogString ~= .{10000}
 Size = Float
 
 RoundSummary
@@ -143,7 +146,6 @@ InfoMsg
 InfoRequest
 	= { sync: () }
 	| { start: () }
-	| { warn: LogString }
 
 GameReq
 	= { canvas: CanvasMsg }

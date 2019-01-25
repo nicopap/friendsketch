@@ -82,7 +82,6 @@ impl fmt::Display for RoomId {
 }
 
 pub type Size = f32;
-pub type LogString = String;
 pub type Score = i32;
 pub type Color = String;
 pub type Point = (i32, i32);
@@ -154,7 +153,6 @@ pub enum InfoRequest {
     #[serde(rename = "sync")]
     Sync_,
     Start,
-    Warn(LogString),
 }
 
 #[derive(Debug, Deserialize)]

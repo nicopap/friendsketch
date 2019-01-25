@@ -10,6 +10,7 @@ module API
         , showName
         , roomsCreateRequest
         , roomsJoinRequest
+        , reportError
         , LobbyState
         , RoundState
         , ScoresState
@@ -41,6 +42,7 @@ import Json.Encode as Enc exposing (Value)
 import Json.Decode as Dec exposing (Decoder, oneOf)
 import TypeDecoders exposing ((<*|),(|*|),(:=),(:-),(:^), (:*))
 import Http exposing (encodeUri)
+import Task exposing (Task)
 import Regex as Re
 import Maybe
 import NeatSocket
@@ -66,6 +68,20 @@ type RoomID
 (+/+) : String -> String -> String
 (+/+) head tail =
     head ++ "/" ++ tail
+
+{-| Report an error to the game server.
+-}
+reportError : String -> Cmd ()
+reportError error_msg =
+    let
+        request =
+            Http.post
+                "/friendk/report"
+                (Http.stringBody "plain/text" error_msg)
+                (Dec.succeed ())
+    in
+        Http.toTask request
+            |> Task.attempt (\_ -> ())
 
 
 {-| Turns a maybe type decoder into a type decoder that may fail.
@@ -375,7 +391,6 @@ decoderInfo =
 type InfoRequest
     = ReqSync
     | ReqStart
-    | ReqWarn String
 
 
 encoderInfoRequest : InfoRequest -> Value
@@ -383,7 +398,6 @@ encoderInfoRequest infoRequest =
     case infoRequest of
         ReqSync -> Enc.string "sync"
         ReqStart -> Enc.string "start"
-        ReqWarn msg -> Enc.object [("warn", Enc.string msg)]
 
 
 --- CanvasMsg ---

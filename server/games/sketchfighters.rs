@@ -145,10 +145,6 @@ impl game::Game<Id> for Game {
                     None
                 }
             }
-            GameReq::Info(InfoRequest::Warn(to_log)) => {
-                warn!("{}: {}", &self.players[player].name, to_log);
-                Some(broadcast!(nothing))
-            }
             GameReq::Canvas(msg) => {
                 if let Game_::Playing {
                     ref mut drawing,

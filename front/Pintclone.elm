@@ -58,6 +58,7 @@ type Msg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
     | ListenError API.ListenError
+    | Dummy
 
 
 copyCatch : API.RoomID -> Cmd msg
@@ -256,15 +257,27 @@ update msg pintclone_ =
             { pintclone_ | syncRetries = pintclone_.syncRetries + 1 }
 
         errorWith message =
-            case message of
-                API.BadSend ->
-                    ( { pintclone_ | state = ErrorState { message = "Failed Connection to websocket" } }
-                    , Cmd.none
-                    )
-                API.DecodeError msg ->
-                    ( { pintclone_ | state = ErrorState { message = msg } }
-                    , pintclone.wssend <| InfoReq <| API.ReqWarn msg
-                    )
+            let
+                report error_msg =
+                    let
+                        full_msg =
+                            "Failure in '" ++ API.showRoomID pintclone.roomid
+                            ++ "' for '" ++ API.showName pintclone.username
+                            ++ "' with the following error: " ++ error_msg
+                    in
+                        API.reportError full_msg |> Cmd.map (\() -> Dummy)
+
+                updateToError message =
+                    { pintclone_ | state = ErrorState { message = message } }
+            in
+                case message of
+                    API.BadSend ->
+                        ( updateToError "Failed Connection to websocket"
+                        , report "Failed Connection to websocket"
+                        )
+
+                    API.DecodeError msg ->
+                        ( updateToError msg , report msg )
     in
         case ( msg, pintclone.state ) of
             ( Info msg_, _ ) ->
@@ -287,6 +300,9 @@ update msg pintclone_ =
 
             ( ListenError message, _) ->
                 errorWith message
+
+            ( Dummy, _ ) ->
+                ( pintclone_, Cmd.none )
 
             ( anymsg, anystate ) ->
                 if syncPintclone.syncRetries > 5 then
