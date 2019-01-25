@@ -312,7 +312,7 @@ where
         warp::spawn(
             buffed_recv
                 .map_err(|()| -> warp::Error {
-                    panic!("unreachable at {}:{}", module_path!(), line!());
+                    panic!("unreachable at games.rs:{}", line!());
                 })
                 .map(|msg: api::GameMsg| {
                     let sereilized = to_string(&msg).unwrap();
@@ -352,21 +352,29 @@ where
         for (id, message) in targets.iter() {
             let mut connection = &self.connections[id].0;
             let msg = message.clone().into();
-            connection.start_send(msg).expect("everything is fine133");
+            connection.start_send(msg).unwrap_or_else(|e| {
+                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+            });
         }
         for (id, _) in targets {
             let mut connection = &self.connections[id].0;
-            connection.poll_complete().expect("everything is fine136");
+            connection.poll_complete().unwrap_or_else(|e| {
+                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+            });
         }
     }
 
     fn broadcast_to_all(&mut self, message: api::GameMsg) {
         for connection in self.connections.values_mut() {
             let msg = message.clone();
-            connection.0.start_send(msg).expect("everything is fine154");
+            connection.0.start_send(msg).unwrap_or_else(|e| {
+                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+            });
         }
         for connection in self.connections.values_mut() {
-            connection.0.poll_complete().expect("everything is fine144");
+            connection.0.poll_complete().unwrap_or_else(|e| {
+                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+            });
         }
     }
 }

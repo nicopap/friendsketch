@@ -12,7 +12,9 @@ use warp::{
     self, body,
     filters::ws::Ws2,
     http::{response::Response, StatusCode},
-    path, Filter,
+    path,
+    reply::Reply,
+    Filter, Rejection,
 };
 
 use self::{
@@ -63,7 +65,7 @@ fn main() {
 fn handle_create(
     api::CreateReq { username, .. }: api::CreateReq,
     server: Server,
-) -> Result<impl warp::Reply, warp::Rejection> {
+) -> Result<impl Reply, Rejection> {
     let mut response = Response::builder();
     // TODO: guarenteed to cause collision of room names at one point
     // checking that the roomid isn't already taken would be ideal
@@ -76,7 +78,7 @@ fn handle_create(
         .status(StatusCode::CREATED)
         .header("Content-Type", "text/json")
         .body(sanitized_room_name)
-        .map_err(|_| panic!("unreachable at {}:{}", module_path!(), line!()))
+        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
 }
 
 enum Handle {
@@ -88,7 +90,7 @@ enum Handle {
 fn handle_join(
     api::JoinReq { roomid, username }: api::JoinReq,
     server: Server,
-) -> Result<impl warp::Reply, warp::Rejection> {
+) -> Result<impl Reply, Rejection> {
     let err_code = {
         let logmsg = format!("User {} is now expected to join", &username);
         let handle = match server.get_mut(&roomid) {
@@ -107,8 +109,8 @@ fn handle_join(
                     .status(StatusCode::OK)
                     .header("Content-Type", "text/json")
                     .body("\"pintclone\"")
-                    .map_err(|_| {
-                        panic!("unreachable at {}:{}", module_path!(), line!())
+                    .map_err(|e| {
+                        panic!("unreachable '{:?}' at main.rs:{}", e, line!())
                     });
             }
             Handle::Refuse => StatusCode::CONFLICT,
@@ -123,19 +125,17 @@ fn handle_join(
     response
         .status(err_code)
         .body("")
-        .map_err(|_| panic!("unreachable at {}:{}", module_path!(), line!()))
+        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
 }
 
-fn handle_report(
-    report: body::FullBody,
-) -> Result<impl warp::reply::Reply, warp::Rejection> {
+fn handle_report(report: body::FullBody) -> Result<impl Reply, Rejection> {
     let report_message = String::from_utf8_lossy(report.bytes());
     warn!("{}", report_message);
     let mut response = Response::builder();
     response
         .status(StatusCode::OK)
         .body("")
-        .map_err(|_| panic!("unreachable at main.rs:{}", line!()))
+        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
 }
 
 fn accept_conn(
@@ -143,7 +143,7 @@ fn accept_conn(
     name: api::Name,
     ws: Ws2,
     server: Server,
-) -> Result<impl warp::reply::Reply, warp::Rejection> {
+) -> Result<impl Reply, Rejection> {
     let url = format!("/ws/{}/{}", roomid, name);
     // room exists
     let mut room = server.get_mut(&roomid).ok_or_else(|| {
