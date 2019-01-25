@@ -168,7 +168,7 @@ update msg welcome =
 
         OpenGame game roomid username ->
             ( welcome
-            , API.exitToGame game roomid username
+            , API.exitToGame game roomid username 0
             )
 
         HttpError error ->

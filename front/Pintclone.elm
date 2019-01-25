@@ -13,6 +13,9 @@ import Html.Attributes as HA exposing (id, class, href)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
 import Canvas exposing (Canvas)
+import Process
+import Task
+import Time exposing (second)
 import Ports
 import API exposing (GameReq(InfoReq, CanvasReq), GameMsg)
 
@@ -23,13 +26,18 @@ type alias LobbyState_T =
     , hideId : Bool
     }
 
+type RetryStatus
+    = OneAttempt
+    | Attempt Int
+    | GivenUp Int
+    | NoAttempt
 
 type GameLobby
     = Uninit
     | LobbyState LobbyState_T
     | RoundState { room : Room, canvas : Canvas }
     | FinalState { room : Room, scores : List ( API.Name, Int ) }
-    | ErrorState { message : String }
+    | ErrorState { title : String, message : String, retry : RetryStatus }
 
 
 type alias Pintclone =
@@ -39,12 +47,14 @@ type alias Pintclone =
     , wslisten : Maybe (Result API.ListenError GameMsg -> Msg) -> Sub Msg
     , wssend : API.GameReq -> Cmd Msg
     , syncRetries : Int
+    , openGameRetries : Int
     }
 
 
 type alias Flags =
     { roomid : String
     , username : String
+    , retries : Int
     }
 
 
@@ -59,6 +69,7 @@ type Msg
     | CanvasMsg Canvas.Msg
     | ListenError API.ListenError
     | Dummy
+    | Reopen
 
 
 copyCatch : API.RoomID -> Cmd msg
@@ -70,7 +81,7 @@ copyCatch roomid =
 main : Program Flags Pintclone Msg
 main =
     programWithFlags
-        { init = uncurry new << sanitizeFlags
+        { init = new << sanitizeFlags
         , update = update
         , view = view
         , subscriptions = subs
@@ -80,11 +91,14 @@ main =
 {-| Crash if the flags are invalid (because it becomes impossible to
 construct a logical program at this point).
 -}
-sanitizeFlags : Flags -> ( API.RoomID, API.Name )
-sanitizeFlags { roomid, username } =
+sanitizeFlags : Flags -> ( API.RoomID, API.Name, Int )
+sanitizeFlags { roomid, username, retries } =
     let
         maybeSanitized =
-            Maybe.map2 (,) (API.validRoomID roomid) (API.validName username)
+            Maybe.map3 (,,)
+                (API.validRoomID roomid)
+                (API.validName username)
+                (Just retries)
 
         crashMessage =
             """
@@ -103,14 +117,15 @@ sanitizeFlags { roomid, username } =
                 ret
 
 
-new : API.RoomID -> API.Name -> ( Pintclone, Cmd Msg )
-new roomid username =
+new : (API.RoomID, API.Name, Int) -> ( Pintclone, Cmd Msg )
+new (roomid, username, openGameRetries) =
     ( { state = Uninit
       , roomid = roomid
       , username = username
       , wslisten = API.wsListen roomid username
       , wssend = API.wsSend roomid username
       , syncRetries = 0
+      , openGameRetries = openGameRetries
       }
     , API.wsSend roomid username (InfoReq API.ReqSync)
     )
@@ -240,8 +255,11 @@ updateInfo msg ({ username, state, wssend } as pintclone) =
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
-update msg pintclone_ =
+update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
     let
+        pintclone =
+            { pintclone_ | syncRetries = 0 }
+
         toCmd maybeCanvasMsg =
             case maybeCanvasMsg of
                 Just canvasMsg ->
@@ -250,34 +268,21 @@ update msg pintclone_ =
                 Nothing ->
                     Cmd.none
 
-        pintclone =
-            { pintclone_ | syncRetries = 0 }
-
-        syncPintclone =
-            { pintclone_ | syncRetries = pintclone_.syncRetries + 1 }
-
-        errorWith message =
+        report error_msg =
             let
-                report error_msg =
-                    let
-                        full_msg =
-                            "Failure in '" ++ API.showRoomID pintclone.roomid
-                            ++ "' for '" ++ API.showName pintclone.username
-                            ++ "' with the following error: " ++ error_msg
-                    in
-                        API.reportError full_msg |> Cmd.map (\() -> Dummy)
-
-                updateToError message =
-                    { pintclone_ | state = ErrorState { message = message } }
+                full_msg =
+                    "Failure in '" ++ API.showRoomID roomid ++ "' for '"
+                    ++ API.showName username ++ "' with the following error: "
+                    ++ error_msg
             in
-                case message of
-                    API.BadSend ->
-                        ( updateToError "Failed Connection to websocket"
-                        , report "Failed Connection to websocket"
-                        )
+                API.reportError full_msg |> Cmd.map (\() -> Dummy)
 
-                    API.DecodeError msg ->
-                        ( updateToError msg , report msg )
+        updateToError title message retry =
+            let
+                newErrorState =
+                    ErrorState { message=message, retry=retry, title=title }
+            in
+                ( { pintclone | state = newErrorState }, report message )
     in
         case ( msg, pintclone.state ) of
             ( Info msg_, _ ) ->
@@ -298,20 +303,53 @@ update msg pintclone_ =
             ( LobbyMsg StartGame, LobbyState _ ) ->
                 ( pintclone, pintclone.wssend <| InfoReq API.ReqStart )
 
-            ( ListenError message, _) ->
-                errorWith message
+            ( ListenError API.BadSend, _) ->
+                if openGameRetries >= 2 then
+                    updateToError
+                        "Communication error"
+                        ("Attempted to connect " ++ toString openGameRetries
+                        ++ " times without success. Giving up")
+                        (GivenUp (openGameRetries + 1))
+                else
+                    let
+                        attempts =
+                            if openGameRetries == 0 then
+                                OneAttempt
+                            else
+                                Attempt (openGameRetries + 1)
+                        newErrorState =
+                            ErrorState
+                                { message = "Websocket connection error"
+                                , title = "Communication error (reconnecting)"
+                                , retry = attempts
+                                }
+                    in
+                        ( { pintclone | state = newErrorState }
+                        , Process.sleep (2.4 * second)
+                            |> Task.perform (always Reopen)
+                        )
+
+            ( ListenError (API.DecodeError msg), _) ->
+                updateToError "Communication error" msg NoAttempt
 
             ( Dummy, _ ) ->
-                ( pintclone_, Cmd.none )
+                ( pintclone, Cmd.none )
+
+            ( Reopen, _ ) ->
+                ( pintclone
+                , API.exitToGame
+                    API.Pintclone roomid username (openGameRetries + 1)
+                )
 
             ( anymsg, anystate ) ->
-                if syncPintclone.syncRetries > 5 then
-                    errorWith
-                        (API.DecodeError <| toString ( anymsg, anystate ))
+                if syncRetries >= 3 then
+                    updateToError "Synchronisation error"
+                        (toString (anymsg, anystate))
+                        NoAttempt
                 else
                     Debug.log
                         ("Inconsistency:" ++ toString ( anymsg, anystate ))
-                        ( syncPintclone
+                        ( { pintclone | syncRetries = syncRetries + 1 }
                         , pintclone.wssend <| InfoReq API.ReqSync
                         )
 
@@ -400,7 +438,7 @@ view pintclone =
     in
         case pintclone.state of
             Uninit ->
-                div [] [ h1 [] [ text "Loading ..." ] ]
+                div [] [ h1 [] [ text "Opening game" ] ]
 
             LobbyState { room, canvas, hideId } ->
                 div []
@@ -417,35 +455,38 @@ view pintclone =
             FinalState { room, scores } ->
                 div [] [ h1 [] [ text "NOT IMPLEMENTED YET" ] ]
 
-            ErrorState { message } ->
-                div []
-                    [ h3 [] [ text "Game error" ]
-                    , p []
-                        [ text
-                            ("An inconsistency between the game server"
-                                ++ " and the app occured, leading to the"
-                                ++ " forecefull shutdown of your party."
-                                ++ " Clearing the cache for this site and"
-                                ++ " refreshing might help (ctrl+F5)"
-                            )
+            ErrorState { title, message, retry } ->
+                let
+                    firstParagraph =
+                        case retry of
+                            GivenUp c ->
+                                "After " ++ toString c ++ " tries, we still"
+                                ++ " couldn't connect to the game,"
+                                ++ " your only option is to try to join a"
+                                ++ " different room or change display name."
+                            OneAttempt ->
+                                "Couldn't connect to the game. Retrying..."
+                            Attempt c ->
+                                "After " ++ toString c ++ " tries, we still"
+                                ++ " couldn't connect to the game. Retrying..."
+                            NoAttempt ->
+                                "An irreversible error occured and"
+                                ++ " your only option is to try to join a"
+                                ++ " different room or change display name."
+                    secondParagraph =
+                        "We are sorry for the inconvenience this causes you."
+                    thirdParagraph =
+                        "A copy of the following error message has already"
+                        ++ " been sent to the developers. We will take care"
+                        ++ " that you won't experience this in the future."
+                in
+                    div []
+                        [ h1 [] [ text title ]
+                        , p [] [ text firstParagraph ]
+                        , H.a
+                            [ href "/friendk/lobby/index.html"]
+                            [ H.button [] [ text "Join a different game" ] ]
+                        , p [] [ text secondParagraph ]
+                        , p [] [ text thirdParagraph ]
+                        , pre [] [ text message ]
                         ]
-                    , p []
-                        [ text
-                            ("We are sorry for the inconvenience"
-                                ++ " this causes you."
-                            )
-                        ]
-                    , H.a
-                        [ href "/friendk/lobby/index.html"]
-                        [ H.button [] [ text "Join a different game" ]
-                        ]
-                    , p []
-                        [ text
-                            ("A copy of the following error message has"
-                                ++ " already been sent to the developers."
-                                ++ " We will take care that you won't"
-                                ++ " experience this in the future."
-                            )
-                        ]
-                    , pre [] [ text message ]
-                    ]

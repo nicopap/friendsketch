@@ -13,8 +13,10 @@
 	<script>
 		var app = Elm.Main.fullscreen({
 			username: sessionStorage.getItem("username"),
-			roomid: sessionStorage.getItem("roomid")
+			roomid: sessionStorage.getItem("roomid"),
+			retries: sessionStorage.getItem("retries") - 0,
 		});
 		app.ports.copyCatch.subscribe(copyCatch);
+		app.ports.stashAndOpen.subscribe(stashAndOpen);
 	</script>
 </html>

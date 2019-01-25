@@ -179,10 +179,13 @@ showGame game =
             "pintclone"
 
 
-exitToGame : Game -> RoomID -> Name -> Cmd msg
-exitToGame game (RoomID_ roomid) (Name_ username) =
+exitToGame : Game -> RoomID -> Name -> Int -> Cmd msg
+exitToGame game (RoomID_ roomid) (Name_ username) retries =
     Ports.stashAndOpen
-        ( [("roomid", roomid), ("username", username)]
+        ( [ ("roomid", Enc.string roomid)
+          , ("username", Enc.string username)
+          , ("retries", Enc.int retries)
+          ]
         , "/friendk/games" +/+ showGame game +/+ "index.html"
         )
 
