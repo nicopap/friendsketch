@@ -330,7 +330,7 @@ where
                     Ok(msg) => msg,
                     Err(err) => {
                         error!("websocket recieve error: {}", err);
-                        return Err(());
+                        return Ok(ManagerRequest::Terminate(id));
                     }
                 };
                 from_slice(msg.as_bytes())

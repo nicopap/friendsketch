@@ -29,9 +29,9 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
 > Better Error management with warp::Rejection and custom errors https://github.com/seanmonstar/warp/blob/master/examples/errors.rs
 
-> Better handle unexpected runtime errors such as broken connections
-	> Investigate error "unreachable code has been reached" that happens after a while
-	> Investigate how to garbage-collect empty rooms that result from a broken disconnection
+> Investigate error "unreachable code has been reached" that happens after a while
+> Investigate how to garbage-collect empty rooms that result from a broken disconnection
+
 > Concider having a simpler way to get someone to join game (for exemple with URL)
 
 
