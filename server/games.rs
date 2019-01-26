@@ -370,6 +370,12 @@ where
                     error!("ws recieve:{}", err);
                     Ok(ManagerRequest::Terminate(id))
                 })
+                .take_while(move |msg| {
+                    Ok(match msg {
+                        ManagerRequest::Terminate(id_) => &id != id_,
+                        _ => true,
+                    })
+                })
                 .chain(stream::once(Ok(ManagerRequest::Disconnect(id))))
                 .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),
