@@ -84,8 +84,12 @@ pub enum ManagerResponse {
     Empty,
 }
 
-/// Specialized structure to manage how the server reacts to people leaving and
-/// joining temporarly.
+/// Specialized structure to manage how the server reacts to people leaving
+/// temporarily and announcing their future connection.
+///
+/// A `HangupChallenger` adapts `ManagerRequest`s relating to client
+/// connectivity in a `ManagerChannel`. It sends delayed messages to implement
+/// timeouts and such.
 struct HangupChallenger {
     newcomings: FxHashMap<Name, (Id, Challenge)>,
     remaining:  FnvHashMap<Id, Name>,
@@ -94,6 +98,8 @@ struct HangupChallenger {
 }
 
 impl HangupChallenger {
+    /// Create a new `HangupChallenger` with an empty list of
+    /// `manager_sink`: where to send `ManagerRequest` back.
     fn new(manager_channel: ManagerChannel) -> Self {
         HangupChallenger {
             newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
@@ -103,10 +109,15 @@ impl HangupChallenger {
         }
     }
 
+    /// Accept given `name` temporarily. `name` will be "Given up" in 30
+    /// seconds if they do not properly connect (join) by then.
     fn accept(&mut self, name: Name, id: Id) {
         self.drop_in(30, name, id);
     }
 
+    /// Process a `GiveUp` message: send a `Terminate` if the concerned player
+    /// didn't yet properly join the game. If the player has already joined
+    /// this does nothing.
     fn challenge(
         &mut self,
         GiveUp { name, challenge }: GiveUp,
@@ -124,6 +135,8 @@ impl HangupChallenger {
         Ok(())
     }
 
+    /// Schedule for the termination of given `id`'s connection in `delay`
+    /// seconds.
     fn drop_in(&mut self, delay: u64, name: Name, id: Id) {
         let challenge = self.challenges.insert(());
         self.newcomings.insert(name.clone(), (id, challenge));
@@ -137,6 +150,8 @@ impl HangupChallenger {
         );
     }
 
+    /// Confirm connection of `name`. They will not be "Given up" on, unless
+    /// they disconnect afterward and do not reconnect in time.
     fn join(&mut self, name: Name) -> Option<Id> {
         self.newcomings.remove(&name).map(|(id, challenge)| {
             info!("Connection with {} established", name);
@@ -146,6 +161,9 @@ impl HangupChallenger {
         })
     }
 
+    /// `id` has disconnected. Provide a small windows of time in which they
+    /// can reconnect without issue. If they do not reconnect by then, they
+    /// will be "Given up".
     fn disconnect(&mut self, id: Id) -> Option<Name> {
         self.remaining.remove(&id).map(|name| {
             self.drop_in(3, name.clone(), id);
@@ -153,6 +171,7 @@ impl HangupChallenger {
         })
     }
 
+    /// Player `id` was forecefully removed from the game.
     fn remove(&mut self, id: &Id) {
         self.remaining.remove(&id);
     }
