@@ -58,8 +58,7 @@ fn main() {
         .and_then(handle_report);
 
     let routes = ws_url.or(join).or(create).or(report);
-    warp::serve(routes.with(warp::log("friendsketch")))
-        .run(([127, 0, 0, 1], 8073));
+    warp::serve(routes).run(([127, 0, 0, 1], 8073));
 }
 
 fn handle_create(

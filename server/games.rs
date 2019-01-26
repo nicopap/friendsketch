@@ -91,21 +91,21 @@ pub enum ManagerResponse {
 /// connectivity in a `ManagerChannel`. It sends delayed messages to implement
 /// timeouts and such.
 struct HangupChallenger {
-    newcomings: FxHashMap<Name, (Id, Challenge)>,
-    remaining:  FnvHashMap<Id, Name>,
-    challenges: SlotMap<Challenge, ()>,
-    chan:       ManagerChannel,
+    newcomings:   FxHashMap<Name, (Id, Challenge)>,
+    remaining:    FnvHashMap<Id, Name>,
+    challenges:   SlotMap<Challenge, ()>,
+    manager_sink: ManagerChannel,
 }
 
 impl HangupChallenger {
     /// Create a new `HangupChallenger` with an empty list of
     /// `manager_sink`: where to send `ManagerRequest` back.
-    fn new(manager_channel: ManagerChannel) -> Self {
+    fn new(manager_sink: ManagerChannel) -> Self {
         HangupChallenger {
             newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
-            remaining:  FnvHashMap::with_capacity_and_hasher(16, default!()),
+            remaining: FnvHashMap::with_capacity_and_hasher(16, default!()),
             challenges: SlotMap::with_capacity_and_key(4),
-            chan:       manager_channel,
+            manager_sink,
         }
     }
 
@@ -123,11 +123,12 @@ impl HangupChallenger {
         GiveUp { name, challenge }: GiveUp,
     ) -> Result<(), GameInteruption> {
         use self::ManagerRequest::Terminate;
+        debug!("Challenging giveup {}", name);
         if let Some((id, challenged)) = self.newcomings.remove(&name) {
             if challenge == challenged {
                 self.challenges.remove(challenged);
-                self.chan.start_send(Terminate(id))?;
-                self.chan.poll_complete()?;
+                self.manager_sink.start_send(Terminate(id))?;
+                self.manager_sink.poll_complete()?;
             } else {
                 self.newcomings.insert(name, (id, challenged));
             }
@@ -141,10 +142,10 @@ impl HangupChallenger {
         let challenge = self.challenges.insert(());
         self.newcomings.insert(name.clone(), (id, challenge));
         let request = ManagerRequest::GiveUp(GiveUp { challenge, name });
-        let chan = self.chan.clone();
+        let sink_clone = self.manager_sink.clone();
         warp::spawn(
             sleep(Duration::new(delay, 0))
-                .then(move |_| chan.send(request))
+                .then(move |_| sink_clone.send(request))
                 .map(|_| ())
                 .map_err(|_| ()),
         );
@@ -178,12 +179,12 @@ impl HangupChallenger {
 }
 
 struct ConnectionManager<G> {
-    room_name:   String,
-    connections: FnvHashMap<Id, Connection>,
-    client_sink: ManagerChannel,
-    respond:     sync::mpsc::SyncSender<ManagerResponse>,
-    hangups:     HangupChallenger,
-    game:        G,
+    room_name:    String,
+    connections:  FnvHashMap<Id, Connection>,
+    manager_sink: ManagerChannel,
+    respond:      sync::mpsc::SyncSender<ManagerResponse>,
+    hangups:      HangupChallenger,
+    game:         G,
 }
 
 struct Connection(mpsc::UnboundedSender<api::GameMsg>);
@@ -208,30 +209,43 @@ where
             manager.broadcast(&response);
         }
         ManagerRequest::Disconnect(id) => {
+            let room = &manager.room_name;
+            if !manager.connections.remove(&id).is_some() {
+                warn!("disconnect non-conn {:?}: {}", id, room);
+            }
             if let Some(name) = manager.hangups.disconnect(id) {
-                info!("{} in {} temporarly dropped", name, manager.room_name);
+                info!("{} in {} temporarily dropped", name, manager.room_name);
             }
         }
-        ManagerRequest::Terminate(id) => match manager.game.leaves(id) {
-            LeaveResponse::Successfully(name) => {
-                if let None = manager.connections.remove(&id) {
-                    error!("{} fails to leave {}", name, manager.room_name)
-                } else {
-                    info!("{} leaves {}", name, manager.room_name)
-                };
-                manager.hangups.remove(&id);
-                let msg = GameMsg::Info(InfoMsg::Left(name));
-                manager.broadcast_to_all(msg);
+        ManagerRequest::Terminate(id) => {
+            manager.hangups.remove(&id);
+            let removed = manager.connections.remove(&id).is_some();
+            match manager.game.leaves(id) {
+                LeaveResponse::Successfully(name) => {
+                    let room = &manager.room_name;
+                    if removed {
+                        info!("{} leaves {}", name, room)
+                    } else {
+                        error!("game user {} wasn't connected: {}", name, room)
+                    };
+                    let msg = GameMsg::Info(InfoMsg::Left(name));
+                    manager.broadcast_to_all(msg);
+                }
+                LeaveResponse::Empty(name) => {
+                    info!("{} leaves {} empty", name, manager.room_name);
+                    manager.respond.send(ManagerResponse::Empty);
+                    return Err(GameInteruption::EverybodyLeft);
+                }
+                LeaveResponse::Failed(()) => {
+                    let room = &manager.room_name;
+                    if removed {
+                        warn!("remove an non-track {:?}: {}", id, room)
+                    } else {
+                        warn!("remove non-con {:?}: {}", id, room)
+                    }
+                }
             }
-            LeaveResponse::Empty(name) => {
-                info!("{} leaves {} empty", name, manager.room_name);
-                manager.respond.send(ManagerResponse::Empty);
-                return Err(GameInteruption::EverybodyLeft);
-            }
-            LeaveResponse::Failed(()) => {
-                warn!("Fail to terminate {:?} in {}", id, manager.room_name)
-            }
-        },
+        }
         ManagerRequest::GiveUp(give_up) => {
             manager.hangups.challenge(give_up)?;
         }
@@ -239,6 +253,7 @@ where
         {
             JoinResponse::Accept(id) => {
                 info!("Adding {} to {}", name, manager.room_name);
+                debug!("with id: {:?}", id);
                 let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
                 manager.broadcast_to_all(msg);
                 manager.hangups.accept(name, id);
@@ -269,7 +284,7 @@ impl GameRoom {
             room_name: room_name.clone(),
             respond,
             connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
-            client_sink: manager_sink.clone(),
+            manager_sink: manager_sink.clone(),
             hangups: HangupChallenger::new(manager_sink.clone()),
             game: sketchfighters::Game::new(),
         };
@@ -304,6 +319,7 @@ impl GameRoom {
     /// Returns the server response to the connection
     pub fn accept(&mut self, user: Name, ws: Ws2) -> impl warp::reply::Reply {
         let game_chan = self.manager_sink.clone();
+        debug!("accepting {}", user);
         ws.on_upgrade(move |socket| {
             game_chan
                 .send(ManagerRequest::Join(user, socket))
@@ -318,19 +334,14 @@ where
     G: Game<Id>,
 {
     fn join(&mut self, id: Id, ws: WebSocket) {
-        macro_rules! validation_error {
-            ($err:expr, $msg:expr) => {
-                error!("message validation: {}/ `{:?}`", $err, $msg)
-            };
-        }
         // Split the socket into a sender and receive of messages.
-        let (ws_send, ws_recv) = ws.split();
+        let (socket_sink, socket_stream) = ws.split();
 
         // Use an unbounded channel to handle buffering and flushing of
         // messages to the websocket...
-        let (connection, buffed_recv) = mpsc::unbounded();
+        let (buffer_sink, buffer_stream) = mpsc::unbounded();
         warp::spawn(
-            buffed_recv
+            buffer_stream
                 .map_err(|()| -> warp::Error {
                     panic!("unreachable at games.rs:{}", line!());
                 })
@@ -339,28 +350,28 @@ where
                     debug!("ws send: {}", sereilized);
                     Message::text(sereilized)
                 })
-                .forward(ws_send)
+                .forward(socket_sink)
                 .map(|_| ())
                 .map_err(|ws_err| error!("ws send: {}", ws_err)),
         );
-        self.connections.insert(id, Connection(connection));
-        let client_stream =
-            ws_recv.then(move |msg| -> Result<ManagerRequest, ()> {
-                let msg = match msg {
-                    Ok(msg) => msg,
-                    Err(err) => {
-                        error!("ws recieve: {}", err);
-                        return Ok(ManagerRequest::Terminate(id));
-                    }
-                };
-                from_slice(msg.as_bytes())
-                    .map(|v| ManagerRequest::Msg(id, v))
-                    .map_err(|err| validation_error!(err, msg.to_str()))
-            });
+        self.connections.insert(id, Connection(buffer_sink));
+        let client_stream = socket_stream.map(move |msg| {
+            from_slice(msg.as_bytes())
+                .map(|v| ManagerRequest::Msg(id, v))
+                .unwrap_or_else(|err| {
+                    error!("message validation: {}/ `{:?}`", err, msg.to_str());
+                    ManagerRequest::Terminate(id)
+                })
+        });
+        let sink_to_manager = self.manager_sink.clone();
         warp::spawn(
             client_stream
+                .or_else(move |err| {
+                    error!("ws recieve:{}", err);
+                    Ok(ManagerRequest::Terminate(id))
+                })
                 .chain(stream::once(Ok(ManagerRequest::Disconnect(id))))
-                .forward(self.client_sink.clone().sink_map_err(|_| ()))
+                .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),
         );
     }
@@ -394,6 +405,7 @@ where
                 panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
             });
         }
+        debug!("polling all");
         for connection in self.connections.values_mut() {
             connection.0.poll_complete().unwrap_or_else(|e| {
                 panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
