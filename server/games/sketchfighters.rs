@@ -1,8 +1,7 @@
-use super::game::{self, JoinResponse, LeaveResponse};
+use super::game::{self, JoinResponse, LeaveResponse, TellResponse};
 use crate::api::{self, Name, Stroke};
 use log::{error, warn};
 use slotmap::{new_key_type, SlotMap};
-use std::iter;
 
 type Slab<T> = SlotMap<Id, T>;
 
@@ -26,18 +25,19 @@ struct Player {
 }
 
 macro_rules! broadcast {
-    (to_all, $players:expr, $msg:expr) => {
-        $players.iter().map(|(id, _)| (id, $msg)).collect()
+    (to_all, $msg:expr) => {
+        TellResponse::ToAll($msg)
     };
-    (to, $msg:expr) => {
-        $msg.collect()
+    (to, $players:expr, $msg:expr) => {
+        TellResponse::ToList($players.collect(), $msg)
+    };
+    (to_unique, $player:expr, $msg:expr) => {
+        TellResponse::ToList(vec![$player], $msg)
     };
     (nothing) => {
-        Vec::new()
+        TellResponse::ToNone
     };
 }
-
-pub type TellsResp = Result<Vec<(Id, api::GameMsg)>, ()>;
 
 fn sync_msg(msg: api::GameState) -> api::GameMsg {
     use api::{GameMsg::Info, InfoMsg::Sync_};
@@ -115,18 +115,18 @@ impl game::Game<Id> for Game {
         }
     }
 
-    fn tells(&mut self, player: Id, request: api::GameReq) -> TellsResp {
+    fn tells(
+        &mut self,
+        player: Id,
+        request: api::GameReq,
+    ) -> Result<TellResponse<Id, api::GameMsg>, ()> {
         use self::api::{GameMsg, GameReq, InfoRequest};
         Ok(match request {
             GameReq::Info(InfoRequest::Sync_) => None,
             GameReq::Info(InfoRequest::Start) => {
                 if let Game_::Lobby { room_leader } = self.state {
                     if player != room_leader {
-                        warn!(
-                            "player {:?} attempted to start game while only \
-                             {:?} is allowed to",
-                            player, room_leader
-                        );
+                        warn!("{:?} tries to start, but isn't leader", player);
                         None
                     } else {
                         self.state = Game_::Playing {
@@ -134,14 +134,10 @@ impl game::Game<Id> for Game {
                             artist:  room_leader,
                         };
                         let msg = sync_msg(self.into_api_state());
-                        Some(broadcast!(to_all, self.players, msg.clone()))
+                        Some(broadcast!(to_all, msg))
                     }
                 } else {
-                    warn!(
-                        "player {:?} tries to start the game while the game \
-                         is already running",
-                        player
-                    );
+                    warn!("{:?} tries to start while game is running", player);
                     None
                 }
             }
@@ -166,12 +162,10 @@ impl game::Game<Id> for Game {
                             }
                             CanvasMsg::End => {}
                         }
-                        let response = self
-                            .players
-                            .iter()
-                            .filter(|(id, _)| *id != artist)
-                            .map(|(id, _)| (id, GameMsg::Canvas(msg.clone())));
-                        Some(broadcast!(to, response))
+                        let msg = GameMsg::Canvas(msg);
+                        let others =
+                            self.players.keys().filter(|id| *id != artist);
+                        Some(broadcast!(to, others, msg))
                     }
                 } else {
                     None
@@ -180,7 +174,7 @@ impl game::Game<Id> for Game {
         }
         .unwrap_or_else(|| {
             let msg = sync_msg(self.into_api_state());
-            broadcast!(to, iter::once((player, msg)))
+            broadcast!(to_unique, player, msg)
         }))
     }
 }

@@ -21,16 +21,13 @@ Some sections relates to the design and the choices behind it, other to the expe
 [[+Devlog]]
 
 > Concider using assayer crate for validation
-> concider accepting an RC in GameMsg send channel as to avoid copying data
 > Figure out how to URL-decode URLs so as to avoid surprises with %20 and / **(IMPORTANT)**
 	> Do that in the client, for names containing '/'
 	> Test server for how it handles it
 	> Concider leaking the ''Id'' of the player through API. This way, the server controls the URL the player has to visit, instead of the user.
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
-> Better Error management with warp::Rejection and custom errors https://github.com/seanmonstar/warp/blob/master/examples/errors.rs
 
 > Investigate error "unreachable code has been reached" that happens after a while
-> Investigate how to garbage-collect empty rooms that result from a broken disconnection
 
 > Concider having a simpler way to get someone to join game (for exemple with URL)
 

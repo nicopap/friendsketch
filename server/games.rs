@@ -18,7 +18,7 @@ use warp::{
 use crate::{
     api::{self, Name},
     games::{
-        game::{Game, JoinResponse, LeaveResponse},
+        game::{Game, JoinResponse, LeaveResponse, TellResponse},
         sketchfighters::Id,
     },
 };
@@ -187,14 +187,13 @@ struct ConnectionManager<G> {
     game:         G,
 }
 
-struct Connection(mpsc::UnboundedSender<api::GameMsg>);
+struct Connection(mpsc::UnboundedSender<Message>);
 
-fn oversee<G: Game<Id, Error = ()>>(
+fn oversee<G: Game<Id, Error = (), Response = api::GameMsg>>(
     mut manager: ConnectionManager<G>,
     msg: ManagerRequest,
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
-    G::Response: Into<api::GameMsg> + Clone,
     G::Request: From<api::GameReq>,
 {
     use self::api::{GameMsg, InfoMsg};
@@ -206,7 +205,7 @@ where
         }
         ManagerRequest::Msg(id, msg_val) => {
             let response = manager.game.tells(id, msg_val.into())?;
-            manager.broadcast(&response);
+            manager.broadcast(response);
         }
         ManagerRequest::Disconnect(id) => {
             let room = &manager.room_name;
@@ -229,7 +228,7 @@ where
                         error!("game user {} wasn't connected: {}", name, room)
                     };
                     let msg = GameMsg::Info(InfoMsg::Left(name));
-                    manager.broadcast_to_all(msg);
+                    manager.broadcast(TellResponse::ToAll(msg));
                 }
                 LeaveResponse::Empty(name) => {
                     info!("{} leaves {} empty", name, manager.room_name);
@@ -255,7 +254,7 @@ where
                 info!("Adding {} to {}", name, manager.room_name);
                 debug!("with id: {:?}", id);
                 let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
-                manager.broadcast_to_all(msg);
+                manager.broadcast(TellResponse::ToAll(msg));
                 manager.hangups.accept(name, id);
                 manager.respond.send(ManagerResponse::Accept);
             }
@@ -345,11 +344,6 @@ where
                 .map_err(|()| -> warp::Error {
                     panic!("unreachable at games.rs:{}", line!());
                 })
-                .map(|msg: api::GameMsg| {
-                    let sereilized = to_string(&msg).unwrap();
-                    debug!("ws send: {}", sereilized);
-                    Message::text(sereilized)
-                })
                 .forward(socket_sink)
                 .map(|_| ())
                 .map_err(|ws_err| error!("ws send: {}", ws_err)),
@@ -382,31 +376,36 @@ where
         );
     }
 
-    fn broadcast<Msg>(&mut self, targets: &[(Id, Msg)])
-    where
-        Msg: Into<api::GameMsg> + Clone,
-    {
-        for (id, message) in targets.iter() {
-            let mut connection = &self.connections[id].0;
-            let msg = message.clone().into();
-            debug!("sending {:?} to {:?}", msg, id);
-            connection.start_send(msg).unwrap_or_else(|e| {
-                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-            });
-        }
-        for (id, _) in targets {
-            debug!("polling {:?}", id);
-            let mut connection = &self.connections[id].0;
-            connection.poll_complete().unwrap_or_else(|e| {
-                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-            });
+    fn broadcast(&mut self, targets: TellResponse<Id, api::GameMsg>) {
+        match targets {
+            TellResponse::ToAll(msg) => self.broadcast_to_all(&msg),
+            TellResponse::ToList(ids, message) => {
+                let message: String = to_string(&message).unwrap();
+                for id in ids.iter() {
+                    let mut connection = &self.connections[id].0;
+                    let msg = Message::text(message.as_str());
+                    debug!("sending {:?} to {:?}", msg, id);
+                    connection.start_send(msg).unwrap_or_else(|e| {
+                        panic!("send fail '{:?}' at game.rs:{}", e, line!())
+                    });
+                }
+                for id in ids.iter() {
+                    debug!("polling {:?}", id);
+                    let mut connection = &self.connections[id].0;
+                    connection.poll_complete().unwrap_or_else(|e| {
+                        panic!("poll fail '{:?}' at game.rs:{}", e, line!())
+                    });
+                }
+            }
+            TellResponse::ToNone => {}
         }
     }
 
-    fn broadcast_to_all(&mut self, message: api::GameMsg) {
-        debug!("sending {:?} to all", message);
+    fn broadcast_to_all(&mut self, message: &api::GameMsg) {
+        let message = to_string(message).unwrap();
+        debug!("sending {} to all", message);
         for connection in self.connections.values_mut() {
-            let msg = message.clone();
+            let msg = Message::text(message.as_str());
             connection.0.start_send(msg).unwrap_or_else(|e| {
                 panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
             });

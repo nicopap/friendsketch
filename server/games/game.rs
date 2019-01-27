@@ -18,6 +18,12 @@ pub enum JoinResponse<Id> {
     Accept(Id),
 }
 
+pub enum TellResponse<Id, Msg> {
+    ToAll(Msg),
+    ToList(Vec<Id>, Msg),
+    ToNone,
+}
+
 /// The state of a game running on Friendsketch.
 /// It is capable of handling recieved messages (`Request`) and respond to them
 /// (`Response`).
@@ -48,5 +54,5 @@ pub trait Game<Id> {
         &mut self,
         player: Id,
         request: Self::Request,
-    ) -> Result<Vec<(Id, Self::Response)>, Self::Error>;
+    ) -> Result<TellResponse<Id, Self::Response>, Self::Error>;
 }
