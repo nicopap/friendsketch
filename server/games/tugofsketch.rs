@@ -55,7 +55,7 @@ impl Game {
         match self.state {
             Game_::Empty => {
                 error!("Attempt to sync to empty state");
-                panic!("sketchfighters:{} unreachable path", line!())
+                panic!("tugofsketch:{} unreachable path", line!())
             }
             Game_::Lobby { room_leader } => {
                 let players = list!(|(_, p)| p.name.clone());

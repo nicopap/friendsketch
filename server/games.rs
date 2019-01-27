@@ -1,5 +1,5 @@
 mod game;
-mod sketchfighters;
+mod tugofsketch;
 
 use fnv::FnvHashMap;
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
@@ -19,7 +19,7 @@ use crate::{
     api::{self, Name},
     games::{
         game::{Game, JoinResponse, LeaveResponse, TellResponse},
-        sketchfighters::Id,
+        tugofsketch::Id,
     },
 };
 
@@ -285,7 +285,7 @@ impl GameRoom {
             connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
             manager_sink: manager_sink.clone(),
             hangups: HangupChallenger::new(manager_sink.clone()),
-            game: sketchfighters::Game::new(),
+            game: tugofsketch::Game::new(),
         };
         warp::spawn(
             receiv_chan
