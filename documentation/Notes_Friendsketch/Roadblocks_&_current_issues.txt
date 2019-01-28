@@ -10,7 +10,6 @@ Created Tuesday 26 September 2017
 * Make sure that client's own messages are displayed in order:
 	* When input is submitted, put it into message list as a "ghost"
 	* When server sends back own message, remove "ghost" message
-> Previous ''order'' field useless, because Websockets guarentee that message order is preserved, remove ordering system
 * Feedback on wrong message, server messages
 
 ===== Server =====

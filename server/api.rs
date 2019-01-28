@@ -176,7 +176,6 @@ pub enum GameReq {
 pub struct ChatMsg {
     pub content: ChatContent,
     pub author:  Name,
-    pub order:   u16,
 }
 
 #[derive(Debug, Serialize, Clone)]

@@ -156,7 +156,6 @@ GameReq
 ChatMsg =
 	{ content: ChatContent
 	, author: Name
-	, order: Int
 	}
 
 GameMsg

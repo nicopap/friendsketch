@@ -178,7 +178,6 @@ impl game::Game<Id> for Game {
                 let msg = GameMsg::Chat(api::ChatMsg {
                     content,
                     author: self.players[player].name.clone(),
-                    order: self.chat_log.len() as u16,
                 });
                 Some(broadcast!(to_all, msg))
             }

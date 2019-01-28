@@ -487,7 +487,6 @@ type GameMsg
 type alias ChatMsg_ =
         { content : ChatContent
         , author : Name
-        , order : Int
         }
 
 
@@ -500,8 +499,8 @@ type GameReq
 decoderGameMsg : Decoder GameMsg
 decoderGameMsg =
     let
-        intoChatMsg content author order =
-            ChatMsg <| ChatMsg_ content author order
+        intoChatMsg content author =
+            ChatMsg <| ChatMsg_ content author
     in
         oneOf
             [ "canvas" := CanvasMsg <*| decoderCanvasMsg
@@ -509,7 +508,6 @@ decoderGameMsg =
             , "chat" := intoChatMsg
                 <*| "content" :* Dec.map ChatContent_ Dec.string
                 |*| "author" :* Dec.map Name_ Dec.string
-                |*| "order" :* Dec.int
             ]
 
 encoderGameReq : GameReq -> Value
