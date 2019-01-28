@@ -16,8 +16,9 @@ enum Game_ {
 }
 
 pub struct Game {
-    state:   Game_,
-    players: Slab<Player>,
+    state:    Game_,
+    players:  Slab<Player>,
+    chat_log: Vec<api::ChatContent>,
 }
 
 struct Player {
@@ -81,8 +82,9 @@ impl game::Game<Id> for Game {
 
     fn new() -> Self {
         Game {
-            state:   Game_::Empty,
-            players: Slab::with_key(),
+            state:    Game_::Empty,
+            players:  Slab::with_key(),
+            chat_log: Vec::with_capacity(32),
         }
     }
 
@@ -170,6 +172,15 @@ impl game::Game<Id> for Game {
                 } else {
                     None
                 }
+            }
+            GameReq::Chat(content) => {
+                self.chat_log.push(content.clone());
+                let msg = GameMsg::Chat(api::ChatMsg {
+                    content,
+                    author: self.players[player].name.clone(),
+                    order: self.chat_log.len() as u16,
+                });
+                Some(broadcast!(to_all, msg))
             }
         }
         .unwrap_or_else(|| {

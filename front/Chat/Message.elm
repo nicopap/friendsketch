@@ -1,45 +1,42 @@
-module Chat.Message exposing (Message, decode, view)
+module Chat.Message exposing (Message, insert, view, into)
 
-import Json.Decode exposing (string, decodeString, Decoder)
-import TypeDecoders exposing (..)
-import Html exposing (..)
-import Html.Events exposing (..)
-import Html.Attributes exposing (..)
+import API exposing (ChatContent, Name)
+import Html exposing (Html, div, text)
+import Html.Attributes exposing (class)
 
 
-type alias Message =
-    { author : String
-    , date : String
-    , content : String
-    }
+type Message =
+    Message_
+        { author : String
+        , content : String
+        , order : Int
+        }
 
 
-decodeMessage : Decoder Message
-decodeMessage =
-    Message
-        <*| "author" :* string
-        |*| "date" :* string
-        |*| "content" :* string
+insert : API.ChatMsg_ -> List Message -> List Message
+insert message history =
+    case history of
+        [] ->
+            [ into message ]
+
+        Message_ head :: tail ->
+            if head.order > message.order then
+                Message_ head :: insert message tail
+            else
+                into message :: Message_ head :: tail
 
 
-decode : String -> Message
-decode json =
-    case decodeString decodeMessage json of
-        Ok message ->
-            message
-
-        Err errormsg ->
-            errormessage errormsg
-
-
-errormessage : String -> Message
-errormessage errormsg =
-    Message "SERVER" "" ("ERROR: " ++ errormsg)
+into : API.ChatMsg_ -> Message
+into { content, author, order } =
+    Message_
+        { content = API.showChatContent content
+        , author = API.showName author
+        , order = order
+        }
 
 
 view : Message -> Html msg
-view message =
+view (Message_ message) =
     div [ class "message" ]
-        [ b [] [ text message.author ]
-        , text (" : " ++ message.content)
+        [ text <| message.author ++ " : " ++ message.content
         ]

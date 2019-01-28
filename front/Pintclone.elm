@@ -13,6 +13,7 @@ import Html.Attributes as HA exposing (id, class, href)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
 import Canvas exposing (Canvas)
+import Chat exposing (Chat)
 import Process
 import Task
 import Time exposing (second)
@@ -48,6 +49,7 @@ type alias Pintclone =
     , wssend : API.GameReq -> Cmd Msg
     , syncRetries : Int
     , openGameRetries : Int
+    , chat : Chat
     }
 
 
@@ -65,6 +67,7 @@ type LobbyMsg
 
 type Msg
     = Info API.InfoMsg
+    | ChatMsg Chat.Msg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
     | ListenError API.ListenError
@@ -126,6 +129,7 @@ new (roomid, username, openGameRetries) =
       , wssend = API.wsSend roomid username
       , syncRetries = 0
       , openGameRetries = openGameRetries
+      , chat = Chat.new []
       }
     , API.wsSend roomid username (InfoReq API.ReqSync)
     )
@@ -283,8 +287,23 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                     ErrorState { message=message, retry=retry, title=title }
             in
                 ( { pintclone | state = newErrorState }, report message )
+
+        handleChatCmd chatCmd =
+            case chatCmd of
+                Chat.DoNothing ->
+                    Cmd.none
+                Chat.Send text ->
+                    pintclone.wssend <| API.ChatReq text
+                Chat.UpdateScroll ->
+                    Ports.bottomScrollChat ()
     in
         case ( msg, pintclone.state ) of
+            ( ChatMsg msg_, _ ) ->
+                let ( newChat, chatMsg ) = Chat.update msg_ pintclone.chat
+                in  ( { pintclone | chat = newChat }
+                    , handleChatCmd chatMsg
+                    )
+
             ( Info msg_, _ ) ->
                 updateInfo msg_ pintclone
 
@@ -374,6 +393,9 @@ subs { wslisten, state } =
                         Nothing ->
                             ListenError <| API.DecodeError "Recieved a canvas message"
 
+                Ok (API.ChatMsg msg) ->
+                    ChatMsg (Chat.receive msg)
+
         cListen canvas =
             listen <| Maybe.map ((<<) CanvasMsg) <| Canvas.subsAdaptor canvas
 
@@ -434,6 +456,7 @@ view pintclone =
             div [ id "masterlayout" ]
                 [ Room.view room
                 , H.map CanvasMsg <| Canvas.view canvas
+                , H.map ChatMsg <| Chat.view pintclone.chat
                 ]
     in
         case pintclone.state of

@@ -26,11 +26,11 @@ Some sections relates to the design and the choices behind it, other to the expe
 	> Test server for how it handles it
 	> Concider leaking the ''Id'' of the player through API. This way, the server controls the URL the player has to visit, instead of the user.
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
-
 > Investigate error "unreachable code has been reached" that happens after a while
 
 > Concider having a simpler way to get someone to join game (for exemple with URL)
-
+> Reset game state when player count down to 1
+> Reimplement concept for unselected custom colors
 
 ===== Current roadmap =====
 * Improve how the backend handles stuff
@@ -38,7 +38,7 @@ Some sections relates to the design and the choices behind it, other to the expe
 	* Implement game logic
 * Add tests
 * Improve client layout: room name field etc.
-* Fix chat
+* Improve chat
 	* Frontend: create interface (for chat, and word to guess etc)
 	* Backend: handle guesses and stuff,
 

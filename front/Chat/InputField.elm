@@ -1,27 +1,21 @@
-module Chat.InputField exposing (prepareMessage)
+module Chat.InputField exposing (onEnter)
 
-{-| This module formalizes the communication of the chat messages to the
-server.
--}
+import Html exposing (Attribute)
+import Html.Events as Event exposing (targetValue, keyCode)
+import Json.Decode as Dec
 
-import Time exposing (Time)
-import Time
-import Task
-import Json.Encode exposing (encode, float, string, object)
-
-
-{-| Translates the request into a machine-readable request.
--}
-prepareMessage : String -> (String -> msg) -> Cmd msg
-prepareMessage message callback =
+onEnter : msg -> Attribute msg
+onEnter msg =
     let
-        jsonWithmsg : Time -> String
-        jsonWithmsg time =
-            encode 0
-                (object
-                    [ ( "timestamp", Time.inMilliseconds time |> toString |> string )
-                    , ( "message", string message )
-                    ]
-                )
+        isEnter code =
+            if code == 13 then
+                Dec.succeed msg
+            else
+                Dec.fail "not ENTER"
+
+        decodeEnter =
+            keyCode |> Dec.andThen isEnter
     in
-        Cmd.map callback <| Task.perform jsonWithmsg Time.now
+        Event.on "keydown" decodeEnter
+
+

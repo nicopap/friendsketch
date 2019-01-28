@@ -1,91 +1,80 @@
-module Chat exposing (Chat, subs, new, Msg, update, view)
+module Chat exposing (Chat, new, Msg, ChatCmd(..), update, view, receive)
 
-import Json.Decode as Json
-import Html exposing (..)
-import Html.Attributes exposing (..)
-import Html.Events exposing (..)
-import NeatSocket
+import API
+import Html exposing (Html, div, input, text)
+import Html.Attributes exposing (value, autofocus, placeholder, id)
+import Html.Events exposing (onInput)
 import Chat.Message as Message exposing (Message)
-import Chat.InputField as InputField
-import Room exposing (Room)
+import Chat.InputField exposing (onEnter)
 
 
 type alias Chat =
-    { room : Room
-    , history : List Message
+    { history : List Message
     , inputContent : String
+    -- TODO: , ghost : List OwnMessage
     }
 
 
 type Msg
-    = NewMessage String
+    = NewMessage API.ChatMsg_
     | UpdateInput String
     | SubmitInput
-    | SendInput String
 
 
-subs : Chat -> Sub Msg
-subs { room } =
-    Sub.batch
-        [ NeatSocket.listen (Room.chatUrl room) NewMessage
-        ]
+type ChatCmd
+    = Send API.ChatContent
+    | UpdateScroll
+    | DoNothing
 
 
-new : Room -> Chat
-new room =
-    { room = room
-    , history = []
+new : List API.ChatMsg_ -> Chat
+new history =
+    { history = List.map Message.into history
     , inputContent = ""
     }
 
 
-update : Msg -> Chat -> ( Chat, Cmd Msg )
-update msg chat =
+receive : API.ChatMsg_ -> Msg
+receive = NewMessage
+
+
+update : Msg -> Chat -> ( Chat, ChatCmd )
+update msg ({ history, inputContent } as chat) =
     case msg of
-        NewMessage content ->
-            ( { chat | history = chat.history ++ [ Message.decode content ] }
-            , Cmd.none
+        NewMessage message ->
+            ( { chat | history = Message.insert message history }
+            , UpdateScroll
             )
 
-        UpdateInput newtext ->
-            ( { chat | inputContent = newtext }
-            , Cmd.none
-            )
+        UpdateInput newText ->
+            ( { chat | inputContent = newText }, DoNothing )
 
         SubmitInput ->
             ( { chat | inputContent = "" }
-            , InputField.prepareMessage chat.inputContent SendInput
+            , API.validChatContent inputContent
+                |> Maybe.map Send
+                |> Maybe.withDefault DoNothing
             )
 
-        SendInput tosend ->
-            ( chat
-            , NeatSocket.send (Room.chatUrl chat.room) tosend
-            )
-
-
-onEnter : Msg -> Attribute Msg
-onEnter msg =
-    let
-        isEnter code =
-            if code == 13 then
-                Json.succeed msg
-            else
-                Json.fail "not ENTER"
-    in
-        on "keydown" <| Json.andThen isEnter keyCode
 
 
 view : Chat -> Html Msg
 view chat =
-    div [ class "chat" ]
-        (List.map Message.view chat.history
-            ++ [ input
-                    [ placeholder "Input guess here"
-                    , autofocus True
-                    , value chat.inputContent
-                    , onEnter SubmitInput
-                    , onInput UpdateInput
-                    ]
-                    [ text chat.inputContent ]
-               ]
-        )
+    let
+        inputField =
+            input
+                [ placeholder "Input guess here"
+                , autofocus True
+                , value chat.inputContent
+                , onEnter SubmitInput
+                , onInput UpdateInput
+                ]
+                [ text chat.inputContent ]
+
+        history =
+            List.map Message.view <| List.reverse chat.history
+    in
+        div [ id "chat" ]
+            [ div [ id "messages" ] history
+            , div [ id "chat-input" ] [ inputField ]
+            ]

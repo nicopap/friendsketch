@@ -28,6 +28,15 @@ quick_error! {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatContent(String);
+
+impl fmt::Display for ChatContent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub struct Name(String);
 
@@ -160,6 +169,14 @@ pub enum InfoRequest {
 pub enum GameReq {
     Canvas(CanvasMsg),
     Info(InfoRequest),
+    Chat(ChatContent),
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ChatMsg {
+    pub content: ChatContent,
+    pub author:  Name,
+    pub order:   u16,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -167,4 +184,5 @@ pub enum GameReq {
 pub enum GameMsg {
     Canvas(CanvasMsg),
     Info(InfoMsg),
+    Chat(ChatMsg),
 }

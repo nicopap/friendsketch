@@ -103,6 +103,7 @@ Point ~= (X, Y) where X = Y = [-2^31; 2^31[ : Int
 Score = Int
 Color ~= #[0-9a-f]{6}
 Size = Float
+ChatContent = String
 
 RoundSummary
 	= { artist: Score}
@@ -149,10 +150,18 @@ InfoRequest
 
 GameReq
 	= { canvas: CanvasMsg }
+	| { chat: ChatContent }
 	| { info: InfoRequest }
+
+ChatMsg =
+	{ content: ChatContent
+	, author: Name
+	, order: Int
+	}
 
 GameMsg
 	= { canvas: CanvasMsg }
+	| { chat: ChatMsg }
 	| { info: InfoMsg }
 '''
 

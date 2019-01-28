@@ -25,6 +25,10 @@ module API
         , wsSend
         , CanvasMsg(..)
         , ListenError(DecodeError, BadSend)
+        , ChatMsg_
+        , ChatContent
+        , validChatContent
+        , showChatContent
         )
 
 {-| Exposes the necessary functions and types to access the backend API.
@@ -60,6 +64,8 @@ decoderGame =
 type Name
     = Name_ String
 
+type ChatContent
+    = ChatContent_ String
 
 type RoomID
     = RoomID_ String
@@ -99,6 +105,17 @@ regexValidate re string =
     else
         Nothing
 
+validChatContent : String -> Maybe ChatContent
+validChatContent toValidate =
+    if String.length toValidate < 1000 then
+        Just <| ChatContent_ toValidate
+    else
+        Nothing
+
+
+showChatContent : ChatContent -> String
+showChatContent (ChatContent_ stringrep) =
+    stringrep
 
 {-| Skips the validation part. You should expect the server to send
 valid data.
@@ -460,21 +477,40 @@ encoderCanvasMsg msg =
             CnvEnd ->
                 Enc.string "end"
 
+
 type GameMsg
     = CanvasMsg CanvasMsg
     | InfoMsg InfoMsg
+    | ChatMsg ChatMsg_
+
+
+type alias ChatMsg_ =
+        { content : ChatContent
+        , author : Name
+        , order : Int
+        }
+
 
 type GameReq
     = CanvasReq CanvasMsg
     | InfoReq InfoRequest
+    | ChatReq ChatContent
 
 
 decoderGameMsg : Decoder GameMsg
 decoderGameMsg =
-    oneOf
-        [ "canvas" := CanvasMsg <*| decoderCanvasMsg
-        , "info" := InfoMsg <*| decoderInfo
-        ]
+    let
+        intoChatMsg content author order =
+            ChatMsg <| ChatMsg_ content author order
+    in
+        oneOf
+            [ "canvas" := CanvasMsg <*| decoderCanvasMsg
+            , "info" := InfoMsg <*| decoderInfo
+            , "chat" := intoChatMsg
+                <*| "content" :* Dec.map ChatContent_ Dec.string
+                |*| "author" :* Dec.map Name_ Dec.string
+                |*| "order" :* Dec.int
+            ]
 
 encoderGameReq : GameReq -> Value
 encoderGameReq req =
@@ -484,3 +520,6 @@ encoderGameReq req =
 
         InfoReq req_ ->
             Enc.object [ ("info", encoderInfoRequest req_)]
+
+        ChatReq (ChatContent_ req_) ->
+            Enc.object [ ("chat", Enc.string req_)]
