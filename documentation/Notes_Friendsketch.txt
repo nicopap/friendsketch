@@ -34,7 +34,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 ===== Current roadmap =====
 * Improve how the backend handles stuff
-	* Sanitize names and roomids in backend
 	* Implement game logic
 * Add tests
 * Improve client layout: room name field etc.

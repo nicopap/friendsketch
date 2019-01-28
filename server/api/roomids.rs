@@ -2,7 +2,6 @@ mod adjective;
 mod animal;
 
 use rand::{thread_rng, Rng};
-use serde::{de, Deserialize, Deserializer};
 
 use self::{adjective::LIST as ADJECTIVES, animal::LIST as ANIMALS};
 
@@ -51,19 +50,6 @@ impl From<&RoomId> for String {
 pub(in crate::api) fn gen() -> RoomId {
     let (adjective, animal): (u8, u8) = thread_rng().gen();
     RoomId { adjective, animal }
-}
-
-impl<'de> Deserialize<'de> for RoomId {
-    fn deserialize<D>(deserializer: D) -> Result<RoomId, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s: &str = <&str>::deserialize(deserializer)?;
-        RoomId::try_from(s).ok_or(de::Error::invalid_value(
-            de::Unexpected::Str(s),
-            &"a proper room name",
-        ))
-    }
 }
 
 #[cfg(test)]

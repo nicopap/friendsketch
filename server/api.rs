@@ -1,8 +1,10 @@
 mod roomids;
+#[macro_use]
+mod autode;
 
 use percent_encoding::percent_decode;
 use quick_error::quick_error;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{
     fmt,
     str::{FromStr, Utf8Error},
@@ -12,6 +14,17 @@ quick_error! {
     #[derive(Debug)]
     pub enum NameError {
         InvalidName {}
+        TooLong {}
+        InvalidFormat(err: Utf8Error) {
+            from()
+        }
+    }
+}
+
+quick_error! {
+    #[derive(Debug)]
+    pub enum ChatMsgError {
+        TooLong {}
         InvalidFormat(err: Utf8Error) {
             from()
         }
@@ -28,7 +41,7 @@ quick_error! {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatContent(String);
 
 impl fmt::Display for ChatContent {
@@ -36,23 +49,35 @@ impl fmt::Display for ChatContent {
         write!(f, "{}", self.0)
     }
 }
+impl FromStr for ChatContent {
+    type Err = ChatMsgError;
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
-pub struct Name(String);
-
-impl Name {
-    pub fn try_from(raw: String) -> Result<Self, NameError> {
-        Ok(Name(raw))
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() < 300 {
+            Ok(ChatContent(String::from(s)))
+        } else {
+            Err(ChatMsgError::TooLong)
+        }
     }
 }
+impl_deserialize_with_from_str!(ChatContent);
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Hash)]
+pub struct Name(String);
+
 impl FromStr for Name {
     type Err = NameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let decoded = percent_decode(s.as_bytes()).decode_utf8()?;
-        Name::try_from(decoded.to_string())
+        if decoded.len() > 30 {
+            Err(NameError::TooLong)
+        } else {
+            Ok(Name(String::from(decoded)))
+        }
     }
 }
+impl_deserialize_with_from_str!(Name);
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -60,16 +85,10 @@ impl fmt::Display for Name {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct RoomId(roomids::RoomId);
 
 impl RoomId {
-    pub fn try_from(raw: &str) -> Result<Self, RoomIdError> {
-        let validated =
-            roomids::RoomId::try_from(raw).ok_or(RoomIdError::InvalidRoomId)?;
-        Ok(RoomId(validated))
-    }
-
     pub fn new_random() -> Self {
         RoomId(roomids::gen())
     }
@@ -79,9 +98,12 @@ impl FromStr for RoomId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let decoded = percent_decode(s.as_bytes()).decode_utf8()?;
-        RoomId::try_from(&decoded)
+        let validated = roomids::RoomId::try_from(&decoded)
+            .ok_or(RoomIdError::InvalidRoomId)?;
+        Ok(RoomId(validated))
     }
 }
+impl_deserialize_with_from_str!(RoomId);
 
 impl fmt::Display for RoomId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
