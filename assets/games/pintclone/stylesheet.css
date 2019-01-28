@@ -1,16 +1,49 @@
+body { font-family: sans-serif }
 
-.colorbox:hover {
-	transform: scale(1.5);
+#masterlayout {
+	display: flex;
+	flex-wrap: nowrap;
+}
+#masterlayout > * {
+  border: 4px solid #ededf0;
+	box-shadow: 0 0 0 2px #cdcdcd;
+	border-radius: 5px;
+	margin: 0 10px;
+	height: 520px;
 }
 
+
+/* *** User list (Room) *** */
+
+
+#userlist {
+	margin: 0;
+	list-style-type: none;
+	padding: 0;
+	width: 150px;
+	font-size: 14px;
+}
+.userentry {
+	padding: 4px 0;
+	margin-bottom: -2px;
+	border: 2px solid #cdcdcd;
+	transition: color 0.1s;
+}
+.userentry-me .username::before { content:"me:" }
+.userentry-artist { background-color: #cce9b6; }
+
+
+/* ** Canvas ** */
+
+
+.colorbox:hover { transform: scale(1.5) }
 .colorbox:focus {
 	box-shadow: 0 0 5px 5px white;
 	z-index:3;
 }
-
 .colorbox {
-	width: 2em;
-	height: 2em;
+	width: 30px;
+	height: 30px;
 	border-radius: 5px;
 	border-style: solid;
 	border-width: 2px;
@@ -22,50 +55,40 @@
 #palette {
 	display: flex;
 	flex-wrap: wrap;
-	width: 80%;
+	width: 82%;
 }
 
-input[type=color] {
-	padding: 0;
-}
-
-.top-layout {
-	border-style: solid;
-	border-width: 3px;
-}
-
-#artcontainer {
-	height : auto;
-	width : auto;
-	margin-left: 5px;
+input[type=color] {	padding: 0;}
+input[type=range] {
+	background: white;
+	border-radius: 15px;
+	height:30px;
+	margin:auto;
+	border: 2px solid #ededf0;
+	box-shadow: 0 0 1px 1px #cdcdcd;
 }
 
 #toolbox {
-	padding: 5px;
-	max-width: 600px;
-	box-sizing: border-box;
+	width: 590px;
+	height: 97px;
+	padding: 10px 5px;
 	display: flex;
 	flex-wrap: nowrap;
-	height: auto;
 }
-
 #canvas {
-	border-bottom: solid;
 	width: 600px;
+	border-bottom: 3px solid #ededf0;
 	height: 400px;
 }
-
 .artist-empty #canvas{
 	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
 }
 
-
 .pregame #canvas{
 	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
 }
-
 
 .pregame #canvas::before {
 	content: "The round hasn't started yet";
@@ -90,36 +113,37 @@ input[type=color] {
 	text-align: center;
 	line-height: 100%;
 }
+.spectator #toolbox { filter: opacity(50%) }
+.spectator #toolbox { filter: opacity(50%) }
+.spectator .colorbox:hover { transform: none }
+.spectator .colorbox:focus { box-shadow: none }
+.artist #toolbox { background-color: #cce9b6 }
 
-.spectator #toolbox {
-	filter: opacity(50%);
+
+/* *** Chat *** */
+
+
+#chat {	font-size: 14px }
+#chat-input {
+	border-top: 3px solid #ededf0;
+	padding: 5px 0;
+}
+#chat-input input {
+	width: 250px;
+	border:none;
 }
 
-.artist #toolbox {
-	background-color: #cce9b6;
+#messages {
+	height: 93%;
+	overflow-y: scroll;
 }
-
-#masterlayout {
-	display: flex;
-	flex-wrap: nowrap;
+.message {
+	padding: 5px 0 7px 0;
+	line-height: 1;
+	border-top: 1px solid #ededf0;
+	word-break: break-all;
+	width: 250px;
 }
-
-#userlist {
-	height: auto;
-	margin: 0;
-	list-style-type: none;
-	padding: 0;
-}
-
-#userlist .userentry {
-	padding: 4px 10px;
-	border-bottom-style: solid;
-	border-width: 1px;
-	border-color: grey;
-	transition: color 0.1s;
-}
-#userlist .userentry-me .username::before { content:"me:" }
-#userlist .userentry-artist { background-color: #cce9b6; }
 
 
 /* *** Room dialog *** */
@@ -138,14 +162,12 @@ input[type=color] {
 }
 
 #roomiddialog h3 { margin:0 }
-#roomiddialog p { margin:0; line-height: 1}
-
+#roomiddialog p { margin:0; line-height: 1 }
 #roomiddialog input[type=checkbox] { width: auto; }
-#roomiddialog button { 
-	margin: auto; 
+#roomiddialog button {
+	margin: auto;
 	padding: 1px 40px;
 }
-
 #roomiddialog input {
 	margin-right: 0;
 	padding: 0;

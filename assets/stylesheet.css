@@ -3,15 +3,6 @@ html {
 	color: black;
 }
 
-#drawingcontainer {
-	border-style: solid;
-	width: 600px;
-	height: 400px;
-	margin: auto;
-	margin-top: 20px;
-	background-color: #FFFFFF
-}
-
 #lobbydiv {
 	border-radius: 10px;
 	position: absolute;
