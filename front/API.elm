@@ -107,7 +107,7 @@ regexValidate re string =
 
 validChatContent : String -> Maybe ChatContent
 validChatContent toValidate =
-    if String.length toValidate < 1000 then
+    if String.length toValidate < 300 && not (String.isEmpty toValidate) then
         Just <| ChatContent_ toValidate
     else
         Nothing

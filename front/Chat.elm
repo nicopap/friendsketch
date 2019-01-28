@@ -50,12 +50,9 @@ update msg ({ history, inputContent } as chat) =
             ( { chat | inputContent = newText }, DoNothing )
 
         SubmitInput ->
-            ( { chat | inputContent = "" }
-            , API.validChatContent inputContent
-                |> Maybe.map Send
-                |> Maybe.withDefault DoNothing
-            )
-
+            API.validChatContent inputContent
+              |> Maybe.map (\cmd -> ( { chat | inputContent = "" }, Send cmd))
+              |> Maybe.withDefault ( chat, DoNothing )
 
 
 view : Chat -> Html Msg
