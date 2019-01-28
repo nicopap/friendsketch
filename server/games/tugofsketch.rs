@@ -104,13 +104,29 @@ impl game::Game<Id> for Game {
         }
     }
 
-    fn leaves(&mut self, player: Id) -> LeaveResponse<()> {
+    fn leaves(&mut self, player: Id) -> LeaveResponse<Id, api::GameMsg, ()> {
+        use self::api::{GameMsg::Info, InfoMsg::Mastery};
         match self.players.remove(player) {
             Some(Player { name }) => {
-                if self.players.is_empty() {
-                    LeaveResponse::Empty(name)
+                if let Some((id, _)) = self.players.iter().next() {
+                    let response = match self.state {
+                        Game_::Lobby {
+                            ref mut room_leader,
+                        } if *room_leader == player => {
+                            *room_leader = id;
+                            broadcast!(to_unique, id, Info(Mastery))
+                        }
+                        Game_::Playing { ref mut artist, .. }
+                            if *artist == player =>
+                        {
+                            *artist = id;
+                            broadcast!(nothing)
+                        }
+                        _ => { broadcast!(nothing) }
+                    };
+                    LeaveResponse::Successfully(name, response)
                 } else {
-                    LeaveResponse::Successfully(name)
+                    LeaveResponse::Empty(name)
                 }
             }
             None => LeaveResponse::Failed(()),

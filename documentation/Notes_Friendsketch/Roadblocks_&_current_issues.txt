@@ -12,9 +12,6 @@ Created Tuesday 26 September 2017
 	* When server sends back own message, remove "ghost" message
 * Feedback on wrong message, server messages
 
-===== Server =====
-
-FIX: Properly handle room leader leaving game room
 
 ===== API =====
 

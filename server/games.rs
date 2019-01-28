@@ -220,7 +220,7 @@ where
             manager.hangups.remove(&id);
             let removed = manager.connections.remove(&id).is_some();
             match manager.game.leaves(id) {
-                LeaveResponse::Successfully(name) => {
+                LeaveResponse::Successfully(name, broadcast) => {
                     let room = &manager.room_name;
                     if removed {
                         info!("{} leaves {}", name, room)
@@ -229,6 +229,7 @@ where
                     };
                     let msg = GameMsg::Info(InfoMsg::Left(name));
                     manager.broadcast(TellResponse::ToAll(msg));
+                    manager.broadcast(broadcast);
                 }
                 LeaveResponse::Empty(name) => {
                     info!("{} leaves {} empty", name, manager.room_name);
