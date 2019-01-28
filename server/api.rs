@@ -119,6 +119,14 @@ pub type Point = (i32, i32);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
+pub enum GameEvent {
+    Left(Name),
+    Joined(Name),
+    Message(ChatMsg),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase")]
 pub enum RoundSummary {
     Artist(Score),
     Guessed(Score),
@@ -174,7 +182,7 @@ pub enum InfoMsg {
     Joined(Name),
     Left(Name),
     #[serde(rename = "sync")]
-    Sync_(GameState),
+    Sync_(GameState, Vec<GameEvent>),
     Mastery,
 }
 

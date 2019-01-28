@@ -1,5 +1,6 @@
 use super::game::{self, JoinResponse, LeaveResponse, TellResponse};
-use crate::api::{self, Name, Stroke};
+use crate::api::{self, ChatMsg, GameEvent, GameState, Name, Stroke};
+use arraydeque::{ArrayDeque, Wrapping};
 use log::{error, warn};
 use slotmap::{new_key_type, SlotMap};
 
@@ -18,7 +19,7 @@ enum Game_ {
 pub struct Game {
     state:    Game_,
     players:  Slab<Player>,
-    chat_log: Vec<api::ChatContent>,
+    game_log: ArrayDeque<[GameEvent; 20], Wrapping>,
 }
 
 struct Player {
@@ -40,20 +41,23 @@ macro_rules! broadcast {
     };
 }
 
-fn sync_msg(msg: api::GameState) -> api::GameMsg {
+fn sync_msg(
+    state: GameState,
+    events: impl Iterator<Item = GameEvent>,
+) -> api::GameMsg {
     use api::{GameMsg::Info, InfoMsg::Sync_};
-    Info(Sync_(msg))
+    Info(Sync_(state, events.collect()))
 }
 
 impl Game {
-    fn into_api_state(&self) -> api::GameState {
-        use self::api::GameState::{Lobby, Round};
+    fn into_sync_msg(&self) -> api::GameMsg {
+        use self::GameState::{Lobby, Round};
         macro_rules! list {
             ($map:expr) => {
                 self.players.iter().map($map).collect();
             };
         }
-        match self.state {
+        let state = match self.state {
             Game_::Empty => {
                 error!("Attempt to sync to empty state");
                 panic!("tugofsketch:{} unreachable path", line!())
@@ -72,7 +76,9 @@ impl Game {
                 let round_state = api::RoundState { players, artist };
                 Round(drawing.clone(), round_state)
             }
-        }
+        };
+        let events = self.game_log.clone().into_iter();
+        sync_msg(state, events)
     }
 }
 impl game::Game<Id> for Game {
@@ -84,7 +90,7 @@ impl game::Game<Id> for Game {
         Game {
             state:    Game_::Empty,
             players:  Slab::with_key(),
-            chat_log: Vec::with_capacity(32),
+            game_log: ArrayDeque::new(),
         }
     }
 
@@ -92,6 +98,7 @@ impl game::Game<Id> for Game {
         if self.players.values().any(|Player { name: n }| n == &name) {
             JoinResponse::Refuse
         } else {
+            self.game_log.push_front(GameEvent::Joined(name.clone()));
             let id = self.players.insert(Player { name });
             match self.state {
                 Game_::Empty => {
@@ -108,6 +115,7 @@ impl game::Game<Id> for Game {
         use self::api::{GameMsg::Info, InfoMsg::Mastery};
         match self.players.remove(player) {
             Some(Player { name }) => {
+                self.game_log.push_front(GameEvent::Left(name.clone()));
                 if let Some((id, _)) = self.players.iter().next() {
                     let response = match self.state {
                         Game_::Lobby {
@@ -122,7 +130,7 @@ impl game::Game<Id> for Game {
                             *artist = id;
                             broadcast!(nothing)
                         }
-                        _ => { broadcast!(nothing) }
+                        _ => broadcast!(nothing),
                     };
                     LeaveResponse::Successfully(name, response)
                 } else {
@@ -151,8 +159,7 @@ impl game::Game<Id> for Game {
                             drawing: vec![],
                             artist:  room_leader,
                         };
-                        let msg = sync_msg(self.into_api_state());
-                        Some(broadcast!(to_all, msg))
+                        Some(broadcast!(to_all, self.into_sync_msg()))
                     }
                 } else {
                     warn!("{:?} tries to start while game is running", player);
@@ -190,17 +197,15 @@ impl game::Game<Id> for Game {
                 }
             }
             GameReq::Chat(content) => {
-                self.chat_log.push(content.clone());
-                let msg = GameMsg::Chat(api::ChatMsg {
+                let final_msg = ChatMsg {
                     content,
                     author: self.players[player].name.clone(),
-                });
-                Some(broadcast!(to_all, msg))
+                };
+                let log_item = GameEvent::Message(final_msg.clone());
+                self.game_log.push_front(log_item);
+                Some(broadcast!(to_all, GameMsg::Chat(final_msg)))
             }
         }
-        .unwrap_or_else(|| {
-            let msg = sync_msg(self.into_api_state());
-            broadcast!(to_unique, player, msg)
-        }))
+        .unwrap_or_else(|| broadcast!(to_unique, player, self.into_sync_msg())))
     }
 }

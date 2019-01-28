@@ -16,7 +16,7 @@ type alias Chat =
 
 
 type Msg
-    = NewMessage API.ChatMsg_
+    = GameEvent API.GameEvent
     | UpdateInput String
     | SubmitInput
 
@@ -27,22 +27,22 @@ type ChatCmd
     | DoNothing
 
 
-new : List API.ChatMsg_ -> Chat
+new : List API.GameEvent -> Chat
 new history =
-    { history = List.map Message.into history
+    { history = List.reverse <| List.map Message.into history
     , inputContent = ""
     }
 
 
-receive : API.ChatMsg_ -> Msg
-receive = NewMessage
+receive : API.GameEvent -> Msg
+receive = GameEvent
 
 
 update : Msg -> Chat -> ( Chat, ChatCmd )
 update msg ({ history, inputContent } as chat) =
     case msg of
-        NewMessage message ->
-            ( { chat | history = Message.insert message history }
+        GameEvent event ->
+            ( { chat | history = history ++ [ Message.into event ] }
             , UpdateScroll
             )
 
@@ -69,7 +69,7 @@ view chat =
                 [ text chat.inputContent ]
 
         history =
-            List.map Message.view <| List.reverse chat.history
+            List.map Message.view chat.history
     in
         div [ id "chat" ]
             [ div [ id "messages" ] history

@@ -12,6 +12,17 @@ Created Tuesday 26 September 2017
 	* When server sends back own message, remove "ghost" message
 * Feedback on wrong message, server messages
 
+===== Game abort screen =====
+
+* When 1 player remaining, what to do?
+	* Tell them they can either wait for more players or quit, show them the room id
+
+
+===== Game Event Log =====
+
+* A lot of string copies? What to do?
+	* Replace ''Name'' in game log by Id, avoids extra allocation, but still copies at ''sync'' .
+
 
 ===== API =====
 

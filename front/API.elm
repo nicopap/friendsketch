@@ -13,6 +13,7 @@ module API
         , reportError
         , LobbyState
         , RoundState
+        , GameEvent(..)
         , ScoresState
         , Stroke
         , Drawing
@@ -254,6 +255,32 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
                     continuation_ << decodeWithNiceError
 
 
+--- GameEvent ---
+
+
+
+type GameEvent
+    = EventLeft Name
+    | EventJoined Name
+    | EventMessage ChatMsg_
+
+
+decoderGameEvent : Decoder GameEvent
+decoderGameEvent =
+    let
+        intoChatMsg content author =
+            EventMessage <| ChatMsg_ content author
+    in
+        oneOf
+            [ "joined" := EventJoined <*| decoderName
+            , "left" := EventLeft <*| decoderName
+            , "message" := intoChatMsg
+                <*| "content" :* Dec.map ChatContent_ Dec.string
+                |*| "author" :* Dec.map Name_ Dec.string
+            ]
+
+
+
 --- RoundSummary ---
 
 
@@ -390,7 +417,7 @@ decoderGameState =
 type InfoMsg
     = Joined Name
     | Left Name
-    | Sync GameState
+    | Sync GameState (List GameEvent)
     | Mastery
 
 
@@ -399,7 +426,9 @@ decoderInfo =
     oneOf
         [ "joined" := Joined <*| decoderName
         , "left" := Left <*| decoderName
-        , "sync" := Sync <*| decoderGameState
+        , "sync" := Sync
+            <*| 0 :^ decoderGameState
+            |*| 1 :^ Dec.list decoderGameEvent
         , "mastery" :- Mastery
         ]
 

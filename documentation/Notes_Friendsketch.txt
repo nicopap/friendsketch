@@ -31,6 +31,7 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Concider having a simpler way to get someone to join game (for exemple with URL)
 > Reset game state when player count down to 1
 > Reimplement concept for unselected custom colors
+> Refactor frontend pintclone.room
 
 ===== Current roadmap =====
 * Improve how the backend handles stuff

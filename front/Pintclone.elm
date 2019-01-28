@@ -228,34 +228,62 @@ roomMod name state change ifUninit =
 
 
 updateInfo : API.InfoMsg -> Pintclone -> ( Pintclone, Cmd Msg )
-updateInfo msg ({ username, state, wssend } as pintclone) =
+updateInfo msg ({ username, state, wssend, chat } as pintclone) =
     let
-        mutateRoom name action =
+        tupleAndThen : (a -> (b, Cmd msg)) -> (a, Cmd msg) -> (b, Cmd msg)
+        tupleAndThen f (a, orig_cmd) =
+            f a |> mapSecond (\cmd -> Cmd.batch [ orig_cmd, cmd ])
+
+        syncPintclone eventType name newLobby =
+            case eventType of
+                Nothing ->
+                    ( { pintclone | state = newLobby }, Cmd.none )
+
+                Just event ->
+                    let (newChat, chatCmd) =
+                            Chat.update (Chat.receive <| event name) chat
+                    in  ( { pintclone | state = newLobby , chat = newChat }
+                        , handleChatCmd wssend chatCmd
+                        )
+
+        mutateRoom eventType name action =
             roomMod name state action (wssend <| InfoReq API.ReqSync)
-                |> mapFirst (\newstate -> { pintclone | state = newstate })
+                |> tupleAndThen (syncPintclone eventType name)
     in
         case msg of
             API.Joined name ->
-                mutateRoom name Room.joins
+                mutateRoom (Just API.EventJoined) name Room.joins
 
             API.Left name ->
-                mutateRoom name Room.leaves
+                mutateRoom (Just API.EventLeft) name Room.leaves
 
             API.Mastery ->
-                mutateRoom never (always Room.becomeMaster)
+                mutateRoom Nothing never (always Room.becomeMaster)
                     |> mapSecond
                         (\b -> Cmd.batch [ copyCatch pintclone.roomid, b ])
 
-            API.Sync gamestate ->
-                case gamestate of
-                    API.Summary scores ->
-                        ( newScores scores pintclone, Cmd.none )
+            API.Sync gamestate events ->
+                let syncPintclone = { pintclone | chat = Chat.new events }
+                in  case gamestate of
+                        API.Summary scores ->
+                            ( newScores scores syncPintclone, Cmd.none )
 
-                    API.Round drawing round ->
-                        ( newRound drawing round pintclone, Cmd.none )
+                        API.Round drawing round ->
+                            ( newRound drawing round syncPintclone, Cmd.none )
 
-                    API.Lobby lobby ->
-                        newLobby lobby pintclone
+                        API.Lobby lobby ->
+                            newLobby lobby syncPintclone
+
+
+handleChatCmd : (GameReq -> Cmd Msg) -> Chat.ChatCmd -> Cmd Msg
+handleChatCmd wssend chatCmd =
+    case chatCmd of
+        Chat.DoNothing ->
+            Cmd.none
+        Chat.Send text ->
+            wssend <| API.ChatReq text
+        Chat.UpdateScroll ->
+            Ports.bottomScrollChat ()
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
@@ -287,21 +315,12 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                     ErrorState { message=message, retry=retry, title=title }
             in
                 ( { pintclone | state = newErrorState }, report message )
-
-        handleChatCmd chatCmd =
-            case chatCmd of
-                Chat.DoNothing ->
-                    Cmd.none
-                Chat.Send text ->
-                    pintclone.wssend <| API.ChatReq text
-                Chat.UpdateScroll ->
-                    Ports.bottomScrollChat ()
     in
         case ( msg, pintclone.state ) of
             ( ChatMsg msg_, _ ) ->
                 let ( newChat, chatMsg ) = Chat.update msg_ pintclone.chat
                 in  ( { pintclone | chat = newChat }
-                    , handleChatCmd chatMsg
+                    , handleChatCmd pintclone.wssend chatMsg
                     )
 
             ( Info msg_, _ ) ->
@@ -394,7 +413,7 @@ subs { wslisten, state } =
                             ListenError <| API.DecodeError "Recieved a canvas message"
 
                 Ok (API.ChatMsg msg) ->
-                    ChatMsg (Chat.receive msg)
+                    ChatMsg <| Chat.receive <| API.EventMessage msg
 
         cListen canvas =
             listen <| Maybe.map ((<<) CanvasMsg) <| Canvas.subsAdaptor canvas

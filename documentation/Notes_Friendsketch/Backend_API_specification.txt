@@ -97,13 +97,21 @@ Send to server an error report, to log. Note that the log string must not be lar
 ===== Pintclone =====
 
 ==== Types ====
-note: list of things between () is represented as a list of fixed size in json
+notes:
+* list of things between () is represented as a list of fixed size in json
+* **regarding game event sync:** The history is sent in order of the most recent to the oldest in ''sync'' messages.
 '''
 Point ~= (X, Y) where X = Y = [-2^31; 2^31[ : Int
 Score = Int
 Color ~= #[0-9a-f]{6}
 Size = Float
 ChatContent = String
+
+GameEvent
+	= { left: Name }
+	| { joined: Name }
+	| { message: ChatMsg }
+
 
 RoundSummary
 	= { artist: Score}
@@ -141,7 +149,7 @@ CanvasMsg
 InfoMsg
 	= { joined: Name }
 	| { left: Name }
-	| { sync: GameState }
+	| { sync: (GameState, [ GameEvent ]) }
 	| { mastery: () }
 
 InfoRequest
