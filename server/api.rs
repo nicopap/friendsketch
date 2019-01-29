@@ -4,17 +4,19 @@ mod autode;
 
 use percent_encoding::percent_decode;
 use quick_error::quick_error;
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     fmt,
-    str::{FromStr, Utf8Error},
+    str::{from_utf8_unchecked, FromStr, Utf8Error},
 };
 
 quick_error! {
     #[derive(Debug)]
     pub enum NameError {
         InvalidName {}
-        TooLong {}
+        TooLong {
+            display("names should be smaller than 30 bytes")
+        }
         InvalidFormat(err: Utf8Error) {
             from()
         }
@@ -24,9 +26,8 @@ quick_error! {
 quick_error! {
     #[derive(Debug)]
     pub enum ChatMsgError {
-        TooLong {}
-        InvalidFormat(err: Utf8Error) {
-            from()
+        TooLong {
+            display("Chat messages should be smaller than 300 bytes")
         }
     }
 }
@@ -41,26 +42,30 @@ quick_error! {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ChatContent(String);
-
-impl fmt::Display for ChatContent {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl FromStr for ChatContent {
-    type Err = ChatMsgError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.len() < 300 {
-            Ok(ChatContent(String::from(s)))
+#[derive(Debug, Clone)]
+pub struct ChatContent(Vec<u8>);
+impl<'de> Deserialize<'de> for ChatContent {
+    fn deserialize<D>(deserialize: D) -> Result<ChatContent, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let d: Vec<u8> = serde_bytes::deserialize(deserialize)?;
+        if d.len() < 300 {
+            Ok(ChatContent(d))
         } else {
-            Err(ChatMsgError::TooLong)
+            Err(de::Error::custom(ChatMsgError::TooLong))
         }
     }
 }
-impl_deserialize_with_from_str!(ChatContent);
+impl Serialize for ChatContent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let unchecked_str = unsafe { from_utf8_unchecked(&self.0) };
+        serializer.serialize_str(unchecked_str)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Hash)]
 pub struct Name(String);

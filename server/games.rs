@@ -6,7 +6,8 @@ use futures::{stream, sync::mpsc, Future, Sink, Stream};
 use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
 use quick_error::quick_error;
-use serde_json::{de::from_slice, ser::to_string};
+use serde::de::Error;
+use serde_json::{de::from_str, ser::to_string};
 use slotmap::{new_key_type, SlotMap};
 use std::{sync, time::Duration};
 use tokio_timer::sleep;
@@ -351,7 +352,9 @@ where
         );
         self.connections.insert(id, Connection(buffer_sink));
         let client_stream = socket_stream.map(move |msg| {
-            from_slice(msg.as_bytes())
+            msg.to_str()
+                .map_err(|()| Error::custom("invalid string"))
+                .and_then(from_str)
                 .map(|v| ManagerRequest::Msg(id, v))
                 .unwrap_or_else(|err| {
                     error!("message validation: {}/ `{:?}`", err, msg.to_str());
