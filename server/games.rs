@@ -330,6 +330,15 @@ impl GameRoom {
     }
 }
 
+macro_rules! send {
+    ($connection:expr, $message:expr) => {
+        let msg = Message::text($message.as_str());
+        $connection.start_send(msg).unwrap_or_else(|e| {
+            panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+        });
+    };
+}
+
 impl<G> ConnectionManager<G>
 where
     G: Game<Id>,
@@ -387,11 +396,7 @@ where
                 let message: String = to_string(&message).unwrap();
                 for id in ids.iter() {
                     let mut connection = &self.connections[id].0;
-                    let msg = Message::text(message.as_str());
-                    debug!("sending {:?} to {:?}", msg, id);
-                    connection.start_send(msg).unwrap_or_else(|e| {
-                        panic!("send fail '{:?}' at game.rs:{}", e, line!())
-                    });
+                    send!(connection, message);
                 }
                 for id in ids.iter() {
                     debug!("polling {:?}", id);
@@ -401,7 +406,37 @@ where
                     });
                 }
             }
+            TellResponse::ToAllBut(id, to_all, to_other) => {
+                self.broadcast_to_all_but(id, &to_all, &to_other)
+            }
             TellResponse::ToNone => {}
+        }
+    }
+
+    fn broadcast_to_all_but(
+        &mut self,
+        except: Id,
+        message: &api::GameMsg,
+        other: &Option<api::GameMsg>,
+    ) {
+        let message = to_string(message).unwrap();
+        debug!("sending {} to all but one", message);
+        for (id, connection) in self.connections.iter_mut() {
+            if *id == except {
+                if let Some(other) = other {
+                    let message = to_string(other).unwrap();
+                    debug!("sending {} to special snowflake", message);
+                    send!(connection.0, message);
+                }
+            } else {
+                send!(connection.0, message);
+            }
+        }
+        debug!("polling all");
+        for connection in self.connections.values_mut() {
+            connection.0.poll_complete().unwrap_or_else(|e| {
+                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
+            });
         }
     }
 
@@ -409,10 +444,7 @@ where
         let message = to_string(message).unwrap();
         debug!("sending {} to all", message);
         for connection in self.connections.values_mut() {
-            let msg = Message::text(message.as_str());
-            connection.0.start_send(msg).unwrap_or_else(|e| {
-                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-            });
+            send!(connection.0, message);
         }
         debug!("polling all");
         for connection in self.connections.values_mut() {

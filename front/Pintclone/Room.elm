@@ -5,6 +5,7 @@ module Pintclone.Room
         , joins
         , leaves
         , becomeMaster
+        , setArtist
         , isMaster
         , view
         , Room
@@ -21,7 +22,7 @@ artist in the game part of the game.
 
 import Html as H exposing (Html, div, text, ul, li, label)
 import Html.Attributes exposing (id, class, align, classList)
-import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList, (:::))
+import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList, (:::), sortWith)
 import List exposing (map, sortBy)
 import API
 
@@ -108,10 +109,6 @@ newRound me opponentsList_ artist =
 
 
 {-| Remove a name from the opponents list, operation on the state.
-
-TODO: think what happens when the artist leaves.
-TODO: signal an issue if we try to `popState Alone` (so we can `Sync`)
-
 -}
 popState : API.Name -> State -> State
 popState leaving state =
@@ -211,6 +208,36 @@ starting the game).
 becomeMaster : Room -> Room
 becomeMaster room =
     { room | state = masterState room.state }
+
+
+setArtist : API.Name -> Room -> Room
+setArtist newArtist { me, state } =
+    let
+        updateState others =
+            if newArtist == me then
+                { me = me, state = ArtistWith others }
+            else
+                let
+                    artistFirst first second =
+                        if first == newArtist then
+                            LT
+                        else if second == newArtist then
+                            GT
+                        else
+                            EQ
+
+                    newState =
+                        PlayingWith <| sortWith artistFirst others
+                in
+                    { me = me, state = newState }
+    in
+        case state of
+            PlayingWith others -> updateState others
+            NormalWith others  -> updateState others
+            ArtistWith others  -> updateState others
+            MasterOf others    -> updateState others
+            anyelse -> { me = me, state = anyelse }
+
 
 
 {-| Whether the player is master of the room or not.

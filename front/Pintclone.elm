@@ -12,6 +12,7 @@ import Html as H exposing (Html, programWithFlags, div, p, b, h1, h3, text, pre)
 import Html.Attributes as HA exposing (id, class, href)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
+import Pintclone.Guess as Guess exposing (Guess)
 import Canvas exposing (Canvas)
 import Chat exposing (Chat)
 import Process
@@ -20,6 +21,12 @@ import Time exposing (second)
 import Ports
 import API exposing (GameReq(InfoReq, CanvasReq), GameMsg)
 
+
+type alias RoundState_T =
+    { room : Room
+    , canvas : Canvas
+    , guess : Guess
+    }
 
 type alias LobbyState_T =
     { room : Room
@@ -36,7 +43,7 @@ type RetryStatus
 type GameLobby
     = Uninit
     | LobbyState LobbyState_T
-    | RoundState { room : Room, canvas : Canvas }
+    | RoundState RoundState_T
     | FinalState { room : Room, scores : List ( API.Name, Int ) }
     | ErrorState { title : String, message : String, retry : RetryStatus }
 
@@ -67,6 +74,7 @@ type LobbyMsg
 
 type Msg
     = Info API.InfoMsg
+    | Classic API.ClassicMsg
     | ChatMsg Chat.Msg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
@@ -86,7 +94,7 @@ main =
     programWithFlags
         { init = new << sanitizeFlags
         , update = update
-        , view = view
+        , view = div [] << view
         , subscriptions = subs
         }
 
@@ -163,8 +171,8 @@ newLobby { players, master } ({ roomid, username } as pintclone) =
 
 {-| Start a new round of Pintclone.
 -}
-newRound : API.Drawing -> API.RoundState -> Pintclone -> Pintclone
-newRound drawing { playerScores, artist } ({ username } as pintclone) =
+joinRound : API.Drawing -> API.RoundState -> Pintclone -> Pintclone
+joinRound drawing { playerScores, artist, timeout } ({ username } as pintclone) =
     let
         scores =
             List.map Tuple.first playerScores
@@ -172,6 +180,7 @@ newRound drawing { playerScores, artist } ({ username } as pintclone) =
         newInnerState room canvasState =
             { room = Room.newRound username scores room
             , canvas = Canvas.new drawing canvasState
+            , guess = Guess.new Nothing timeout
             }
 
         newGameState =
@@ -269,7 +278,7 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
                             ( newScores scores syncPintclone, Cmd.none )
 
                         API.Round drawing round ->
-                            ( newRound drawing round syncPintclone, Cmd.none )
+                            ( joinRound  drawing round syncPintclone, Cmd.none )
 
                         API.Lobby lobby ->
                             newLobby lobby syncPintclone
@@ -284,6 +293,52 @@ handleChatCmd wssend chatCmd =
             wssend <| API.ChatReq text
         Chat.UpdateScroll ->
             Ports.bottomScrollChat ()
+
+
+newRound : API.RoundStart_ -> API.Name -> Room -> Canvas -> RoundState_T
+newRound { timeout, artist, word } username room canvas  =
+    { guess = Guess.new (Just word) timeout
+    , room = Room.setArtist artist room
+    , canvas = if artist == username then
+        Canvas.new [] Canvas.Artist
+      else
+        Canvas.new [] Canvas.Spectator
+    }
+
+
+updateClassic : API.Name -> API.ClassicMsg -> Chat -> RoundState_T -> (Chat, RoundState_T)
+updateClassic username msg chat { guess, room, canvas } =
+    let
+        (newGuess, newRoom, newCanvas) =
+            case msg of
+                API.ClaGuessed name ->
+                    (guess, room, canvas)
+                API.ClaCorrect completeWord ->
+                    ( Guess.update (Guess.RevealAll completeWord) guess
+                    , room, canvas
+                    )
+                API.ClaTimeout timeout ->
+                    ( Guess.update (Guess.SetTimeout timeout) guess
+                    , room, canvas
+                    )
+                API.RoundOver word _ ->
+                    ( Guess.update (Guess.RevealAll word) guess
+                    , room, canvas
+                    )
+                API.RoundStart { timeout, artist, word } ->
+                    ( Guess.new (Just word) timeout
+                    , Room.setArtist artist room
+                    , if artist == username then
+                        Canvas.new [] Canvas.Artist
+                      else
+                        Canvas.new [] Canvas.Spectator
+                    )
+                API.ClaReveal index char ->
+                    ( Guess.update (Guess.RevealLetter index char) guess
+                    , room, canvas
+                    )
+    in
+        (chat, { canvas = newCanvas, guess = newGuess, room = newRoom })
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
@@ -325,6 +380,22 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
 
             ( Info msg_, _ ) ->
                 updateInfo msg_ pintclone
+
+            ( Classic (API.RoundStart msg_), LobbyState { canvas, room } ) ->
+                newRound msg_ username room canvas
+                    |> (\newState ->
+                        ( { pintclone | state = RoundState newState }
+                        , Cmd.none
+                        )
+                    )
+
+            ( Classic msg_, RoundState state ) ->
+                updateClassic username msg_ pintclone.chat state
+                    |> (\(chat, room) ->
+                        ( { pintclone | state = RoundState room, chat = chat }
+                        , Cmd.none
+                        )
+                    )
 
             ( CanvasMsg msg_, state ) ->
                 updateCanvas msg_ state
@@ -404,6 +475,9 @@ subs { wslisten, state } =
                 Ok (API.InfoMsg msg) ->
                     Info msg
 
+                Ok (API.ClassicMsg msg) ->
+                    Classic msg
+
                 Ok (API.CanvasMsg msg) ->
                     case redirectCanvas of
                         Just redirect ->
@@ -468,34 +542,39 @@ masterDialog hideId roomid =
             ]
 
 
-view : Pintclone -> Html Msg
+view : Pintclone -> List (Html Msg)
 view pintclone =
     let
-        gameView room canvas =
+        gameView topBar room canvas =
             div [ id "masterlayout" ]
                 [ Room.view room
-                , H.map CanvasMsg <| Canvas.view canvas
+                , div []
+                    [ topBar
+                    , H.map CanvasMsg <| Canvas.view canvas
+                    ]
                 , H.map ChatMsg <| Chat.view pintclone.chat
                 ]
     in
         case pintclone.state of
             Uninit ->
-                div [] [ h1 [] [ text "Opening game" ] ]
+                [ h1 [] [ text "Opening game" ] ]
 
             LobbyState { room, canvas, hideId } ->
-                div []
-                    [ gameView room canvas
-                    , if Room.isMaster room then
-                        masterDialog hideId pintclone.roomid
-                      else
-                        p [] []
-                    ]
+                let
+                    topBar =
+                        if Room.isMaster room then
+                            masterDialog hideId pintclone.roomid
+                          else
+                            p [id "topBar"]
+                                [ text "The game leader is waiting to start the game" ]
+                in
+                    [ gameView topBar room canvas ]
 
-            RoundState { room, canvas } ->
-                gameView room canvas
+            RoundState { guess, room, canvas } ->
+                [ gameView (Guess.view guess) room canvas ]
 
             FinalState { room, scores } ->
-                div [] [ h1 [] [ text "NOT IMPLEMENTED YET" ] ]
+                [ h1 [] [ text "NOT IMPLEMENTED YET" ] ]
 
             ErrorState { title, message, retry } ->
                 let
@@ -522,13 +601,12 @@ view pintclone =
                         ++ " been sent to the developers. We will take care"
                         ++ " that you won't experience this in the future."
                 in
-                    div []
-                        [ h1 [] [ text title ]
-                        , p [] [ text firstParagraph ]
-                        , H.a
-                            [ href "/friendk/lobby/index.html"]
-                            [ H.button [] [ text "Join a different game" ] ]
-                        , p [] [ text secondParagraph ]
-                        , p [] [ text thirdParagraph ]
-                        , pre [] [ text message ]
-                        ]
+                    [ h1 [] [ text title ]
+                    , p [] [ text firstParagraph ]
+                    , H.a
+                        [ href "/friendk/lobby/index.html"]
+                        [ H.button [] [ text "Join a different game" ] ]
+                    , p [] [ text secondParagraph ]
+                    , p [] [ text thirdParagraph ]
+                    , pre [] [ text message ]
+                    ]

@@ -11,6 +11,7 @@ Created Tuesday 26 September 2017
 	* When input is submitted, put it into message list as a "ghost"
 	* When server sends back own message, remove "ghost" message
 * Feedback on wrong message, server messages
+* Implement chat messages for ''ClassicMsg'' messages
 
 ===== Game abort screen =====
 
@@ -20,6 +21,19 @@ Created Tuesday 26 September 2017
 ===== Game =====
 
 * block drawing control for ''Spectator''
+* Think about how to introduce ''-'' and spaces in guess word
+* Implement "between round state" before ''start'' and after ''over'' 
+* Add score changes to ''Room'' and all the ravioli
+* Think of what to do when artist leaves
+* Tick down the clock on frontend
+* Do not relay messages from artist containing word to guess
+
+===== Design Issue =====
+
+How to handle periodic updates sent by server?
+* Send "end round" messages
+* Send "Reveal" messages
+* Wait before resending "StartRound" message
 
 ===== Game Event Log =====
 

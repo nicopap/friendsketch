@@ -44,6 +44,11 @@ quick_error! {
 
 #[derive(Debug, Clone)]
 pub struct ChatContent(Vec<u8>);
+impl ChatContent {
+    pub fn as_bytes(&self) -> &[u8] {
+        return &self.0;
+    }
+}
 impl<'de> Deserialize<'de> for ChatContent {
     fn deserialize<D>(deserialize: D) -> Result<ChatContent, D::Error>
     where
@@ -143,6 +148,7 @@ pub enum RoundSummary {
 pub struct RoundState {
     pub players: Vec<(Name, Vec<RoundSummary>)>,
     pub artist:  Name,
+    pub timeout: u16,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -219,4 +225,30 @@ pub enum GameMsg {
     Canvas(CanvasMsg),
     Info(InfoMsg),
     Chat(ChatMsg),
+    Classic(ClassicMsg),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum Guess {
+    Artist(String),
+    Guess(usize),
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct RoundStart {
+    pub timeout: u16,
+    pub artist:  Name,
+    pub word:    Guess,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum ClassicMsg {
+    Guessed(Name),
+    Correct(String),
+    TimeoutSync(u16),
+    Over(String, Vec<(Name, RoundSummary)>),
+    Start(RoundStart),
+    Reveal(usize, char),
 }

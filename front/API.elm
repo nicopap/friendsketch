@@ -30,6 +30,9 @@ module API
         , ChatContent
         , validChatContent
         , showChatContent
+        , Guess(..)
+        , ClassicMsg(..)
+        , RoundStart_
         )
 
 {-| Exposes the necessary functions and types to access the backend API.
@@ -351,6 +354,7 @@ decoderLobbyState =
 type alias RoundState =
     { playerScores : List (Name, List RoundSummary)
     , artist : Name
+    , timeout : Int
     }
 
 
@@ -359,6 +363,7 @@ decoderRoundState =
     RoundState
         <*| "players" :* decoderScore
         |*| "artist" :* decoderName
+        |*| "timeout" :* Dec.int
 
 
 
@@ -511,6 +516,7 @@ type GameMsg
     = CanvasMsg CanvasMsg
     | InfoMsg InfoMsg
     | ChatMsg ChatMsg_
+    | ClassicMsg ClassicMsg
 
 
 type alias ChatMsg_ =
@@ -537,6 +543,7 @@ decoderGameMsg =
             , "chat" := intoChatMsg
                 <*| "content" :* Dec.map ChatContent_ Dec.string
                 |*| "author" :* Dec.map Name_ Dec.string
+            , "classic" := ClassicMsg <*| decoderClassicMsg
             ]
 
 encoderGameReq : GameReq -> Value
@@ -550,3 +557,65 @@ encoderGameReq req =
 
         ChatReq (ChatContent_ req_) ->
             Enc.object [ ("chat", Enc.string req_)]
+
+
+
+---   ClassicMsg / Guess   ---
+
+
+
+type ClassicMsg
+    = ClaGuessed Name
+    | ClaCorrect String
+    | ClaTimeout Int
+    | RoundOver String (List (Name, RoundSummary))
+    | RoundStart RoundStart_
+    | ClaReveal Int Char
+
+type Guess
+    = ForArtist String
+    | GuessOfLength Int
+
+type alias RoundStart_ =
+    { timeout : Int
+    , artist : Name
+    , word : Guess
+    }
+
+decoderRoundStart : Decoder RoundStart_
+decoderRoundStart =
+    RoundStart_
+        <*| "timeout" :* Dec.int
+        |*| "artist" :* decoderName
+        |*| "word" :* decoderGuess
+
+decoderGuess : Decoder Guess
+decoderGuess =
+    oneOf
+        [ "artist" := ForArtist <*| Dec.string
+        , "guess" := GuessOfLength <*| Dec.int
+        ]
+
+decoderClassicMsg : Decoder ClassicMsg
+decoderClassicMsg =
+    let
+        decoderRoundOver =
+            Dec.map2 (,) (0 :^ decoderName) (1 :^ decoderRoundSummary)
+
+        decoderChar string =
+            case String.toList string of
+                char::[] -> Dec.succeed char
+                _ -> Dec.fail "Character is not a character"
+    in
+        oneOf
+            [ "guessed" := ClaGuessed <*| decoderName
+            , "correct" := ClaCorrect <*| Dec.string
+            , "timeoutsync" := ClaTimeout <*| Dec.int
+            , "over" := RoundOver
+                <*| 0 :^ Dec.string
+                |*| 1 :^ Dec.list decoderRoundOver
+            , "start" := RoundStart <*| decoderRoundStart
+            , "reveal" := ClaReveal
+                <*| 0 :^ Dec.int
+                |*| 1 :^ (Dec.andThen decoderChar Dec.string)
+            ]

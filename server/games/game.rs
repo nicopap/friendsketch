@@ -21,6 +21,8 @@ pub enum JoinResponse<Id> {
 pub enum TellResponse<Id, Msg> {
     ToAll(Msg),
     ToList(Vec<Id>, Msg),
+    /// Send `Msg` to all but `Id`. send `Option<Msg>` to `Id` if `Some`
+    ToAllBut(Id, Msg, Option<Msg>),
     ToNone,
 }
 

@@ -111,6 +111,7 @@ GameEvent
 	= { left: Name }
 	| { joined: Name }
 	| { message: ChatMsg }
+	-- TODO: add "Guessed" "NewRound" etc
 
 
 RoundSummary
@@ -128,6 +129,7 @@ LobbyState =
 RoundState =
 	{ players: [ (Name, [RoundSummary]) ]
 	, artist: Name
+	, timeout: Int
 	}
 
 ScoresState =
@@ -142,7 +144,7 @@ GameState
 	| { lobby: LobbyState }
 
 CanvasMsg
-	= { start: [ Point, Color, Size ] }
+	= { start: ( Point, Color, Size ) }
 	| { end: () }
 	| { continue: Point }
 
@@ -170,6 +172,25 @@ GameMsg
 	= { canvas: CanvasMsg }
 	| { chat: ChatMsg }
 	| { info: InfoMsg }
+	| { classic: ClassicMsg }
+
+WordGuess
+	= { artist: String }
+	| { guess: Int }
+
+RoundStart =
+	{ timeout: Int
+	, artist: Name
+	, word: WordGuess
+	}
+
+ClassicMsg
+	= { guessed: Name }
+	| { correct: String }
+	| { timeoutsync: Int }
+	| { over: (String, [ (Name, RoundSummary) ]) }
+	| { start: RoundStart }
+	| { reveal: (Int, Char) }
 '''
 
 
