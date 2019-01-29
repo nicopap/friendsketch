@@ -17,6 +17,9 @@ Created Tuesday 26 September 2017
 * When 1 player remaining, what to do?
 	* Tell them they can either wait for more players or quit, show them the room id
 
+===== Game =====
+
+* block drawing control for ''Spectator''
 
 ===== Game Event Log =====
 

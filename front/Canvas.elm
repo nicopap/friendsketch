@@ -215,8 +215,7 @@ view ({ toolbox, state, strokes, pen } as canvas) =
     in
         div [ id "artcontainer", class (stateClass ++ " top-layout") ]
             [ Html.map ArtistMsg <| canvasView canvas
-            , Html.map adaptToolbox <|
-                Toolbox.view ChangeColor ChangePenSize toolbox
+            , Html.map adaptToolbox <| Toolbox.view ChangePenSize toolbox
             ]
 
 

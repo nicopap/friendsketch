@@ -17,7 +17,6 @@ body { font-family: sans-serif }
 
 
 #userlist {
-	margin: 0;
 	list-style-type: none;
 	padding: 0;
 	width: 150px;
@@ -36,10 +35,14 @@ body { font-family: sans-serif }
 /* ** Canvas ** */
 
 
-.colorbox:hover { transform: scale(1.5) }
-.colorbox:focus {
-	box-shadow: 0 0 5px 5px white;
+.colorbox:hover { transform: scale(1.3) }
+.colorbox.selected {
+	box-shadow: 0 0 5px 5px #f9f1a5;
+	transform: scale(1.3);
 	z-index:3;
+}
+.colorbox::selection {
+	border-style:solid;
 }
 .colorbox {
 	width: 30px;
@@ -58,8 +61,13 @@ body { font-family: sans-serif }
 	width: 82%;
 }
 
-input[type=color] {	padding: 0;}
+
+input[type=color] {
+	-webkit-appearance: none; 
+	padding: 0;
+}
 input[type=range] {
+	-webkit-appearance: none;
 	background: white;
 	border-radius: 15px;
 	height:30px;
@@ -67,6 +75,27 @@ input[type=range] {
 	border: 2px solid #ededf0;
 	box-shadow: 0 0 1px 1px #cdcdcd;
 }
+input[type=range]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	cursor: crosshair;
+	height:20px;
+	width:20px;
+	border-radius: 20px;
+	background:#f0f0f0;
+	border: 1px solid #999;
+	position: relative;
+	top: -8px;
+}
+input[type=range]::-moz-range-thumb {
+	cursor: crosshair;
+	height:20px;
+	width:20px;
+	border-radius: 20px;
+	background:#f0f0f0;
+	border: 1px solid #999;
+}
+input[type=range]::-moz-range-track { height:3px;	background: #999 }
+input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	background: #999 }
 
 #toolbox {
 	width: 590px;
@@ -145,6 +174,9 @@ input[type=range] {
 	width: 250px;
 }
 
+.join.message {	background:#cce9b6 }
+.leave.message { background: #f9f1a5 }
+.ghost.message { }
 
 /* *** Room dialog *** */
 

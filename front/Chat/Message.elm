@@ -31,7 +31,7 @@ view : Message -> Html msg
 view message =
     case message of
         Message_ { author, content } ->
-            div [ class "text message" ] [ text <| author ++ " : " ++ content ]
+            div [ class "text message" ] [ text <| author ++ ": " ++ content ]
 
         Left name ->
             div [ class "leave message" ] [ text <| name ++ " left" ]
