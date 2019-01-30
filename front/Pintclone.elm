@@ -217,7 +217,19 @@ roomMod : i -> GameLobby -> (i -> Room -> Room) -> Cmd m -> ( GameLobby, Cmd m )
 roomMod name state change ifUninit =
     let
         mod f state_ room =
-            ( f { state_ | room = change name room }, Cmd.none )
+            let newRoom =
+                    change name room
+                newState =
+                    if Room.isMaster newRoom then
+                        LobbyState
+                            { room = newRoom
+                            , canvas = Canvas.new [] Canvas.Pregame
+                            , hideId = False
+                            }
+                    else
+                        f { state_ | room = newRoom }
+            in
+                ( newState , Cmd.none )
     in
         case state of
             Uninit ->
@@ -512,8 +524,8 @@ subs { wslisten, state } =
         wslisten <| Just toSend
 
 
-masterDialog : Bool -> API.RoomID -> Html Msg
-masterDialog hideId roomid =
+masterDialog : Bool -> Bool -> API.RoomID -> Html Msg
+masterDialog isAlone hideId roomid =
     let
         roomdisplayAttributes =
             [ HA.type_ "text"
@@ -522,6 +534,11 @@ masterDialog hideId roomid =
             , HA.attribute "data-autoselect" ""
             , HA.readonly True
             ]
+        startButton =
+            if isAlone then
+                H.button [ HA.disabled True ]
+            else
+                H.button [ HE.onClick <| LobbyMsg StartGame ]
     in
         div [ id "roomiddialog" ]
             [ div []
@@ -534,11 +551,7 @@ masterDialog hideId roomid =
                     ]
                     []
                 ]
-            , div []
-                [ H.button
-                    [ HE.onClick <| LobbyMsg StartGame ]
-                    [ text "Start the game!" ]
-                ]
+            , div [] [ startButton [ text "Start the game!" ] ]
             ]
 
 
@@ -563,7 +576,9 @@ view pintclone =
                 let
                     topBar =
                         if Room.isMaster room then
-                            masterDialog hideId pintclone.roomid
+                            masterDialog (Room.alone room)
+                                hideId
+                                pintclone.roomid
                           else
                             p [id "top-bar"]
                                 [ text "The game leader is waiting to start the game" ]

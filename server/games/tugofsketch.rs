@@ -135,7 +135,11 @@ impl game::Game<Id> for Game {
     }
 
     fn leaves(&mut self, player: Id) -> LeaveResponse<Id, api::GameMsg, ()> {
-        use self::api::{GameMsg::Info, InfoMsg::Mastery};
+        use self::api::{
+            ClassicMsg::Over,
+            GameMsg::{Classic, Info},
+            InfoMsg::Mastery,
+        };
         match self.players.remove(player) {
             Some(Player { name }) => {
                 self.game_log.push_front(GameEvent::Left(name.clone()));
@@ -153,14 +157,14 @@ impl game::Game<Id> for Game {
                             ..
                         } if *artist == player => {
                             *artist = id;
-                            let msg = api::GameMsg::Classic(ClassicMsg::Over(
-                                word.to_string(),
-                                vec![],
-                            ));
+                            let msg = Classic(Over(word.to_string(), vec![]));
                             broadcast!(to_all, msg)
                         }
                         _ => broadcast!(nothing),
                     };
+                    if self.players.len() == 1 {
+                        self.state = Game_::Lobby { room_leader: id };
+                    }
                     LeaveResponse::Successfully(name, response)
                 } else {
                     LeaveResponse::Empty(name)
@@ -247,36 +251,34 @@ impl game::Game<Id> for Game {
                     None
                 }
             }
-            GameReq::Chat(content) => if let Game_::Playing {
-                ref artist,
-                ref word,
-                ..
-            } = self.state
-            {
-                if player != *artist && word.as_bytes() == content.as_bytes() {
-                    use api::{
-                        ClassicMsg::{Correct, Guessed},
-                        GameMsg::Classic,
-                    };
-                    let guesser = self.players[player].name.clone();
-                    let msg = Classic(Guessed(guesser));
-                    let correct = Some(Classic(Correct(word.to_string())));
-                    Some(Some(broadcast!(to_all_but, player, msg, correct)))
+            GameReq::Chat(content) => {
+                if let Game_::Playing { artist, word, .. } = self.state {
+                    if player != artist && word.as_bytes() == content.as_bytes()
+                    {
+                        use api::{
+                            ClassicMsg::{Correct, Guessed},
+                            GameMsg::Classic,
+                        };
+                        let guesser = self.players[player].name.clone();
+                        let msg = Classic(Guessed(guesser));
+                        let correct = Some(Classic(Correct(word.to_string())));
+                        Some(Some(broadcast!(to_all_but, player, msg, correct)))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            } else {
-                None
+                .unwrap_or_else(|| {
+                    let final_msg = ChatMsg {
+                        content,
+                        author: self.players[player].name.clone(),
+                    };
+                    let log_item = GameEvent::Message(final_msg.clone());
+                    self.game_log.push_front(log_item);
+                    Some(broadcast!(to_all, GameMsg::Chat(final_msg)))
+                })
             }
-            .unwrap_or_else(|| {
-                let final_msg = ChatMsg {
-                    content,
-                    author: self.players[player].name.clone(),
-                };
-                let log_item = GameEvent::Message(final_msg.clone());
-                self.game_log.push_front(log_item);
-                Some(broadcast!(to_all, GameMsg::Chat(final_msg)))
-            }),
         }
         .unwrap_or_else(|| broadcast!(to_unique, player, self.into_sync_msg())))
     }

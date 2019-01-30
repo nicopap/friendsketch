@@ -8,6 +8,7 @@ module Pintclone.Room
         , setArtist
         , isMaster
         , view
+        , alone
         , Room
         , Artist(Me, Another)
         , MasterStatus(Master, Peasant)
@@ -195,7 +196,6 @@ masterState state =
 
 
 {-| The given room where an opponent left.
-TODO: think about what to do if the opponent doesn't exist.
 -}
 leaves : API.Name -> Room -> Room
 leaves leaving room =
@@ -254,6 +254,14 @@ isMaster { state } =
         _ ->
             False
 
+
+{-| Whether the room contains only the current player
+-}
+alone : Room -> Bool
+alone room =
+    case room.state of
+        Alone -> True
+        _ -> False
 
 {-| The given room where someone new joined.
 -}
