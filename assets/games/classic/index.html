@@ -15,7 +15,7 @@
 			roomid: sessionStorage.getItem("roomid"),
 			retries: sessionStorage.getItem("retries") - 0,
 		});
-		app.ports.copyCatch.subscribe(copyCatch);
+		app.ports.selectRoomid.subscribe(selectRoomid);
 		app.ports.stashAndOpen.subscribe(stashAndOpen);
 		app.ports.bottomScrollChat.subscribe(bottomScrollChat);
 	</script>

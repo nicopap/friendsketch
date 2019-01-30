@@ -20,14 +20,12 @@ function openLink(link) {
     window.open(link, '_self', false);
 }
 
-function copyCatch(args) {
-    var elemId = args[0];
-    var content = args[1];
+function selectRoomid() {
     setTimeout(function() {
-        var elem = document.getElementById(elemId);
-        elem.addEventListener("copy" , function(event) {
-            event.clipboardData.setData("text/plain", content);
-            event.preventDefault();
-        });
+        function selectText(e) {
+            this.focus();
+            this.select();
+        };
+        document.getElementById("hidden-roomid").onclick = selectText;
     }, 100);
 }

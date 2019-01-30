@@ -8,7 +8,7 @@ accordingly.
 import Tuple exposing (mapSecond, mapFirst)
 import Maybe
 import Debug
-import Html as H exposing (Html, programWithFlags, div, p, b, h1, h3, text, pre)
+import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
 import Html.Attributes as HA exposing (id, class, href)
 import Html.Events as HE
 import Pintclone.Room as Room exposing (Room)
@@ -83,15 +83,10 @@ type Msg
     | Reopen
 
 
-copyCatch : API.RoomID -> Cmd msg
-copyCatch roomid =
-    Ports.copyCatch ( "roomiddisplay", API.showRoomID roomid )
-
-
 
 main : Program Flags Pintclone Msg
 main =
-    programWithFlags
+    H.programWithFlags
         { init = new << sanitizeFlags
         , update = update
         , view = div [] << view
@@ -150,14 +145,14 @@ newScores _ pintclone =
 
 {-| Start at the Pregame mode.
 -}
-newLobby : API.LobbyState -> Pintclone -> ( Pintclone, Cmd msg )
+newLobby : API.LobbyState -> Pintclone -> Pintclone
 newLobby { players, master } ({ roomid, username } as pintclone) =
     let
-        (status, commands) =
+        status =
             if master == username then
-                (Room.Master, copyCatch roomid)
+                Room.Master
             else
-                (Room.Peasant, Cmd.none)
+                Room.Peasant
 
         newState =
             LobbyState
@@ -166,7 +161,7 @@ newLobby { players, master } ({ roomid, username } as pintclone) =
                 , hideId = True
                 }
     in
-        ( { pintclone | state = newState }, commands )
+        { pintclone | state = newState }
 
 
 {-| Start a new round of Pintclone.
@@ -280,8 +275,7 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
 
             API.Mastery ->
                 mutateRoom Nothing never (always Room.becomeMaster)
-                    |> mapSecond
-                        (\b -> Cmd.batch [ copyCatch pintclone.roomid, b ])
+                    |> mapSecond (\b -> Cmd.batch [ Ports.selectRoomid (), b ])
 
             API.Sync gamestate events ->
                 let syncPintclone = { pintclone | chat = Chat.new username events }
@@ -293,7 +287,9 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
                             ( joinRound  drawing round syncPintclone, Cmd.none )
 
                         API.Lobby lobby ->
-                            newLobby lobby syncPintclone
+                            ( newLobby lobby syncPintclone
+                            , Ports.selectRoomid ()
+                            )
 
 
 handleChatCmd : (GameReq -> Cmd Msg) -> Chat.ChatCmd -> Cmd Msg
@@ -527,10 +523,15 @@ masterDialog isAlone hideId roomid =
     let
         roomdisplayAttributes =
             [ HA.type_ "text"
-            , class (if hideId then "hidden-roomid" else "display-roomid")
+            , class "roomid"
+            , id (if hideId then "hidden-roomid" else "display-roomid")
             , HA.value <| API.showRoomID roomid
-            , HA.attribute "data-autoselect" ""
             , HA.readonly True
+            ]
+        checkboxAttrs =
+            [ HE.onClick <| LobbyMsg TogglePassView
+            , id "roomid-toggle"
+            , HA.type_ "checkbox"
             ]
         startButton =
             if isAlone then
@@ -540,16 +541,15 @@ masterDialog isAlone hideId roomid =
     in
         div [ id "roomiddialog" ]
             [ div []
-                [ H.h3 [] [text "Room name"]
-                , H.p [] [text "share this with people to let them join your game"]
-                , H.input roomdisplayAttributes []
-                , H.input
-                    [ HA.type_ "checkbox"
-                    , HE.onClick <| LobbyMsg TogglePassView
+                [ b [] [ text "Room name:" ]
+                , div [ id "roomid-border" ]
+                    [ input roomdisplayAttributes []
+                    , H.label [ id "roomid-toggle" ]
+                        [ input checkboxAttrs [], H.span [] [] ]
                     ]
-                    []
                 ]
-            , div [] [ startButton [ text "Start the game!" ] ]
+            , p [] [ text "share the room name with friends to let them join your game" ]
+            , startButton [ text "Start the game!" ]
             ]
 
 
