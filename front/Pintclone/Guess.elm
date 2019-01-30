@@ -87,7 +87,7 @@ view (Word { word, timeout }) =
                 Completed completed ->
                     toList completed
                         |> String.fromList
-                        |> (\word -> [ a [ class "complete" ] [ text word ] ])
+                        |> \word -> [ a [ class "complete" ] [ text word ] ]
 
                 ToGuess charArray ->
                     Array.map (toGuessLetter) charArray
@@ -96,7 +96,7 @@ view (Word { word, timeout }) =
                 Artist artist ->
                     toList artist
                         |> String.fromList
-                        |> (\word -> [ a [ class "complete" ] [ text word ] ])
+                        |> \word -> [ a [ class "complete" ] [ text word ] ]
 
                 Spectator ->
                     [ text "Specating, you'll start next round" ]

@@ -395,19 +395,17 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
 
             ( Classic (API.RoundStart msg_), LobbyState { canvas, room } ) ->
                 newRound msg_ username room canvas
-                    |> (\newState ->
+                    |> \newState ->
                         ( { pintclone | state = RoundState newState }
                         , Cmd.none
                         )
-                    )
 
             ( Classic msg_, RoundState state ) ->
                 updateClassic username msg_ pintclone.chat state
-                    |> (\(chat, room) ->
+                    |> \(chat, room) ->
                         ( { pintclone | state = RoundState room, chat = chat }
                         , Cmd.none
                         )
-                    )
 
             ( CanvasMsg msg_, state ) ->
                 updateCanvas msg_ state
