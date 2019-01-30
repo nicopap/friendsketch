@@ -21,6 +21,11 @@ body { font-family: sans-serif }
 	padding: 0;
 	width: 150px;
 	font-size: 14px;
+	margin: 0 10px auto 10px;
+	height: auto;
+}
+.userentry:last-child {
+	margin-bottom: 0;
 }
 .userentry {
 	padding: 4px 0;
