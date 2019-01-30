@@ -107,7 +107,7 @@ fn handle_join(
                 return Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", "text/json")
-                    .body("\"pintclone\"")
+                    .body("\"classic\"")
                     .map_err(|e| {
                         panic!("unreachable '{:?}' at main.rs:{}", e, line!())
                     });

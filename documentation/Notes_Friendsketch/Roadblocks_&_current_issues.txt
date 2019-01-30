@@ -25,6 +25,7 @@ Created Tuesday 26 September 2017
 * Think of what to do when artist leaves
 * Tick down the clock on frontend
 * Do not relay messages from artist containing word to guess
+* Think about what to do when reselecting a previously set custom color
 
 ===== Design Issue =====
 

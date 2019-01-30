@@ -17,7 +17,7 @@ Created Tuesday 12 September 2017
 -- GAMES --
 
 /games
-	/pintclone : The game in which you draw and other guesses
+	/classic : The game in which you draw and other guesses
 
 -- ROOMS --
 
@@ -40,7 +40,7 @@ any: (added to existing path to get relevent resource)
 Specifications of the types used in the API. When a value is specified to be of a certain type, the client must follow it or the request will be refused.
 
 === Game ===
-''Game = "pintclone"''
+''Game = "classic"''
 The string name of an avaliable game. Any other string will be refused.
 * Currently there is only one value possible for it.
 
@@ -63,9 +63,9 @@ A room id, let identify a unique party going on currently.
 ''GET /lobby/index.html''
 Html page. User interface to select whether to create or join a game.
 
-==== Pintclone ====
-''GET /games/pintclone/index.html ''
-Html page. User interface for the pintclone game
+==== Classic mode ====
+''GET /games/classic/index.html ''
+Html page. User interface for classic game mode
 
 ====== Resources ======
 

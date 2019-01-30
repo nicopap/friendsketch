@@ -197,7 +197,7 @@ showGame : Game -> String
 showGame game =
     case game of
         Pintclone ->
-            "pintclone"
+            "classic"
 
 
 exitToGame : Game -> RoomID -> Name -> Int -> Cmd msg

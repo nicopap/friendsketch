@@ -10,7 +10,7 @@ It is a collection of web-based games around drawing with multiple people over t
 
 Some sections relates to the design and the choices behind it, other to the experiences learn from making the application, what where the roadblocks and what is to plan
 
-[[+Pintclone game design]]
+[[+Classic mod game design]]
 
 [[+sketchfighters game design]]
 
