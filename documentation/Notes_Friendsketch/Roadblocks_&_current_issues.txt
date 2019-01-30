@@ -7,10 +7,8 @@ Created Tuesday 26 September 2017
 
 ===== Chat =====
 
-* Make sure that client's own messages are displayed in order:
-	* When input is submitted, put it into message list as a "ghost"
-	* When server sends back own message, remove "ghost" message
 * Feedback on wrong message, server messages
+* Remove ''Ghost'' for messages that are not sent back (like successful guesses)
 * Implement chat messages for ''ClassicMsg'' messages
 
 ===== Game abort screen =====

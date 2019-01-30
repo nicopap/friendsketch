@@ -137,7 +137,7 @@ new (roomid, username, openGameRetries) =
       , wssend = API.wsSend roomid username
       , syncRetries = 0
       , openGameRetries = openGameRetries
-      , chat = Chat.new []
+      , chat = Chat.new username []
       }
     , API.wsSend roomid username (InfoReq API.ReqSync)
     )
@@ -272,7 +272,7 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
                         (\b -> Cmd.batch [ copyCatch pintclone.roomid, b ])
 
             API.Sync gamestate events ->
-                let syncPintclone = { pintclone | chat = Chat.new events }
+                let syncPintclone = { pintclone | chat = Chat.new username events }
                 in  case gamestate of
                         API.Summary scores ->
                             ( newScores scores syncPintclone, Cmd.none )
