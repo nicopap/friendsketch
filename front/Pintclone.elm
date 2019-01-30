@@ -565,7 +565,7 @@ view pintclone =
                         if Room.isMaster room then
                             masterDialog hideId pintclone.roomid
                           else
-                            p [id "topBar"]
+                            p [id "top-bar"]
                                 [ text "The game leader is waiting to start the game" ]
                 in
                     [ gameView topBar room canvas ]

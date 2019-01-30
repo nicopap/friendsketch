@@ -20,7 +20,7 @@ Created Tuesday 26 September 2017
 
 ===== Game =====
 
-* block drawing control for ''Spectator''
+* disable drawing control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
 * Implement "between round state" before ''start'' and after ''over'' 
 * Add score changes to ''Room'' and all the ravioli

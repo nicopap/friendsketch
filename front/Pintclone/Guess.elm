@@ -77,7 +77,7 @@ view (Word { word, timeout }) =
                     a [ class "guess-letter" ] [ text (fromChar char) ]
 
                 Nothing ->
-                    a [ class "guess-hidden" ] [ text "" ]
+                    a [ class "guess-hidden" ] [ text "_" ]
 
         viewTimeout =
             a [ id "timer" ] [ text <| toString timeout ]
@@ -86,7 +86,8 @@ view (Word { word, timeout }) =
             case word of
                 Completed completed ->
                     toList completed
-                        |> List.map (toGuessLetter << Just)
+                        |> String.fromList
+                        |> (\word -> [ a [ class "complete" ] [ text word ] ])
 
                 ToGuess charArray ->
                     Array.map (toGuessLetter) charArray
@@ -94,7 +95,8 @@ view (Word { word, timeout }) =
 
                 Artist artist ->
                     toList artist
-                        |> List.map (toGuessLetter << Just)
+                        |> String.fromList
+                        |> (\word -> [ a [ class "complete" ] [ text word ] ])
 
                 Spectator ->
                     [ text "Specating, you'll start next round" ]
