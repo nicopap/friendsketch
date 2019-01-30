@@ -74,7 +74,7 @@ viewColorBox index (ColorBox box selected) =
                 , selectableClass selected "colorbox"
                 , onClick (Err <| ChooseColor index <| color)
                 ]
-                [ Html.text "" ]
+                []
 
         Modifiable (Just color) ->
             input
@@ -82,6 +82,7 @@ viewColorBox index (ColorBox box selected) =
                 , selectableClass selected "custom colorbox"
                 , withBackground color
                 , onInput (Err << SetColor index << Result.withDefault grey << hexToColor)
+                , onClick (Err <| SetColor index <| color)
                 ]
                 []
 

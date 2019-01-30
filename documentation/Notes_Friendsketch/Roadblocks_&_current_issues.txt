@@ -33,6 +33,24 @@ How to handle periodic updates sent by server?
 * A lot of string copies? What to do?
 	* Replace ''Name'' in game log by Id, avoids extra allocation, but still copies at ''sync'' .
 
+===== Custom color picker =====
+I can't seem to get it to work :/
+{{{code: lang="css" linenumbers="True"
+.empty.colorbox::before {
+	position: relative;
+	content: "+";
+	color: grey;
+	font-size: 30px;
+	font-weight: bold;
+	height: 30px;
+	top: -17px;
+	width:30px;
+	display: inline;
+	z-index: 4;
+	left: -8px;
+}
+}}}
+
 
 ===== API =====
 
