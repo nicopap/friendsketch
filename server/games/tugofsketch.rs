@@ -1,4 +1,4 @@
-use super::game::{self, JoinResponse, LeaveResponse, TellResponse};
+use super::game::{self, JoinResponse, LeaveResponse};
 use crate::api::{
     self, ChatMsg, ClassicMsg, GameEvent, GameState, Name, Stroke,
 };
@@ -36,21 +36,23 @@ struct Player {
     name: Name,
 }
 
+type Broadcast = game::Broadcast<Id, api::GameMsg>;
+
 macro_rules! broadcast {
     (to_all, $msg:expr) => {
-        TellResponse::ToAll($msg)
+        game::Broadcast::ToAll($msg)
     };
     (to, $players:expr, $msg:expr) => {
-        TellResponse::ToList($players.collect(), $msg)
+        game::Broadcast::ToList($players.collect(), $msg)
     };
     (to_all_but, $player:expr, $msg:expr, $optmsg:expr) => {
-        TellResponse::ToAllBut($player, $msg, $optmsg)
+        game::Broadcast::ToAllBut($player, $msg, $optmsg)
     };
     (to_unique, $player:expr, $msg:expr) => {
-        TellResponse::ToList(vec![$player], $msg)
+        game::Broadcast::ToList(vec![$player], $msg)
     };
     (nothing) => {
-        TellResponse::ToNone
+        game::Broadcast::ToNone
     };
 }
 
@@ -178,7 +180,7 @@ impl game::Game<Id> for Game {
         &mut self,
         player: Id,
         request: api::GameReq,
-    ) -> Result<TellResponse<Id, api::GameMsg>, ()> {
+    ) -> Result<Broadcast, ()> {
         use self::api::{GameMsg, GameReq, InfoRequest};
         Ok(match request {
             GameReq::Info(InfoRequest::Sync_) => None,

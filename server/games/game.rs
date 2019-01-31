@@ -3,7 +3,7 @@ use crate::api;
 /// How a game responds to a player attempting to leave it.
 pub enum LeaveResponse<Id, Msg, E> {
     /// The player left the game, but it keeps going.
-    Successfully(api::Name, TellResponse<Id, Msg>),
+    Successfully(api::Name, Broadcast<Id, Msg>),
     /// The player left and there is no one remaining, the game is over.
     Empty(api::Name),
     /// An attempt was made to leave the game, but an error occured
@@ -18,7 +18,7 @@ pub enum JoinResponse<Id> {
     Accept(Id),
 }
 
-pub enum TellResponse<Id, Msg> {
+pub enum Broadcast<Id, Msg> {
     ToAll(Msg),
     ToList(Vec<Id>, Msg),
     /// Send `Msg` to all but `Id`. send `Option<Msg>` to `Id` if `Some`
@@ -59,5 +59,5 @@ pub trait Game<Id> {
         &mut self,
         player: Id,
         request: Self::Request,
-    ) -> Result<TellResponse<Id, Self::Response>, Self::Error>;
+    ) -> Result<Broadcast<Id, Self::Response>, Self::Error>;
 }

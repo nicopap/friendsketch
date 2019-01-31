@@ -19,7 +19,7 @@ use warp::{
 use crate::{
     api::{self, Name},
     games::{
-        game::{Game, JoinResponse, LeaveResponse, TellResponse},
+        game::{Broadcast, Game, JoinResponse, LeaveResponse},
         tugofsketch::Id,
     },
 };
@@ -229,7 +229,7 @@ where
                         error!("game user {} wasn't connected: {}", name, room)
                     };
                     let msg = GameMsg::Info(InfoMsg::Left(name));
-                    manager.broadcast(TellResponse::ToAll(msg));
+                    manager.broadcast(Broadcast::ToAll(msg));
                     manager.broadcast(broadcast);
                 }
                 LeaveResponse::Empty(name) => {
@@ -256,7 +256,7 @@ where
                 info!("Adding {} to {}", name, manager.room_name);
                 debug!("with id: {:?}", id);
                 let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
-                manager.broadcast(TellResponse::ToAll(msg));
+                manager.broadcast(Broadcast::ToAll(msg));
                 manager.hangups.accept(name, id);
                 manager.respond.send(ManagerResponse::Accept);
             }
@@ -389,10 +389,10 @@ where
         );
     }
 
-    fn broadcast(&mut self, targets: TellResponse<Id, api::GameMsg>) {
+    fn broadcast(&mut self, targets: Broadcast<Id, api::GameMsg>) {
         match targets {
-            TellResponse::ToAll(msg) => self.broadcast_to_all(&msg),
-            TellResponse::ToList(ids, message) => {
+            Broadcast::ToAll(msg) => self.broadcast_to_all(&msg),
+            Broadcast::ToList(ids, message) => {
                 let message: String = to_string(&message).unwrap();
                 for id in ids.iter() {
                     let mut connection = &self.connections[id].0;
@@ -406,10 +406,10 @@ where
                     });
                 }
             }
-            TellResponse::ToAllBut(id, to_all, to_other) => {
+            Broadcast::ToAllBut(id, to_all, to_other) => {
                 self.broadcast_to_all_but(id, &to_all, &to_other)
             }
-            TellResponse::ToNone => {}
+            Broadcast::ToNone => {}
         }
     }
 
