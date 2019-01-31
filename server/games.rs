@@ -19,12 +19,12 @@ use warp::{
 use crate::{
     api::{self, Name},
     games::{
-        game::{Broadcast, Game, JoinResponse, LeaveResponse},
-        tugofsketch::Id,
+        game::{Broadcast, Cmd, Game, JoinResponse, LeaveResponse},
+        tugofsketch::{Feedback, Id},
     },
 };
 
-type ManagerChannel = mpsc::Sender<ManagerRequest>;
+type ManagerChannel = mpsc::Sender<ManagerRequest<Feedback>>;
 
 macro_rules! default {
     () => {
@@ -39,7 +39,7 @@ quick_error! {
         GameError(err: ()) {
             from()
         }
-        ManagerChannelError(err: mpsc::SendError<ManagerRequest>) {
+        ManagerChannelError(err: mpsc::SendError<ManagerRequest<Feedback>>) {
             from()
         }
     }
@@ -49,7 +49,7 @@ new_key_type! { struct Challenge; }
 
 /// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
-enum ManagerRequest {
+enum ManagerRequest<Msg> {
     /// A message sent through a connected player
     Msg(Id, api::GameReq),
     /// Order the game to drop the given player `Id`
@@ -63,6 +63,8 @@ enum ManagerRequest {
     GiveUp(GiveUp),
     /// Player `Id` disconnected.
     Disconnect(Id),
+    /// Return a value to the game, as it requested it
+    Return(Msg),
 }
 
 /// player `Name` was expected to connect a while ago, tell the game
@@ -190,9 +192,11 @@ struct ConnectionManager<G> {
 
 struct Connection(mpsc::UnboundedSender<Message>);
 
-fn oversee<G: Game<Id, Error = (), Response = api::GameMsg>>(
+fn oversee<
+    G: Game<Id, Error = (), Response = api::GameMsg, Feedback = Feedback>,
+>(
     mut manager: ConnectionManager<G>,
-    msg: ManagerRequest,
+    msg: ManagerRequest<Feedback>,
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
     G::Request: From<api::GameReq>,
@@ -205,8 +209,23 @@ where
             }
         }
         ManagerRequest::Msg(id, msg_val) => {
-            let response = manager.game.tells(id, msg_val.into())?;
+            let (mut response, mut commands) =
+                manager.game.tells(id, msg_val.into())?;
             manager.broadcast(response);
+            loop {
+                let msg = match commands {
+                    Cmd::In(delay, feedback) => {
+                        manager.queue(delay, feedback);
+                        break;
+                    }
+                    Cmd::Immediately(msg) => msg,
+                    Cmd::None => break,
+                };
+                let x = manager.game.feedback(msg)?;
+                response = x.0;
+                commands = x.1;
+                manager.broadcast(response);
+            }
         }
         ManagerRequest::Disconnect(id) => {
             let room = &manager.room_name;
@@ -263,6 +282,18 @@ where
             JoinResponse::Refuse => {
                 warn!("{} refused {}", manager.room_name, name);
                 manager.respond.send(ManagerResponse::Refuse);
+            }
+        },
+        ManagerRequest::Return(mut msg) => loop {
+            let (response, commands) = manager.game.feedback(msg)?;
+            manager.broadcast(response);
+            match commands {
+                Cmd::In(delay, feedback) => {
+                    manager.queue(delay, feedback);
+                    break;
+                }
+                Cmd::Immediately(msg_) => msg = msg_,
+                Cmd::None => break,
             }
         },
     };
@@ -343,6 +374,17 @@ impl<G> ConnectionManager<G>
 where
     G: Game<Id>,
 {
+    fn queue(&mut self, delay: Duration, feedback: Feedback) {
+        let sink_to_manager = self.manager_sink.clone();
+        let request = ManagerRequest::Return(feedback);
+        warp::spawn(
+            sleep(delay)
+                .then(move |_| sink_to_manager.send(request))
+                .map(|_| ())
+                .map_err(|_| ()),
+        );
+    }
+
     fn join(&mut self, id: Id, ws: WebSocket) {
         // Split the socket into a sender and receive of messages.
         let (socket_sink, socket_stream) = ws.split();

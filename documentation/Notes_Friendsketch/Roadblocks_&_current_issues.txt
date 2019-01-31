@@ -16,17 +16,17 @@ Created Tuesday 26 September 2017
 * BUG: when someone joins, the room id is revealed (lol wtf)
 * disable drawing control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
-* Implement "between round state" before ''start'' and after ''over'' 
+* FRONTEND: Implement "between round state" before ''start'' and after ''over'' 
 * Add score changes to ''Room'' and all the ravioli
 * Tick down the clock on frontend
 * Do not relay messages from artist containing word to guess
 
-===== Design Issue =====
+==== Server ====
+* Create special structure to hold names to guess, implement management of words lists etc
+	* related to: take random character from UTF string, display non-letter characters, 
+* Better management of players:
+	* Each player have a different internal state, game server needs to keep track of that
 
-How to handle periodic updates sent by server?
-* Send "end round" messages
-* Send "Reveal" messages
-* Wait before resending "StartRound" message
 
 ===== Game Event Log =====
 
@@ -55,4 +55,6 @@ I can't seem to get it to work :/
 ===== API =====
 
 * (very long term) "bundle" strokes into lines, as to avoid sending too many small data packets
-
+* Think about how to setup settings such as:
+	* Round count
+	* Round length

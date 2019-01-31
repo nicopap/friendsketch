@@ -123,7 +123,7 @@ impl fmt::Display for RoomId {
 }
 
 pub type Size = f32;
-pub type Score = i32;
+pub type Score = u16;
 pub type Color = String;
 pub type Point = (i32, i32);
 

@@ -1,4 +1,5 @@
 use crate::api;
+use std::time::Duration;
 
 /// How a game responds to a player attempting to leave it.
 pub enum LeaveResponse<Id, Msg, E> {
@@ -26,6 +27,16 @@ pub enum Broadcast<Id, Msg> {
     ToNone,
 }
 
+/// Order the game manager to do the following effectfull actions
+pub enum Cmd<Msg> {
+    /// Send back to `Game` given `Msg` in `Duration`
+    In(Duration, Msg),
+    /// update `Game` immediately with given `Msg`
+    Immediately(Msg),
+    /// Do nothing effectfull
+    None,
+}
+
 /// The state of a game running on Friendsketch.
 /// It is capable of handling recieved messages (`Request`) and respond to them
 /// (`Response`).
@@ -38,6 +49,7 @@ pub enum Broadcast<Id, Msg> {
 pub trait Game<Id> {
     type Request;
     type Response;
+    type Feedback;
     type Error;
 
     fn new() -> Self;
@@ -59,5 +71,11 @@ pub trait Game<Id> {
         &mut self,
         player: Id,
         request: Self::Request,
-    ) -> Result<Broadcast<Id, Self::Response>, Self::Error>;
+    ) -> Result<(Broadcast<Id, Self::Response>, Cmd<Self::Feedback>), Self::Error>;
+
+    /// React to a self-sent `Request`
+    fn feedback(
+        &mut self,
+        feedback: Self::Feedback,
+    ) -> Result<(Broadcast<Id, Self::Response>, Cmd<Self::Feedback>), Self::Error>;
 }
