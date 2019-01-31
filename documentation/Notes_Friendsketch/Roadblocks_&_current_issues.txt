@@ -13,7 +13,6 @@ Created Tuesday 26 September 2017
 
 ===== Game =====
 
-* BUG: when someone joins, the room id is revealed (lol wtf)
 * disable drawing control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
 * FRONTEND: Implement "between round state" before ''start'' and after ''over'' 

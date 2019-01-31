@@ -1,7 +1,7 @@
 module Pintclone.Room
     exposing
-        ( newLobby
-        , newRound
+        ( newInLobby
+        , joinRound
         , joins
         , leaves
         , becomeMaster
@@ -48,28 +48,25 @@ type State
 
 
 {-| If the current user is master or not, used as flag for the
-`newLobby` function.
+`newInLobby` function.
 -}
 type MasterStatus
     = Master
     | Peasant
 
 
-{-| newLobby, returns an initialized Room
+{-| newInLobby, returns an initialized Room
 
-    Room.newLobby user userList
+    Room.newLInobby user userList
 
 Is the room state during the "lobby" period of the game where the current
 user is `user` and the other users are `userList`. The empty list case is
 handled properly.
 
-In order to initialize the room during a "round", see `newRound`.
-
-TODO: think about what happens when me \in opponentsList.
-
+In order to initialize the room during a "round", see `joinRound`.
 -}
-newLobby : MasterStatus -> API.Name -> List API.Name -> Room
-newLobby status me opponentsList_ =
+newInLobby : MasterStatus -> API.Name -> List API.Name -> Room
+newInLobby status me opponentsList_ =
     let
         opponentsList =
             List.filter ((/=) me) opponentsList_
@@ -88,10 +85,9 @@ newLobby status me opponentsList_ =
 
 
 {-| Create a room in "round" state.
-TODO: think about what happens when me \in opponentsList.
 -}
-newRound : API.Name -> List API.Name -> Artist -> Room
-newRound me opponentsList_ artist =
+joinRound : API.Name -> List API.Name -> Artist -> Room
+joinRound me opponentsList_ artist =
     let
         opponentsList =
             List.filter ((/=) me) opponentsList_

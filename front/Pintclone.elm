@@ -145,8 +145,8 @@ newScores _ pintclone =
 
 {-| Start at the Pregame mode.
 -}
-newLobby : API.LobbyState -> Pintclone -> Pintclone
-newLobby { players, master } ({ roomid, username } as pintclone) =
+fromLobby : API.LobbyState -> Pintclone -> Pintclone
+fromLobby { players, master } ({ roomid, username } as pintclone) =
     let
         status =
             if master == username then
@@ -156,7 +156,7 @@ newLobby { players, master } ({ roomid, username } as pintclone) =
 
         newState =
             LobbyState
-                { room = Room.newLobby status username players
+                { room = Room.newInLobby status username players
                 , canvas = Canvas.new [] Canvas.Pregame
                 , hideId = True
                 }
@@ -173,7 +173,7 @@ joinRound drawing { playerScores, artist, timeout } ({ username } as pintclone) 
             List.map Tuple.first playerScores
 
         newInnerState room canvasState =
-            { room = Room.newRound username scores room
+            { room = Room.joinRound username scores room
             , canvas = Canvas.new drawing canvasState
             , guess = Guess.new Nothing timeout
             }
@@ -208,36 +208,33 @@ updateCanvas msg state =
                 ( anyelse, Nothing )
 
 
-roomMod : i -> GameLobby -> (i -> Room -> Room) -> Cmd m -> ( GameLobby, Cmd m )
-roomMod name state change ifUninit =
+stateByRoomUpdate : GameLobby ->  (Room -> Room) -> Cmd m -> ( GameLobby, Cmd m )
+stateByRoomUpdate state change ifUninit =
     let
-        mod f state_ room =
-            let newRoom =
-                    change name room
-                newState =
-                    if Room.isMaster newRoom then
+        mod f state_ newRoom =
+            if Room.alone newRoom then
+                let newLobby =
                         LobbyState
                             { room = newRoom
                             , canvas = Canvas.new [] Canvas.Pregame
-                            , hideId = False
+                            , hideId = True
                             }
-                    else
-                        f { state_ | room = newRoom }
-            in
-                ( newState , Cmd.none )
+                in  ( newLobby , Cmd.none )
+            else
+                ( f { state_ | room = newRoom } , Cmd.none )
     in
         case state of
             Uninit ->
                 ( state , ifUninit )
 
             LobbyState ({ room } as state_) ->
-                mod LobbyState state_ room
+                mod LobbyState state_ (change room)
 
             RoundState ({ room } as state_) ->
-                mod RoundState state_ room
+                mod RoundState state_ (change room)
 
             FinalState ({ room } as state_) ->
-                mod FinalState state_ room
+                mod FinalState state_ (change room)
 
             ErrorState _ ->
                 ( state, Cmd.none )
@@ -250,20 +247,20 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
         tupleAndThen f (a, orig_cmd) =
             f a |> mapSecond (\cmd -> Cmd.batch [ orig_cmd, cmd ])
 
-        syncPintclone eventType name newLobby =
+        syncPintclone eventType name newState =
             case eventType of
                 Nothing ->
-                    ( { pintclone | state = newLobby }, Cmd.none )
+                    ( { pintclone | state = newState }, Cmd.none )
 
                 Just event ->
                     let (newChat, chatCmd) =
                             Chat.update (Chat.receive <| event name) chat
-                    in  ( { pintclone | state = newLobby , chat = newChat }
+                    in  ( { pintclone | state = newState , chat = newChat }
                         , handleChatCmd wssend chatCmd
                         )
 
         mutateRoom eventType name action =
-            roomMod name state action (wssend <| InfoReq API.ReqSync)
+            stateByRoomUpdate state (action name) (wssend <| InfoReq API.ReqSync)
                 |> tupleAndThen (syncPintclone eventType name)
     in
         case msg of
@@ -287,7 +284,7 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
                             ( joinRound  drawing round syncPintclone, Cmd.none )
 
                         API.Lobby lobby ->
-                            ( newLobby lobby syncPintclone
+                            ( fromLobby lobby syncPintclone
                             , Ports.selectRoomid ()
                             )
 
@@ -303,8 +300,8 @@ handleChatCmd wssend chatCmd =
             Ports.bottomScrollChat ()
 
 
-newRound : API.RoundStart_ -> API.Name -> Room -> Canvas -> RoundState_T
-newRound { timeout, artist, word } username room canvas  =
+startRound : API.RoundStart_ -> API.Name -> Room -> Canvas -> RoundState_T
+startRound { timeout, artist, word } username room canvas  =
     { guess = Guess.new (Just word) timeout
     , room = Room.setArtist artist room
     , canvas = if artist == username then
@@ -390,7 +387,7 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                 updateInfo msg_ pintclone
 
             ( Classic (API.RoundStart msg_), LobbyState { canvas, room } ) ->
-                newRound msg_ username room canvas
+                startRound msg_ username room canvas
                     |> \newState ->
                         ( { pintclone | state = RoundState newState }
                         , Cmd.none
