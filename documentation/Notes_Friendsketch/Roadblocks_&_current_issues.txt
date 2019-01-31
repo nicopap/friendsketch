@@ -13,13 +13,13 @@ Created Tuesday 26 September 2017
 
 ===== Game =====
 
+* BUG: when someone joins, the room id is revealed (lol wtf)
 * disable drawing control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
 * Implement "between round state" before ''start'' and after ''over'' 
 * Add score changes to ''Room'' and all the ravioli
 * Tick down the clock on frontend
 * Do not relay messages from artist containing word to guess
-* Think about what to do when reselecting a previously set custom color
 
 ===== Design Issue =====
 

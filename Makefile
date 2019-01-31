@@ -35,7 +35,7 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 experiment : backend frontend
 	$(BROWSER) "http://localhost:8080/friendk/lobby" &
-	RUST_LOG=$(LOG_LEVEL) ./target/debug/friendsketch
+	RUST_BACKTRACE=1 RUST_LOG=$(LOG_LEVEL) ./target/debug/friendsketch
 
 
 frontend : $(JS_TARGETS) $(CONTENT)
