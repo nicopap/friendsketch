@@ -148,7 +148,7 @@ pub enum RoundSummary {
 pub struct RoundState {
     pub players: Vec<(Name, Vec<RoundSummary>)>,
     pub artist:  Name,
-    pub timeout: u16,
+    pub timeout: i16,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -237,7 +237,7 @@ pub enum Guess {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct RoundStart {
-    pub timeout: u16,
+    pub timeout: i16,
     pub artist:  Name,
     pub word:    Guess,
 }
@@ -247,7 +247,7 @@ pub struct RoundStart {
 pub enum ClassicMsg {
     Guessed(Name),
     Correct(String),
-    TimeoutSync(u16),
+    TimeoutSync(i16),
     Over(String, Vec<(Name, RoundSummary)>),
     Start(RoundStart),
     Reveal(usize, char),
