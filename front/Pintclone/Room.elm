@@ -25,25 +25,25 @@ import Html as H exposing (Html, div, text, ul, li, label)
 import Html.Attributes exposing (id, class, align, classList)
 import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList, (:::), sortWith)
 import List exposing (map, sortBy)
-import API
+import Api
 
 
 type alias Room =
-    { me : API.Name
+    { me : Api.Name
     , state : State
     }
 
 
 type Artist
     = Me
-    | Another API.Name
+    | Another Api.Name
 
 
 type State
-    = NormalWith (Nonempty API.Name)
-    | MasterOf (Nonempty API.Name)
-    | PlayingWith (Nonempty API.Name) -- head is the artist
-    | ArtistWith (Nonempty API.Name)
+    = NormalWith (Nonempty Api.Name)
+    | MasterOf (Nonempty Api.Name)
+    | PlayingWith (Nonempty Api.Name) -- head is the artist
+    | ArtistWith (Nonempty Api.Name)
     | Alone
 
 
@@ -65,7 +65,7 @@ handled properly.
 
 In order to initialize the room during a "round", see `joinRound`.
 -}
-newInLobby : MasterStatus -> API.Name -> List API.Name -> Room
+newInLobby : MasterStatus -> Api.Name -> List Api.Name -> Room
 newInLobby status me opponentsList_ =
     let
         opponentsList =
@@ -86,7 +86,7 @@ newInLobby status me opponentsList_ =
 
 {-| Create a room in "round" state.
 -}
-joinRound : API.Name -> List API.Name -> Artist -> Room
+joinRound : Api.Name -> List Api.Name -> Artist -> Room
 joinRound me opponentsList_ artist =
     let
         opponentsList =
@@ -107,7 +107,7 @@ joinRound me opponentsList_ artist =
 
 {-| Remove a name from the opponents list, operation on the state.
 -}
-popState : API.Name -> State -> State
+popState : Api.Name -> State -> State
 popState leaving state =
     let
         removeFromState state_ opponents =
@@ -157,7 +157,7 @@ popState leaving state =
 
 {-| Add an opponent to the list of users, operation on state.
 -}
-pushState : API.Name -> State -> State
+pushState : Api.Name -> State -> State
 pushState joining state =
     case state of
         Alone ->
@@ -193,7 +193,7 @@ masterState state =
 
 {-| The given room where an opponent left.
 -}
-leaves : API.Name -> Room -> Room
+leaves : Api.Name -> Room -> Room
 leaves leaving room =
     { room | state = popState leaving room.state }
 
@@ -206,7 +206,7 @@ becomeMaster room =
     { room | state = masterState room.state }
 
 
-setArtist : API.Name -> Room -> Room
+setArtist : Api.Name -> Room -> Room
 setArtist newArtist { me, state } =
     let
         updateState others =
@@ -261,7 +261,7 @@ alone room =
 
 {-| The given room where someone new joined.
 -}
-joins : API.Name -> Room -> Room
+joins : Api.Name -> Room -> Room
 joins joining ({ me } as room) =
     if joining == me then
         room
@@ -281,14 +281,14 @@ view ({ me, state } as room) =
                     ]
                 ]
                 [ label [ class "username", align "left" ]
-                    [ text <| API.showName name ]
+                    [ text <| Api.showName name ]
                 , label [ class "userscore", align "right" ]
                     [ text "100" ]
                 ]
 
         nameList maybeartist opponents =
             toList opponents
-                |> sortBy API.showName
+                |> sortBy Api.showName
                 |> map (userRow maybeartist)
                 |> ul [ id "userlist", class "top-layout" ]
     in

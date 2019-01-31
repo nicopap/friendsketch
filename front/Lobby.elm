@@ -8,13 +8,13 @@ import Html.Events exposing (onClick, onInput)
 import Task exposing (Task)
 import Http exposing (Error(Timeout, NetworkError, BadStatus, BadPayload))
 import Debug
-import API
+import Api
 
 
 type Msg
-    = CreateGame API.Name
-    | OpenGame API.Game API.RoomID API.Name
-    | JoinGame API.RoomID API.Name
+    = CreateGame Api.Name
+    | OpenGame Api.Game Api.RoomID Api.Name
+    | JoinGame Api.RoomID Api.Name
     | UpdateUserName String
     | UpdateRoom String
     | HttpError Http.Error
@@ -29,8 +29,8 @@ type Status
 
 
 type alias Welcome =
-    { username : Result String API.Name
-    , roomInput : Result String API.RoomID
+    { username : Result String Api.Name
+    , roomInput : Result String Api.RoomID
     , status : Status
     }
 
@@ -38,9 +38,9 @@ type alias Welcome =
 {-| Validate the input and distinguish valid from invalid inputs.
 TODO: feedback on why a name is invlaid
 -}
-validateNameInput : String -> Result String API.Name
+validateNameInput : String -> Result String Api.Name
 validateNameInput input =
-    case API.validName input of
+    case Api.validName input of
         Just name ->
             Ok name
 
@@ -48,9 +48,9 @@ validateNameInput input =
             Err input
 
 
-validateRoomID : String -> Result String API.RoomID
+validateRoomID : String -> Result String Api.RoomID
 validateRoomID input =
-    case API.validRoomID input of
+    case Api.validRoomID input of
         Just name ->
             Ok name
 
@@ -83,16 +83,16 @@ new =
 {-| Tries to POST /rooms/join {username: name, roomid: roomid}.
 -}
 attemptJoin :
-    API.Name
-    -> API.RoomID
-    -> Task Http.Error ( API.Game, API.RoomID, API.Name )
+    Api.Name
+    -> Api.RoomID
+    -> Task Http.Error ( Api.Game, Api.RoomID, Api.Name )
 attemptJoin name roomid =
-    API.roomsJoinRequest roomid name
+    Api.roomsJoinRequest roomid name
         |> Http.toTask
         |> Task.map (\game -> ( game, roomid, name ))
 
 
-openLink : Result Http.Error ( API.Game, API.RoomID, API.Name ) -> Msg
+openLink : Result Http.Error ( Api.Game, Api.RoomID, Api.Name ) -> Msg
 openLink result =
     case result of
         Ok ( game, roomid, name ) ->
@@ -106,9 +106,9 @@ openLink result =
 With the answer (the room id), then attempts to join with given username.
 This will redirect the browser to the new page if the join is successful.
 -}
-attemptCreate : API.Name -> Cmd Msg
+attemptCreate : Api.Name -> Cmd Msg
 attemptCreate username =
-    API.roomsCreateRequest API.Pintclone username
+    Api.roomsCreateRequest Api.Pintclone username
         |> Http.toTask
         |> Task.andThen (attemptJoin username)
         |> Task.attempt openLink
@@ -168,7 +168,7 @@ update msg welcome =
 
         OpenGame game roomid username ->
             ( welcome
-            , API.exitToGame game roomid username 0
+            , Api.exitToGame game roomid username 0
             )
 
         HttpError error ->
@@ -236,10 +236,10 @@ view : Welcome -> Html Msg
 view { username, roomInput, status } =
     let
         nameValue =
-            toRaw API.showName username
+            toRaw Api.showName username
 
         roomValue =
-            toRaw API.showRoomID roomInput
+            toRaw Api.showRoomID roomInput
 
         page { roomStatus, nameStatus } =
             [ inputField "Your username:" UpdateUserName nameStatus nameValue

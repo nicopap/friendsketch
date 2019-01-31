@@ -22,7 +22,7 @@ import ElementRelativeMouseEvents as MouseE exposing (Point)
 import List.Nonempty as NE exposing (Nonempty)
 import Canvas.Stroke as Stroke
 import Canvas.Toolbox as Toolbox exposing (Toolbox)
-import API exposing (Stroke)
+import Api exposing (Stroke)
 
 
 type Pen
@@ -33,7 +33,7 @@ type Pen
 
 type Msg
     = ArtistMsg ArtistMsg
-    | Server API.CanvasMsg
+    | Server Api.CanvasMsg
     | ToolboxMsg Toolbox.Msg
 
 
@@ -274,18 +274,18 @@ press point color strokeSize =
 
 {-| Update function when the canvas state is `Artist`.
 -}
-artistUpdate : ArtistMsg -> Canvas -> ( Canvas, Maybe API.CanvasMsg )
+artistUpdate : ArtistMsg -> Canvas -> ( Canvas, Maybe Api.CanvasMsg )
 artistUpdate msg canvas =
     let
         clientPress point pen =
             ( { canvas | pen = pen }
-            , Just <| API.CnvStart point canvas.color canvas.strokeSize
+            , Just <| Api.CnvStart point canvas.color canvas.strokeSize
             )
 
         clientMove point =
             move point canvas.pen
                 |> mapFirst (\p -> { canvas | pen = p })
-                |> mapSecond (Maybe.map API.CnvContinue)
+                |> mapSecond (Maybe.map Api.CnvContinue)
     in
         case msg of
             Hover point ->
@@ -296,7 +296,7 @@ artistUpdate msg canvas =
                     |> clientPress point
 
             Lift ->
-                ( lift canvas, Just API.CnvEnd )
+                ( lift canvas, Just Api.CnvEnd )
 
             ChangeColor newcolor ->
                 ( { canvas | color = newcolor }, Nothing )
@@ -315,14 +315,14 @@ artistUpdate msg canvas =
                 case canvas.pen of
                     Drawing _ ->
                         ( lift canvas |> (\c -> { c | pen = Away })
-                        , Just API.CnvEnd
+                        , Just Api.CnvEnd
                         )
 
                     _ ->
                         ( { canvas | pen = Away }, Nothing )
 
 
-serverUpdate : API.CanvasMsg -> Canvas -> Canvas
+serverUpdate : Api.CanvasMsg -> Canvas -> Canvas
 serverUpdate msg canvas =
     let
         continueDrawing point pen =
@@ -334,17 +334,17 @@ serverUpdate msg canvas =
                     pen
     in
         case msg of
-            API.CnvStart point color size ->
+            Api.CnvStart point color size ->
                 { canvas
                     | strokeSize = size
                     , color = color
                     , pen = Drawing (Stroke.new point color size)
                 }
 
-            API.CnvContinue point ->
+            Api.CnvContinue point ->
                 { canvas | pen = continueDrawing point canvas.pen }
 
-            API.CnvEnd ->
+            Api.CnvEnd ->
                 lift canvas |> (\c -> { c | pen = Away })
 
 
@@ -382,7 +382,7 @@ pregameUpdate msg canvas =
                 |> (\( pen, _ ) -> { canvas | pen = pen })
 
 
-update : Msg -> Canvas -> ( Canvas, Maybe API.CanvasMsg )
+update : Msg -> Canvas -> ( Canvas, Maybe Api.CanvasMsg )
 update msg canvas =
     let
         updateToolbox msg_ =
@@ -413,7 +413,7 @@ update msg canvas =
                 ( Debug.log "Inconsistent state!" canvas, Nothing )
 
 
-subsAdaptor : Canvas -> Maybe (API.CanvasMsg -> Msg)
+subsAdaptor : Canvas -> Maybe (Api.CanvasMsg -> Msg)
 subsAdaptor { state } =
     case state of
         Spectator ->

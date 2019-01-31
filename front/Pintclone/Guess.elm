@@ -1,6 +1,6 @@
 module Pintclone.Guess exposing (Guess, Msg(..), view, update, new)
 
-import API
+import Api
 import String exposing (toList, fromChar)
 import Array exposing (Array)
 import Html.Attributes exposing (id, class)
@@ -27,15 +27,15 @@ type Msg
     | RevealAll String
 
 
-new : Maybe API.Guess -> Int -> Guess
+new : Maybe Api.Guess -> Int -> Guess
 new maybeArtist timeout =
     let
         word =
             case maybeArtist of
-                Just (API.ForArtist wordToGuess) ->
+                Just (Api.ForArtist wordToGuess) ->
                     Artist wordToGuess
 
-                Just (API.GuessOfLength wordLength) ->
+                Just (Api.GuessOfLength wordLength) ->
                     ToGuess (Array.repeat wordLength Nothing)
 
                 Nothing ->

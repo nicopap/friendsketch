@@ -19,7 +19,7 @@ import Process
 import Task
 import Time exposing (second)
 import Ports
-import API exposing (GameReq(InfoReq, CanvasReq), GameMsg)
+import Api exposing (GameReq(InfoReq, CanvasReq), GameMsg)
 
 
 type alias RoundState_T =
@@ -44,16 +44,16 @@ type GameLobby
     = Uninit
     | LobbyState LobbyState_T
     | RoundState RoundState_T
-    | FinalState { room : Room, scores : List ( API.Name, Int ) }
+    | FinalState { room : Room, scores : List ( Api.Name, Int ) }
     | ErrorState { title : String, message : String, retry : RetryStatus }
 
 
 type alias Pintclone =
     { state : GameLobby
-    , roomid : API.RoomID
-    , username : API.Name
-    , wslisten : Maybe (Result API.ListenError GameMsg -> Msg) -> Sub Msg
-    , wssend : API.GameReq -> Cmd Msg
+    , roomid : Api.RoomID
+    , username : Api.Name
+    , wslisten : Maybe (Result Api.ListenError GameMsg -> Msg) -> Sub Msg
+    , wssend : Api.GameReq -> Cmd Msg
     , syncRetries : Int
     , openGameRetries : Int
     , chat : Chat
@@ -73,12 +73,12 @@ type LobbyMsg
 
 
 type Msg
-    = Info API.InfoMsg
-    | Classic API.ClassicMsg
+    = Info Api.InfoMsg
+    | Classic Api.ClassicMsg
     | ChatMsg Chat.Msg
     | LobbyMsg LobbyMsg
     | CanvasMsg Canvas.Msg
-    | ListenError API.ListenError
+    | ListenError Api.ListenError
     | Dummy
     | Reopen
 
@@ -97,13 +97,13 @@ main =
 {-| Crash if the flags are invalid (because it becomes impossible to
 construct a logical program at this point).
 -}
-sanitizeFlags : Flags -> ( API.RoomID, API.Name, Int )
+sanitizeFlags : Flags -> ( Api.RoomID, Api.Name, Int )
 sanitizeFlags { roomid, username, retries } =
     let
         maybeSanitized =
             Maybe.map3 (,,)
-                (API.validRoomID roomid)
-                (API.validName username)
+                (Api.validRoomID roomid)
+                (Api.validName username)
                 (Just retries)
 
         crashMessage =
@@ -123,29 +123,29 @@ sanitizeFlags { roomid, username, retries } =
                 ret
 
 
-new : (API.RoomID, API.Name, Int) -> ( Pintclone, Cmd Msg )
+new : (Api.RoomID, Api.Name, Int) -> ( Pintclone, Cmd Msg )
 new (roomid, username, openGameRetries) =
     ( { state = Uninit
       , roomid = roomid
       , username = username
-      , wslisten = API.wsListen roomid username
-      , wssend = API.wsSend roomid username
+      , wslisten = Api.wsListen roomid username
+      , wssend = Api.wsSend roomid username
       , syncRetries = 0
       , openGameRetries = openGameRetries
       , chat = Chat.new username []
       }
-    , API.wsSend roomid username (InfoReq API.ReqSync)
+    , Api.wsSend roomid username (InfoReq Api.ReqSync)
     )
 
 
-newScores : API.ScoresState -> Pintclone -> Pintclone
+newScores : Api.ScoresState -> Pintclone -> Pintclone
 newScores _ pintclone =
     { pintclone | state = Uninit }
 
 
 {-| Start at the Pregame mode.
 -}
-fromLobby : API.LobbyState -> Pintclone -> Pintclone
+fromLobby : Api.LobbyState -> Pintclone -> Pintclone
 fromLobby { players, master } ({ roomid, username } as pintclone) =
     let
         status =
@@ -166,7 +166,7 @@ fromLobby { players, master } ({ roomid, username } as pintclone) =
 
 {-| Start a new round of Pintclone.
 -}
-joinRound : API.Drawing -> API.RoundState -> Pintclone -> Pintclone
+joinRound : Api.Drawing -> Api.RoundState -> Pintclone -> Pintclone
 joinRound drawing { playerScores, artist, timeout } ({ username } as pintclone) =
     let
         scores =
@@ -187,7 +187,7 @@ joinRound drawing { playerScores, artist, timeout } ({ username } as pintclone) 
         { pintclone | state = RoundState newGameState }
 
 
-updateCanvas : Canvas.Msg -> GameLobby -> ( GameLobby, Maybe API.CanvasMsg )
+updateCanvas : Canvas.Msg -> GameLobby -> ( GameLobby, Maybe Api.CanvasMsg )
 updateCanvas msg state =
     let
         newState constr state_ =
@@ -240,7 +240,7 @@ stateByRoomUpdate state change ifUninit =
                 ( state, Cmd.none )
 
 
-updateInfo : API.InfoMsg -> Pintclone -> ( Pintclone, Cmd Msg )
+updateInfo : Api.InfoMsg -> Pintclone -> ( Pintclone, Cmd Msg )
 updateInfo msg ({ username, state, wssend, chat } as pintclone) =
     let
         tupleAndThen : (a -> (b, Cmd msg)) -> (a, Cmd msg) -> (b, Cmd msg)
@@ -260,30 +260,30 @@ updateInfo msg ({ username, state, wssend, chat } as pintclone) =
                         )
 
         mutateRoom eventType name action =
-            stateByRoomUpdate state (action name) (wssend <| InfoReq API.ReqSync)
+            stateByRoomUpdate state (action name) (wssend <| InfoReq Api.ReqSync)
                 |> tupleAndThen (syncPintclone eventType name)
     in
         case msg of
-            API.Joined name ->
-                mutateRoom (Just API.EventJoined) name Room.joins
+            Api.Joined name ->
+                mutateRoom (Just Api.EventJoined) name Room.joins
 
-            API.Left name ->
-                mutateRoom (Just API.EventLeft) name Room.leaves
+            Api.Left name ->
+                mutateRoom (Just Api.EventLeft) name Room.leaves
 
-            API.Mastery ->
+            Api.Mastery ->
                 mutateRoom Nothing never (always Room.becomeMaster)
                     |> mapSecond (\b -> Cmd.batch [ Ports.selectRoomid (), b ])
 
-            API.Sync gamestate events ->
+            Api.Sync gamestate events ->
                 let syncPintclone = { pintclone | chat = Chat.new username events }
                 in  case gamestate of
-                        API.Summary scores ->
+                        Api.Summary scores ->
                             ( newScores scores syncPintclone, Cmd.none )
 
-                        API.Round drawing round ->
+                        Api.Round drawing round ->
                             ( joinRound  drawing round syncPintclone, Cmd.none )
 
-                        API.Lobby lobby ->
+                        Api.Lobby lobby ->
                             ( fromLobby lobby syncPintclone
                             , Ports.selectRoomid ()
                             )
@@ -295,12 +295,12 @@ handleChatCmd wssend chatCmd =
         Chat.DoNothing ->
             Cmd.none
         Chat.Send text ->
-            wssend <| API.ChatReq text
+            wssend <| Api.ChatReq text
         Chat.UpdateScroll ->
             Ports.bottomScrollChat ()
 
 
-startRound : API.RoundStart_ -> API.Name -> Room -> Canvas -> RoundState_T
+startRound : Api.RoundStart_ -> Api.Name -> Room -> Canvas -> RoundState_T
 startRound { timeout, artist, word } username room canvas  =
     { guess = Guess.new (Just word) timeout
     , room = Room.setArtist artist room
@@ -311,26 +311,26 @@ startRound { timeout, artist, word } username room canvas  =
     }
 
 
-updateClassic : API.Name -> API.ClassicMsg -> Chat -> RoundState_T -> (Chat, RoundState_T)
+updateClassic : Api.Name -> Api.ClassicMsg -> Chat -> RoundState_T -> (Chat, RoundState_T)
 updateClassic username msg chat { guess, room, canvas } =
     let
         (newGuess, newRoom, newCanvas) =
             case msg of
-                API.ClaGuessed name ->
+                Api.ClaGuessed name ->
                     (guess, room, canvas)
-                API.ClaCorrect completeWord ->
+                Api.ClaCorrect completeWord ->
                     ( Guess.update (Guess.RevealAll completeWord) guess
                     , room, canvas
                     )
-                API.ClaTimeout timeout ->
+                Api.ClaTimeout timeout ->
                     ( Guess.update (Guess.SetTimeout timeout) guess
                     , room, canvas
                     )
-                API.RoundOver word _ ->
+                Api.RoundOver word _ ->
                     ( Guess.update (Guess.RevealAll word) guess
                     , room, canvas
                     )
-                API.RoundStart { timeout, artist, word } ->
+                Api.RoundStart { timeout, artist, word } ->
                     ( Guess.new (Just word) timeout
                     , Room.setArtist artist room
                     , if artist == username then
@@ -338,7 +338,7 @@ updateClassic username msg chat { guess, room, canvas } =
                       else
                         Canvas.new [] Canvas.Spectator
                     )
-                API.ClaReveal index char ->
+                Api.ClaReveal index char ->
                     ( Guess.update (Guess.RevealLetter index char) guess
                     , room, canvas
                     )
@@ -363,11 +363,11 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
         report error_msg =
             let
                 full_msg =
-                    "Failure in '" ++ API.showRoomID roomid ++ "' for '"
-                    ++ API.showName username ++ "' with the following error: "
+                    "Failure in '" ++ Api.showRoomID roomid ++ "' for '"
+                    ++ Api.showName username ++ "' with the following error: "
                     ++ error_msg
             in
-                API.reportError full_msg |> Cmd.map (\() -> Dummy)
+                Api.reportError full_msg |> Cmd.map (\() -> Dummy)
 
         updateToError title message retry =
             let
@@ -386,7 +386,7 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
             ( Info msg_, _ ) ->
                 updateInfo msg_ pintclone
 
-            ( Classic (API.RoundStart msg_), LobbyState { canvas, room } ) ->
+            ( Classic (Api.RoundStart msg_), LobbyState { canvas, room } ) ->
                 startRound msg_ username room canvas
                     |> \newState ->
                         ( { pintclone | state = RoundState newState }
@@ -413,9 +413,9 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                 )
 
             ( LobbyMsg StartGame, LobbyState _ ) ->
-                ( pintclone, pintclone.wssend <| InfoReq API.ReqStart )
+                ( pintclone, pintclone.wssend <| InfoReq Api.ReqStart )
 
-            ( ListenError API.BadSend, _) ->
+            ( ListenError Api.BadSend, _) ->
                 if openGameRetries >= 2 then
                     updateToError
                         "Communication error"
@@ -441,7 +441,7 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                             |> Task.perform (always Reopen)
                         )
 
-            ( ListenError (API.DecodeError msg), _) ->
+            ( ListenError (Api.DecodeError msg), _) ->
                 updateToError "Communication error" msg NoAttempt
 
             ( Dummy, _ ) ->
@@ -449,8 +449,8 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
 
             ( Reopen, _ ) ->
                 ( pintclone
-                , API.exitToGame
-                    API.Pintclone roomid username (openGameRetries + 1)
+                , Api.exitToGame
+                    Api.Pintclone roomid username (openGameRetries + 1)
                 )
 
             ( anymsg, anystate ) ->
@@ -462,35 +462,35 @@ update msg ({ roomid, username, openGameRetries, syncRetries } as pintclone_) =
                     Debug.log
                         ("Inconsistency:" ++ toString ( anymsg, anystate ))
                         ( { pintclone | syncRetries = syncRetries + 1 }
-                        , pintclone.wssend <| InfoReq API.ReqSync
+                        , pintclone.wssend <| InfoReq Api.ReqSync
                         )
 
 
 subs : Pintclone -> Sub Msg
 subs { wslisten, state } =
     let
-        listen : Maybe (API.CanvasMsg -> Msg) -> Result API.ListenError GameMsg -> Msg
+        listen : Maybe (Api.CanvasMsg -> Msg) -> Result Api.ListenError GameMsg -> Msg
         listen redirectCanvas response =
             case response of
                 Err error ->
                     ListenError error
 
-                Ok (API.InfoMsg msg) ->
+                Ok (Api.InfoMsg msg) ->
                     Info msg
 
-                Ok (API.ClassicMsg msg) ->
+                Ok (Api.ClassicMsg msg) ->
                     Classic msg
 
-                Ok (API.CanvasMsg msg) ->
+                Ok (Api.CanvasMsg msg) ->
                     case redirectCanvas of
                         Just redirect ->
                             redirect msg
 
                         Nothing ->
-                            ListenError <| API.DecodeError "Recieved a canvas message"
+                            ListenError <| Api.DecodeError "Recieved a canvas message"
 
-                Ok (API.ChatMsg msg) ->
-                    ChatMsg <| Chat.receive <| API.EventMessage msg
+                Ok (Api.ChatMsg msg) ->
+                    ChatMsg <| Chat.receive <| Api.EventMessage msg
 
         cListen canvas =
             listen <| Maybe.map ((<<) CanvasMsg) <| Canvas.subsAdaptor canvas
@@ -515,14 +515,14 @@ subs { wslisten, state } =
         wslisten <| Just toSend
 
 
-masterDialog : Bool -> Bool -> API.RoomID -> Html Msg
+masterDialog : Bool -> Bool -> Api.RoomID -> Html Msg
 masterDialog isAlone hideId roomid =
     let
         roomdisplayAttributes =
             [ HA.type_ "text"
             , class "roomid"
             , id (if hideId then "hidden-roomid" else "display-roomid")
-            , HA.value <| API.showRoomID roomid
+            , HA.value <| Api.showRoomID roomid
             , HA.readonly True
             ]
         checkboxAttrs =

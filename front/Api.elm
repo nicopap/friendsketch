@@ -1,4 +1,4 @@
-module API
+module Api
     exposing
         ( Game(..)
         , exitToGame
@@ -35,9 +35,9 @@ module API
         , RoundStart_
         )
 
-{-| Exposes the necessary functions and types to access the backend API.
+{-| Exposes the necessary functions and types to access the backend Api.
 
-All the types that the API specifies are defined and exported in this
+All the types that the Api specifies are defined and exported in this
 module.
 
 -}
@@ -212,7 +212,7 @@ exitToGame game (RoomID_ roomid) (Name_ username) retries =
 
 
 
---- NeatSocket API ---
+--- NeatSocket Api ---
 
 
 {-| Generic way of accessing (sending to) a game websocket.

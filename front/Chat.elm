@@ -1,6 +1,6 @@
 module Chat exposing (Chat, new, Msg, ChatCmd(..), update, view, receive)
 
-import API
+import Api
 import Html exposing (Html, div, input, text)
 import Html.Attributes exposing (value, autofocus, placeholder, id, class)
 import Html.Events exposing (onInput)
@@ -17,36 +17,36 @@ type Message
 type alias Chat =
     { history : List Message
     , inputContent : String
-    , user : API.Name
-    , pending : List API.ChatContent
+    , user : Api.Name
+    , pending : List Api.ChatContent
     }
 
 
 type Msg
-    = GameEvent API.GameEvent
+    = GameEvent Api.GameEvent
     | UpdateInput String
     | SubmitInput
 
 
 type ChatCmd
-    = Send API.ChatContent
+    = Send Api.ChatContent
     | UpdateScroll
     | DoNothing
 
 
-into : API.GameEvent -> Message
+into : Api.GameEvent -> Message
 into event =
     case event of
-        API.EventLeft name ->
-            Left <| API.showName name
+        Api.EventLeft name ->
+            Left <| Api.showName name
 
-        API.EventJoined name ->
-            Joined <| API.showName name
+        Api.EventJoined name ->
+            Joined <| Api.showName name
 
-        API.EventMessage { content, author } ->
+        Api.EventMessage { content, author } ->
             Message_
-                { content = API.showChatContent content
-                , author = API.showName author
+                { content = Api.showChatContent content
+                , author = Api.showName author
                 }
 
 
@@ -71,7 +71,7 @@ messageView self message =
                 genericMessage "join" (name ++ " joined")
 
 
-new : API.Name -> List API.GameEvent -> Chat
+new : Api.Name -> List Api.GameEvent -> Chat
 new user history =
     { history = List.reverse <| List.map into history
     , inputContent = ""
@@ -80,16 +80,16 @@ new user history =
     }
 
 
-receive : API.GameEvent -> Msg
+receive : Api.GameEvent -> Msg
 receive = GameEvent
 
 
-updateHistory : API.GameEvent -> Chat -> Chat
+updateHistory : Api.GameEvent -> Chat -> Chat
 updateHistory event ({ history, pending, user } as chat_) =
     let
         chat =
             case event of
-                API.EventMessage { author, content } ->
+                Api.EventMessage { author, content } ->
                     if author == user then
                         { chat_ | pending = List.filter ((/=) content) pending }
                     else
@@ -101,7 +101,7 @@ updateHistory event ({ history, pending, user } as chat_) =
         { chat | history = history ++ [ into event ] }
 
 
-submit : API.ChatContent -> Chat -> Chat
+submit : Api.ChatContent -> Chat -> Chat
 submit content chat =
     { chat
         | pending = chat.pending ++ [ content ]
@@ -119,7 +119,7 @@ update msg ({ inputContent } as chat) =
             ( { chat | inputContent = newText }, DoNothing )
 
         SubmitInput ->
-            API.validChatContent inputContent
+            Api.validChatContent inputContent
               |> Maybe.map (\content -> (submit content chat, Send content))
               |> Maybe.withDefault ( chat, DoNothing )
 
@@ -138,11 +138,11 @@ view { user, history, pending, inputContent } =
                 [ text inputContent ]
 
         ghostsPending =
-            List.map (\x -> Ghost { content = API.showChatContent x }) pending
+            List.map (\x -> Ghost { content = Api.showChatContent x }) pending
 
         viewHistory =
             List.map
-                (messageView (API.showName user))
+                (messageView (Api.showName user))
                 (history ++ ghostsPending)
     in
         div [ id "chat" ]

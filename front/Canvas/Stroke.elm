@@ -18,7 +18,7 @@ import Color
 import Color exposing (Color)
 import List.Nonempty as NE exposing (Nonempty)
 import ElementRelativeMouseEvents exposing (Point)
-import API exposing (Stroke)
+import Api exposing (Stroke)
 
 
 {-| Expand a stroke to include a new point.
