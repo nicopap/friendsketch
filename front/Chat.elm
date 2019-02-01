@@ -12,6 +12,9 @@ type Message
     | Ghost { content : String }
     | Left String
     | Joined String
+    | Start String
+    | Over String
+    | Guessed String
 
 
 type alias Chat =
@@ -23,7 +26,7 @@ type alias Chat =
 
 
 type Msg
-    = GameEvent Api.GameEvent
+    = Event Api.VisibleEvent
     | UpdateInput String
     | SubmitInput
 
@@ -34,20 +37,24 @@ type ChatCmd
     | DoNothing
 
 
-into : Api.GameEvent -> Message
+into : Api.VisibleEvent -> Message
 into event =
     case event of
-        Api.EventLeft name ->
+        Api.EvLeft name ->
             Left <| Api.showName name
 
-        Api.EventJoined name ->
+        Api.EvJoined name ->
             Joined <| Api.showName name
 
-        Api.EventMessage { content, author } ->
+        Api.EvMessage { content, author } ->
             Message_
                 { content = Api.showChatContent content
                 , author = Api.showName author
                 }
+
+        Api.EvOver word       -> Over word
+        Api.EvStart artist    -> Start <| Api.showName artist
+        Api.EvGuessed guesser -> Guessed <| Api.showName guesser
 
 
 messageView : String -> Message -> Html msg
@@ -70,8 +77,17 @@ messageView self message =
             Joined name ->
                 genericMessage "join" (name ++ " joined")
 
+            Guessed name ->
+                genericMessage "correct-guess" (name ++ " guessed the word")
 
-new : Api.Name -> List Api.GameEvent -> Chat
+            Start name ->
+                genericMessage "round-start" (name ++ " is going to draw")
+
+            Over word ->
+                genericMessage "round-over" ("round over, the word was " ++ word)
+
+
+new : Api.Name -> List Api.VisibleEvent -> Chat
 new user history =
     { history = List.reverse <| List.map into history
     , inputContent = ""
@@ -80,16 +96,16 @@ new user history =
     }
 
 
-receive : Api.GameEvent -> Msg
-receive = GameEvent
+receive : Api.VisibleEvent -> Msg
+receive = Event
 
 
-updateHistory : Api.GameEvent -> Chat -> Chat
+updateHistory : Api.VisibleEvent -> Chat -> Chat
 updateHistory event ({ history, pending, user } as chat_) =
     let
         chat =
             case event of
-                Api.EventMessage { author, content } ->
+                Api.EvMessage { author, content } ->
                     if author == user then
                         { chat_ | pending = List.filter ((/=) content) pending }
                     else
@@ -112,7 +128,7 @@ submit content chat =
 update : Msg -> Chat -> ( Chat, ChatCmd )
 update msg ({ inputContent } as chat) =
     case msg of
-        GameEvent event ->
+        Event event ->
             ( updateHistory event chat, UpdateScroll )
 
         UpdateInput newText ->

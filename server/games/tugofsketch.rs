@@ -1,7 +1,5 @@
 use super::game::{self, JoinResponse, LeaveResponse};
-use crate::api::{
-    self, ChatMsg, ClassicMsg, GameEvent, GameState, Name, Stroke,
-};
+use crate::api::{self, ChatMsg, GameState, Name, Stroke, VisibleEvent};
 use arraydeque::{ArrayDeque, Wrapping};
 use log::{error, info, warn};
 use rand::seq::IteratorRandom;
@@ -53,7 +51,7 @@ enum Feedback_ {
 pub struct Game {
     state:       Game_,
     players:     Slab<Player>,
-    game_log:    ArrayDeque<[GameEvent; 20], Wrapping>,
+    game_log:    ArrayDeque<[VisibleEvent; 20], Wrapping>,
     round_count: u8,
     round_no:    u8,
 }
@@ -65,14 +63,14 @@ enum RoundScore {
     Artist(u16),
     Guessed(u16),
 }
-impl Into<api::RoundSummary> for RoundScore {
-    fn into(self) -> api::RoundSummary {
+impl Into<api::RoundScore> for RoundScore {
+    fn into(self) -> api::RoundScore {
         use self::RoundScore::*;
         match self {
-            Failed => api::RoundSummary::Failed,
-            Absent => api::RoundSummary::Absent,
-            Artist(score) => api::RoundSummary::Artist(score),
-            Guessed(score) => api::RoundSummary::Guessed(score),
+            Failed => api::RoundScore::Failed,
+            Absent => api::RoundScore::Absent,
+            Artist(score) => api::RoundScore::Artist(score),
+            Guessed(score) => api::RoundScore::Guessed(score),
         }
     }
 }
@@ -83,8 +81,8 @@ struct Player {
     score:       Vec<RoundScore>,
     has_guessed: bool,
 }
-impl Into<(Name, api::RoundSummary)> for Player {
-    fn into(self) -> (Name, api::RoundSummary) {
+impl Into<(Name, api::RoundScore)> for Player {
+    fn into(self) -> (Name, api::RoundScore) {
         let Player {
             name, mut score, ..
         } = self;
@@ -117,16 +115,16 @@ macro_rules! broadcast {
 #[rustfmt::skip]
 static WORD_LIST: [&str; 256] = [ "Aardvark", "Albatross", "Alligator", "Alpaca", "Ant", "Anteater", "Antelope", "Ape", "Armadillo", "Baboon", "Badger", "Barracuda", "Bat", "Bear", "Beaver", "Bee", "Beetle", "Bird", "Bison", "Boar", "Bobcat", "Buffalo", "Bull", "Butterfly", "Camel", "Caribou", "Cassowary", "Cat", "Caterpillar", "Cattle", "Chameleon", "Chamois", "Cheetah", "Chicken", "Chimpanzee", "Chinchilla", "Chipmunk", "Chough", "Civet", "Coati", "Cobra", "Cockroach", "Cod", "Cormorant", "Cougar", "Cow", "Coyote", "Crab", "Crane", "Crocodile", "Crow", "Cuckoo", "Curlew", "Deer", "Dinosaur", "Doe", "Dog", "Dogfish", "Dolphin", "Donkey", "Dotterel", "Dove", "Dragonfly", "Dromedary", "Duck", "Dugong", "Dunlin", "Eagle", "Echidna", "Eel", "Eland", "Elephant", "ElephantSeal", "Elk", "Emu", "Falcon", "Ferret", "Finch", "Fish", "Flamingo", "Fly", "Fox", "Frog", "Gaur", "Gazelle", "Gerbil", "GiantPanda", "Giraffe", "Gnat", "Gnu", "Goat", "Goldfinch", "Goosander", "Goose", "Gorilla", "Goshawk", "Grasshopper", "Grouse", "Guanaco", "GuineaFowl", "GuineaPig", "Gull", "Hamster", "Hare", "Hawk", "Hedgehog", "Heron", "Herring", "Hippo", "Hornet", "Horse", "Hummingbird", "Hyena", "Ibex", "Ibis", "Impala", "Jackal", "Jaguar", "Jay", "Jellyfish", "Kangaroo", "Kinkajou", "Kitten", "Kiwi", "Koala", "KomodoDragon", "Kouprey", "Kudu", "Ladybug", "Lapwing", "Lark", "Lemur", "Leopard", "Lion", "Lizard", "Llama", "Lobster", "Locust", "Loris", "Louse", "Lynx", "Lyrebird", "Magpie", "Mallard", "Mammoth", "Manatee", "Mandrill", "Marmoset", "Mink", "Mole", "Mongoose", "Monkey", "Moose", "Mosquito", "Moth", "Mouse", "Narwhal", "Newt", "Nightlingale", "Ocelot", "Octopus", "Okapi", "Opossum", "Ostrich", "Otter", "Owl", "Oyster", "Panda", "Panther", "Parrot", "Partridge", "Peafowl", "Pelican", "Penguin", "Pheasant", "Pig", "Pigeon", "Pika", "PolarBear", "Polecat", "Pony", "Porcupine", "Porpoise", "PrairieDog", "Pug", "Puma", "Puppy", "Quail", "Quelea", "Quetzal", "Rabbit", "Raccoon", "Ram", "Rat", "Raven", "RedDeer", "RedPanda", "Reindeer", "Rhinoceros", "Rook", "Rooster", "Salamander", "Salmon", "SandDollar", "Sandpiper", "Sardine", "SeaLion", "Seahorse", "Seal", "Shark", "Sheep", "Shrew", "Siamang", "Skunk", "Sloth", "Slug", "Snail", "Snake", "Snowshoe", "Sow", "Sparrow", "Spider", "Squid", "Squirrel", "Stalion", "Starling", "Stegosaurus", "Stoat", "Swan", "Tapir", "Tarsier", "Termite", "Tiger", "Toad", "Tortoise", "Turkey", "Turtle", "Vicuna", "Viper", "Vole", "Vulture", "Wallaby", "Walrus", "Wasp", "WaterBuffalo", "Weasel", "Whale", "Wolf", "Wolverine", "Wombat", "Woodpecker", "Worm", "Wren", "Yak", "Zebra", "Zebu" ];
 
-const ROUND_LENGTH: i16 = 20;
+const ROUND_LENGTH: i16 = 30;
 
-const TICK_UPDATE: Duration = Duration::from_secs(2);
+const TICK_UPDATE: Duration = Duration::from_secs(10);
 
 fn sync_msg(
     state: GameState,
-    events: impl Iterator<Item = GameEvent>,
+    events: impl Iterator<Item = VisibleEvent>,
 ) -> api::GameMsg {
-    use api::{GameMsg::Info, InfoMsg::Sync_};
-    Info(Sync_(state, events.collect()))
+    use api::{GameMsg::HiddenEvent, HiddenEvent::Sync_};
+    HiddenEvent(Sync_(state, events.collect()))
 }
 
 impl Game {
@@ -160,7 +158,7 @@ impl Game {
                 ..
             } => {
                 let round_state = api::RoundState {
-                    players: list!(|(_, p)| (p.name.clone(), vec![])),
+                    scores:  self.player_scores().collect(),
                     artist:  self.players[artist].name.clone(),
                     timeout: ROUND_LENGTH
                         - round_start_time.elapsed().as_secs() as i16,
@@ -178,9 +176,11 @@ impl Game {
         instigator: Option<Id>,
     ) -> Option<(Broadcast, Cmd)> {
         use self::api::{
-            GameMsg,
+            GameMsg::HiddenEvent,
             Guess::{Artist, Guess},
+            HiddenEvent::Start,
             RoundStart,
+            VisibleEvent::SyncStart,
         };
         macro_rules! start_round {
             ($next_artist:expr) => {{
@@ -189,6 +189,7 @@ impl Game {
                     player.score.push(RoundScore::Absent);
                     player.has_guessed = id == $next_artist;
                 });
+                let artist = self.players[$next_artist].name.clone();
                 let word = WORD_LIST[rand::random::<u8>() as usize];
                 self.state = Game_::Playing {
                     drawing: vec![],
@@ -197,12 +198,13 @@ impl Game {
                     round_start_time: Instant::now(),
                 };
                 let make_msg = |word| {
-                    GameMsg::Classic(ClassicMsg::Start(RoundStart {
+                    HiddenEvent(Start(RoundStart {
                         timeout: ROUND_LENGTH,
-                        artist: self.players[$next_artist].name.clone(),
+                        artist: artist.clone(),
                         word,
                     }))
                 };
+                self.game_log.push_front(SyncStart(artist.clone()));
                 let msg = make_msg(Guess(word.chars().count()));
                 let artist_msg = make_msg(Artist(word.to_string()));
                 let delay = TICK_UPDATE;
@@ -243,7 +245,7 @@ impl Game {
         }
     }
 
-    fn player_scores(&self) -> impl Iterator<Item = (Name, api::RoundSummary)> {
+    fn player_scores(&self) -> impl Iterator<Item = (Name, api::RoundScore)> {
         self.players
             .clone()
             .into_iter()
@@ -322,8 +324,8 @@ impl game::Game<Id> for Game {
         {
             JoinResponse::Refuse
         } else {
-            use self::Game_::*;
-            self.game_log.push_front(GameEvent::Joined(name.clone()));
+            use self::{api::VisibleEvent, Game_::*};
+            self.game_log.push_front(VisibleEvent::Joined(name.clone()));
             let rounds = self.round_no as usize;
             let rounds_elapsed: usize = match self.state {
                 Playing { .. } | RoundResults { .. } => rounds + 1,
@@ -350,20 +352,20 @@ impl game::Game<Id> for Game {
 
     fn leaves(&mut self, player: Id) -> LeaveResponse<Id, api::GameMsg, ()> {
         use self::api::{
-            ClassicMsg::Over,
-            GameMsg::{Classic, Info},
-            InfoMsg::Mastery,
+            GameMsg::HiddenEvent,
+            HiddenEvent::{Mastery, Over},
+            VisibleEvent::{Left, SyncOver},
         };
         match self.players.remove(player) {
             Some(Player { name, .. }) => {
-                self.game_log.push_front(GameEvent::Left(name.clone()));
+                self.game_log.push_front(Left(name.clone()));
                 if let Some((id, _)) = self.players.iter().next() {
                     let response = match self.state {
                         Game_::Lobby {
                             ref mut room_leader,
                         } if *room_leader == player => {
                             *room_leader = id;
-                            broadcast!(to_unique, id, Info(Mastery))
+                            broadcast!(to_unique, id, HiddenEvent(Mastery))
                         }
                         Game_::Playing {
                             ref mut artist,
@@ -371,7 +373,10 @@ impl game::Game<Id> for Game {
                             ..
                         } if *artist == player => {
                             *artist = id;
-                            let msg = Classic(Over(word.to_string(), vec![]));
+                            let scores = self.player_scores().collect();
+                            let msg =
+                                HiddenEvent(Over(word.to_string(), scores));
+                            self.game_log.push_back(SyncOver(word.to_string()));
                             broadcast!(to_all, msg)
                         }
                         _ => broadcast!(nothing),
@@ -393,10 +398,14 @@ impl game::Game<Id> for Game {
         player: Id,
         request: api::GameReq,
     ) -> Result<(Broadcast, Cmd), ()> {
-        use self::api::{GameMsg, GameReq, InfoRequest};
+        use self::api::{
+            GameMsg::{self, VisibleEvent},
+            GameReq,
+            VisibleEvent::Message,
+        };
         let msg = match request {
-            GameReq::Info(InfoRequest::Sync_) => None,
-            GameReq::Info(InfoRequest::Start) => self.start_round(Some(player)),
+            GameReq::Sync_ => None,
+            GameReq::Start => self.start_round(Some(player)),
             GameReq::Canvas(msg) => {
                 // TODO: write this better
                 if let Game_::Playing {
@@ -436,13 +445,15 @@ impl game::Game<Id> for Game {
                     if player != artist && word.as_bytes() == content.as_bytes()
                     {
                         use api::{
-                            ClassicMsg::{Correct, Guessed},
-                            GameMsg::Classic,
+                            GameMsg::{HiddenEvent, VisibleEvent},
+                            HiddenEvent::Correct,
+                            VisibleEvent::Guessed,
                         };
                         let all_guessed = self.guesses_correctly(player);
                         let guesser = self.players[player].name.clone();
-                        let msg = Classic(Guessed(guesser));
-                        let correct = Some(Classic(Correct(word.to_string())));
+                        let msg = VisibleEvent(Guessed(guesser));
+                        let correct =
+                            Some(HiddenEvent(Correct(word.to_string())));
                         let cmd = if all_guessed {
                             let end_round = Feedback {
                                 sent_round: self.round_no,
@@ -463,14 +474,13 @@ impl game::Game<Id> for Game {
                     None
                 }
                 .unwrap_or_else(|| {
-                    let final_msg = ChatMsg {
+                    let final_msg = Message(ChatMsg {
                         content,
                         author: self.players[player].name.clone(),
-                    };
-                    let log_item = GameEvent::Message(final_msg.clone());
-                    self.game_log.push_front(log_item);
+                    });
+                    self.game_log.push_front(final_msg.clone());
                     Some((
-                        broadcast!(to_all, GameMsg::Chat(final_msg)),
+                        broadcast!(to_all, VisibleEvent(final_msg)),
                         game::Cmd::None,
                     ))
                 })
@@ -490,7 +500,11 @@ impl game::Game<Id> for Game {
         Feedback { msg, sent_round }: Feedback,
     ) -> Result<(Broadcast, Cmd), ()> {
         use self::{
-            api::{ClassicMsg, GameMsg::Classic},
+            api::{
+                GameMsg::HiddenEvent,
+                HiddenEvent::{Over, Reveal, TimeoutSync},
+                VisibleEvent::SyncOver,
+            },
             Feedback_::*,
             Game_::*,
         };
@@ -503,7 +517,7 @@ impl game::Game<Id> for Game {
                 let mut rng = rand::thread_rng();
                 let (index, letter) =
                     word.chars().enumerate().choose(&mut rng).unwrap();
-                let msg = Classic(ClassicMsg::Reveal(index, letter));
+                let msg = HiddenEvent(Reveal(index, letter));
                 Ok((
                     broadcast!(to_all_but, *artist, msg, None),
                     game::Cmd::None,
@@ -512,14 +526,14 @@ impl game::Game<Id> for Game {
             (Playing { word, .. }, EndRound) => {
                 let word = word.to_string();
                 self.end_round();
-                let send =
-                    ClassicMsg::Over(word, self.player_scores().collect());
+                self.game_log.push_front(SyncOver(word.clone()));
+                let send = Over(word, self.player_scores().collect());
                 let msg = Feedback_::NextRound;
                 let cmd = game::Cmd::In(
                     Duration::from_secs(3),
                     Feedback { sent_round, msg },
                 );
-                Ok((broadcast!(to_all, Classic(send)), cmd))
+                Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
             }
             (
                 Playing {
@@ -532,24 +546,24 @@ impl game::Game<Id> for Game {
                 let timeout =
                     ROUND_LENGTH - round_start_time.elapsed().as_secs() as i16;
                 let (classic_reply, cmd) = if timeout <= 0 {
-                    let word = word.to_string();
+                    self.game_log.push_front(SyncOver(word.to_string()));
+                    let word_s = word.to_string();
                     self.end_round();
-                    let send =
-                        ClassicMsg::Over(word, self.player_scores().collect());
+                    let send = Over(word_s, self.player_scores().collect());
                     let msg = Feedback_::NextRound;
                     let cmd = game::Cmd::In(
                         Duration::from_secs(3),
                         Feedback { sent_round, msg },
                     );
-                    (Classic(send), cmd)
+                    (HiddenEvent(send), cmd)
                 } else {
-                    let send = ClassicMsg::TimeoutSync(timeout);
+                    let send = TimeoutSync(timeout);
                     let msg = Feedback_::TickTimeout;
                     let cmd = game::Cmd::In(
                         TICK_UPDATE,
                         Feedback { sent_round, msg },
                     );
-                    (Classic(send), cmd)
+                    (HiddenEvent(send), cmd)
                 };
                 Ok((broadcast!(to_all, classic_reply), cmd))
             }
@@ -557,7 +571,7 @@ impl game::Game<Id> for Game {
                 Ok(self.start_round(None).unwrap())
             }
             (_state, feedback) => {
-                error!("invalid feedback: {:?} for game state", feedback);
+                warn!("invalid feedback: {:?} for game state", feedback);
                 Ok((broadcast!(nothing), game::Cmd::None))
             }
         }

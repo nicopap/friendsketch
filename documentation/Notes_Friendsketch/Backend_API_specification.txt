@@ -107,39 +107,30 @@ Color ~= #[0-9a-f]{6}
 Size = Float
 ChatContent = String
 
-GameEvent
-	= { left: Name }
-	| { joined: Name }
-	| { message: ChatMsg }
-	-- TODO: add "Guessed" "NewRound" etc
-
-
-RoundSummary
+RoundScore
 	= { artist: Score}
 	| { guessed: Score}
 	| { failed: () }
 	| { absent: () }
 	
-
 LobbyState =
 	{ players: [Name]
 	, master: Name
 	}
 
 RoundState =
-	{ players: [ (Name, [RoundSummary]) ]
+	{ scores: [ (Name, RoundScore) ]
 	, artist: Name
 	, timeout: Int
 	}
 
-ScoresState =
-	{ scores: [ (Name, [RoundSummary]) ]
-	}
+Scoreboard = [ (Name, [RoundScore]) ]
 
 Drawing = [ (Point, [ Point ], Color, Size) ]
 
 GameState
-	= { summary: ScoresState }
+	= { scores: [ (Name, RoundScore) ] }
+	| { endsummary: Scoreboard }
 	| { round: (Drawing, RoundState) }
 	| { lobby: LobbyState }
 
@@ -148,31 +139,16 @@ CanvasMsg
 	| { end: () }
 	| { continue: Point }
 
-InfoMsg
-	= { joined: Name }
-	| { left: Name }
-	| { sync: (GameState, [ GameEvent ]) }
-	| { mastery: () }
-
-InfoRequest
-	= { sync: () }
-	| { start: () }
-
 GameReq
 	= { canvas: CanvasMsg }
 	| { chat: ChatContent }
-	| { info: InfoRequest }
+	| { sync: () }
+	| { start: () }
 
 ChatMsg =
 	{ content: ChatContent
 	, author: Name
 	}
-
-GameMsg
-	= { canvas: CanvasMsg }
-	| { chat: ChatMsg }
-	| { info: InfoMsg }
-	| { classic: ClassicMsg }
 
 WordGuess
 	= { artist: String }
@@ -184,13 +160,26 @@ RoundStart =
 	, word: WordGuess
 	}
 
-ClassicMsg
+VisibleGameEvent
 	= { guessed: Name }
-	| { correct: String }
+	| { left: Name }
+	| { joined: Name }
+	| { message: ChatMsg }
+	| { syncstart: Name }
+	| { syncover: String }
+
+HiddenGameEvent
+	= { correct: String }
 	| { timeoutsync: Int }
-	| { over: (String, [ (Name, RoundSummary) ]) }
+	| { sync: (GameState, [ VisibleGameEvent ]) }
+	| { mastery: () }
+	| { over: (String, [ (Name, RoundScore) ]) }
 	| { start: RoundStart }
 	| { reveal: (Int, Char) }
+
+GameMsg
+	= { canvas: CanvasMsg }
+	| { event: VisibleGameEvent | HiddenGameEvent }
 '''
 
 

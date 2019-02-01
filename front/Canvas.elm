@@ -1,12 +1,11 @@
 module Canvas
     exposing
-        ( Msg
+        ( Msg(Server)
         , Canvas
-        , State(..)
+        , Kind(..)
         , new
         , view
         , update
-        , subsAdaptor
         )
 
 import Tuple exposing (mapFirst, mapSecond)
@@ -51,12 +50,18 @@ type ArtistMsg
 
 The canvas knows whether to send and allow drawing with its state:
 
-  - `Spectator` : Cannot draw, draws what the server asks to draw.
-  - `Artist` : Can draw, will send to the server the strokes.
-  - `Pregame` : Can draw, but do not send strokes to the server. This is to
+  - `Receiver` : Cannot draw, draws what the server asks to draw.
+  - `Sender` : Can draw, will send to the server the strokes.
+  - `Demo` : Can draw, but do not send strokes to the server. This is to
     fill time when the user cannot draw or see someone else draw.
 
 -}
+type Kind
+    = Receiver (List Stroke)
+    | Sender
+    | Demo
+
+
 type State
     = Spectator
     | Artist
@@ -77,17 +82,22 @@ type alias Canvas =
 
 {-| An initial canvas.
 -}
-new : List Stroke -> State -> Canvas
-new strokes state =
-    { strokes = strokes
-    , state = state
-    , pen = Away
-    , color = Color.black
-    , strokeSize = 20
-    , width = 600
-    , height = 400
-    , toolbox = Toolbox.new
-    }
+new : Kind -> Canvas
+new kind =
+    let (strokes, state) =
+            case kind of
+                Receiver strokes -> (strokes, Spectator)
+                Sender -> ([], Artist)
+                Demo -> ([], Pregame)
+    in  { strokes = strokes
+        , state = state
+        , pen = Away
+        , color = Color.black
+        , strokeSize = 20
+        , width = 600
+        , height = 400
+        , toolbox = Toolbox.new
+        }
 
 
 cmd : msg -> Cmd msg
@@ -412,15 +422,3 @@ update msg canvas =
             ( msg_, state ) ->
                 ( Debug.log "Inconsistent state!" canvas, Nothing )
 
-
-subsAdaptor : Canvas -> Maybe (Api.CanvasMsg -> Msg)
-subsAdaptor { state } =
-    case state of
-        Spectator ->
-            Just Server
-
-        Artist ->
-            Nothing
-
-        Pregame ->
-            Nothing

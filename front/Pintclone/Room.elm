@@ -1,6 +1,7 @@
 module Pintclone.Room
     exposing
         ( newInLobby
+        , joinBreak
         , joinRound
         , joins
         , leaves
@@ -10,8 +11,6 @@ module Pintclone.Room
         , view
         , alone
         , Room
-        , Artist(Me, Another)
-        , MasterStatus(Master, Peasant)
         )
 
 {-| Manages state changes related to the user list.
@@ -34,30 +33,18 @@ type alias Room =
     }
 
 
-type Artist
-    = Me
-    | Another Api.Name
-
-
 type State
-    = NormalWith (Nonempty Api.Name)
+    = LobbyWith (Nonempty Api.Name)
     | MasterOf (Nonempty Api.Name)
     | PlayingWith (Nonempty Api.Name) -- head is the artist
     | ArtistWith (Nonempty Api.Name)
+    | BreakWith (Nonempty Api.Name)
     | Alone
-
-
-{-| If the current user is master or not, used as flag for the
-`newInLobby` function.
--}
-type MasterStatus
-    = Master
-    | Peasant
 
 
 {-| newInLobby, returns an initialized Room
 
-    Room.newLInobby user userList
+    Room.newInLobby user userList
 
 Is the room state during the "lobby" period of the game where the current
 user is `user` and the other users are `userList`. The empty list case is
@@ -65,8 +52,8 @@ handled properly.
 
 In order to initialize the room during a "round", see `joinRound`.
 -}
-newInLobby : MasterStatus -> Api.Name -> List Api.Name -> Room
-newInLobby status me opponentsList_ =
+newInLobby : Api.Name -> Api.Name -> List Api.Name -> Room
+newInLobby master me opponentsList_ =
     let
         opponentsList =
             List.filter ((/=) me) opponentsList_
@@ -76,24 +63,36 @@ newInLobby status me opponentsList_ =
                 Room me Alone
 
             h :: t ->
-                case status of
-                    Master ->
+                case master == me of
+                    True ->
                         Room me <| MasterOf <| uniq <| Nonempty h t
 
-                    Peasant ->
-                        Room me <| NormalWith <| uniq <| Nonempty h t
+                    False ->
+                        Room me <| LobbyWith <| uniq <| Nonempty h t
+
+
+{-| Create a room for player joining while the scores are shown
+-}
+joinBreak : Api.Name -> List Api.Name -> Room
+joinBreak me opponentsList_ =
+    let
+        opponentsList = List.filter (\n -> n /= me) opponentsList_
+    in
+        case opponentsList of
+            [] -> Room me Alone
+            h :: t -> Room me <| BreakWith <| uniq <| Nonempty h t
 
 
 {-| Create a room in "round" state.
 -}
-joinRound : Api.Name -> List Api.Name -> Artist -> Room
+joinRound : Api.Name -> List Api.Name -> Api.Name -> Room
 joinRound me opponentsList_ artist =
     let
         opponentsList =
-            List.filter ((/=) me) opponentsList_
+            List.filter (\n -> n /= me && n /= artist) opponentsList_
     in
-        case artist of
-            Me ->
+        case artist == me of
+            True ->
                 case opponentsList of
                     [] ->
                         Room me Alone
@@ -101,8 +100,8 @@ joinRound me opponentsList_ artist =
                     h :: t ->
                         Room me <| ArtistWith <| uniq <| Nonempty h t
 
-            Another name ->
-                Room me <| PlayingWith <| uniq <| Nonempty name opponentsList
+            False ->
+                Room me <| PlayingWith <| uniq <| Nonempty artist opponentsList
 
 
 {-| Remove a name from the opponents list, operation on the state.
@@ -133,8 +132,11 @@ popState leaving state =
             Alone ->
                 Alone
 
-            NormalWith opponents ->
-                removeFromState NormalWith opponents
+            BreakWith opponents ->
+                removeFromState BreakWith opponents
+
+            LobbyWith opponents ->
+                removeFromState LobbyWith opponents
 
             MasterOf opponents ->
                 removeFromState MasterOf opponents
@@ -147,7 +149,7 @@ popState leaving state =
                             Alone
 
                         h :: t ->
-                            removeFromState NormalWith <| Nonempty h t
+                            removeFromState BreakWith <| Nonempty h t
                 else
                     removeFromState PlayingWith <| Nonempty artist opponents
 
@@ -163,8 +165,11 @@ pushState joining state =
         Alone ->
             MasterOf <| fromElement joining
 
-        NormalWith opponents ->
-            NormalWith <| uniq <| cons joining opponents
+        BreakWith opponents ->
+            BreakWith <| uniq <| cons joining opponents
+
+        LobbyWith opponents ->
+            LobbyWith <| uniq <| cons joining opponents
 
         MasterOf opponents ->
             MasterOf <| uniq <| cons joining opponents
@@ -184,7 +189,7 @@ This does nothing if the `state` is in a "Round" state.
 masterState : State -> State
 masterState state =
     case state of
-        NormalWith opponents ->
+        LobbyWith opponents ->
             MasterOf opponents
 
         anyelse ->
@@ -228,8 +233,9 @@ setArtist newArtist { me, state } =
                     { me = me, state = newState }
     in
         case state of
+            BreakWith others   -> updateState others
             PlayingWith others -> updateState others
-            NormalWith others  -> updateState others
+            LobbyWith others   -> updateState others
             ArtistWith others  -> updateState others
             MasterOf others    -> updateState others
             anyelse -> { me = me, state = anyelse }
@@ -241,14 +247,9 @@ setArtist newArtist { me, state } =
 isMaster : Room -> Bool
 isMaster { state } =
     case state of
-        Alone ->
-            True
-
-        MasterOf _ ->
-            True
-
-        _ ->
-            False
+        Alone -> True
+        MasterOf _ -> True
+        _ -> False
 
 
 {-| Whether the room contains only the current player
@@ -296,7 +297,10 @@ view ({ me, state } as room) =
             Alone ->
                 nameList Nothing <| fromElement me
 
-            NormalWith opponents ->
+            BreakWith opponents ->
+                nameList Nothing (me ::: opponents)
+
+            LobbyWith opponents ->
                 nameList Nothing (me ::: opponents)
 
             MasterOf opponents ->

@@ -201,7 +201,7 @@ fn oversee<
 where
     G::Request: From<api::GameReq>,
 {
-    use self::api::{GameMsg, InfoMsg};
+    use self::api::GameMsg::VisibleEvent;
     match msg {
         ManagerRequest::Join(name, ws) => {
             if let Some(id) = manager.hangups.join(name) {
@@ -247,7 +247,7 @@ where
                     } else {
                         error!("game user {} wasn't connected: {}", name, room)
                     };
-                    let msg = GameMsg::Info(InfoMsg::Left(name));
+                    let msg = VisibleEvent(api::VisibleEvent::Left(name));
                     manager.broadcast(Broadcast::ToAll(msg));
                     manager.broadcast(broadcast);
                 }
@@ -274,7 +274,7 @@ where
             JoinResponse::Accept(id) => {
                 info!("Adding {} to {}", name, manager.room_name);
                 debug!("with id: {:?}", id);
-                let msg = GameMsg::Info(InfoMsg::Joined(name.clone()));
+                let msg = VisibleEvent(api::VisibleEvent::Joined(name.clone()));
                 manager.broadcast(Broadcast::ToAll(msg));
                 manager.hangups.accept(name, id);
                 manager.respond.send(ManagerResponse::Accept);
@@ -402,7 +402,9 @@ where
                 .map_err(|ws_err| error!("ws send: {}", ws_err)),
         );
         self.connections.insert(id, Connection(buffer_sink));
-        let client_stream = socket_stream.map(move |msg| {
+        let client_stream = socket_stream
+            .inspect(|req| debug!("ws receive: {:?}", req))
+            .map(move |msg| {
             msg.to_str()
                 .map_err(|()| Error::custom("invalid string"))
                 .and_then(from_str)

@@ -129,15 +129,7 @@ pub type Point = (i32, i32);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum GameEvent {
-    Left(Name),
-    Joined(Name),
-    Message(ChatMsg),
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum RoundSummary {
+pub enum RoundScore {
     Artist(Score),
     Guessed(Score),
     Failed,
@@ -146,10 +138,12 @@ pub enum RoundSummary {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct RoundState {
-    pub players: Vec<(Name, Vec<RoundSummary>)>,
+    pub scores:  Vec<(Name, RoundScore)>,
     pub artist:  Name,
     pub timeout: i16,
 }
+
+type Scoreboard = Vec<(Name, Vec<RoundScore>)>;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Stroke(pub Point, pub Vec<Point>, pub Color, pub Size);
@@ -157,14 +151,10 @@ pub struct Stroke(pub Point, pub Vec<Point>, pub Color, pub Size);
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum GameState {
-    Summary {
-        scores: Vec<(Name, Vec<RoundSummary>)>,
-    },
+    Scores(Vec<(Name, RoundScore)>),
+    EndSummary(Scoreboard),
     Round(Vec<Stroke>, RoundState),
-    Lobby {
-        players: Vec<Name>,
-        master:  Name,
-    },
+    Lobby { players: Vec<Name>, master: Name },
 }
 
 #[derive(Debug, Deserialize)]
@@ -187,30 +177,14 @@ pub enum CanvasMsg {
     Continue(Point),
 }
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum InfoMsg {
-    Joined(Name),
-    Left(Name),
-    #[serde(rename = "sync")]
-    Sync_(GameState, Vec<GameEvent>),
-    Mastery,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum InfoRequest {
-    #[serde(rename = "sync")]
-    Sync_,
-    Start,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GameReq {
     Canvas(CanvasMsg),
-    Info(InfoRequest),
     Chat(ChatContent),
+    #[serde(rename = "sync")]
+    Sync_,
+    Start,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -223,9 +197,10 @@ pub struct ChatMsg {
 #[serde(rename_all = "lowercase")]
 pub enum GameMsg {
     Canvas(CanvasMsg),
-    Info(InfoMsg),
-    Chat(ChatMsg),
-    Classic(ClassicMsg),
+    #[serde(rename = "event")]
+    VisibleEvent(VisibleEvent),
+    #[serde(rename = "event")]
+    HiddenEvent(HiddenEvent),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -244,11 +219,24 @@ pub struct RoundStart {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ClassicMsg {
+pub enum VisibleEvent {
     Guessed(Name),
+    Left(Name),
+    Joined(Name),
+    Message(ChatMsg),
+    SyncStart(Name),
+    SyncOver(String),
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum HiddenEvent {
     Correct(String),
     TimeoutSync(i16),
-    Over(String, Vec<(Name, RoundSummary)>),
+    #[serde(rename = "sync")]
+    Sync_(GameState, Vec<VisibleEvent>),
+    Mastery,
+    Over(String, Vec<(Name, RoundScore)>),
     Start(RoundStart),
     Reveal(usize, char),
 }

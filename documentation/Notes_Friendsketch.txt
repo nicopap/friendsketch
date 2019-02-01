@@ -26,14 +26,11 @@ Some sections relates to the design and the choices behind it, other to the expe
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
 
 > Concider having a simpler way to get someone to join game (for exemple with URL)
-> Reimplement concept for unselected custom colors
 
 > Possible optimisation: serialize ''GameEvent'' when adding them to game log
 
 ===== Current roadmap =====
 * Improve how the backend handles stuff
-	* Implement game logic
 * Add tests
-* Improve client layout: room name field etc.
 * Better random words
 

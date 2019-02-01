@@ -7,25 +7,26 @@ Created Tuesday 26 September 2017
 
 ===== Chat =====
 
-* Feedback on wrong message, server messages
 * Remove ''Ghost'' for messages that are not sent back (like successful guesses)
-* Implement chat messages for ''ClassicMsg'' messages
 
 ===== Game =====
 
-* disable drawing control for ''Spectator''
+* disable toolbox control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
 * FRONTEND: Implement "between round state" before ''start'' and after ''over'' 
 * Add score changes to ''Room'' and all the ravioli
 * Tick down the clock on frontend
 * Do not relay messages from artist containing word to guess
 
+==== Client ====
+* Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
+
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
 * Better management of players:
-	* Each player have a different internal state, game server needs to keep track of that
-
+	* Have state "Playing" for player scores, separating players from people joining midgame
+	* Which would also help for when the artist leaves
 
 ===== Game Event Log =====
 

@@ -22,7 +22,7 @@ type Word
 
 
 type Msg
-    = RevealLetter Int Char
+    = RevealOne Int Char
     | SetTimeout Int
     | RevealAll String
 
@@ -58,7 +58,7 @@ reveal index char word =
 update : Msg -> Guess -> Guess
 update msg (Word guess) =
     case msg of
-        RevealLetter index char ->
+        RevealOne index char ->
             Word { guess | word = reveal index char guess.word }
 
         RevealAll completeWord ->

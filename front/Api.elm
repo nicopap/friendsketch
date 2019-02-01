@@ -13,26 +13,25 @@ module Api
         , reportError
         , LobbyState
         , RoundState
-        , GameEvent(..)
-        , ScoresState
+        , Scoreboard
         , Stroke
         , Drawing
         , GameState(..)
-        , InfoMsg(..)
-        , InfoRequest(..)
         , GameMsg(..)
         , GameReq(..)
         , wsListen
         , wsSend
         , CanvasMsg(..)
         , ListenError(DecodeError, BadSend)
-        , ChatMsg_
+        , ChatMsg
         , ChatContent
         , validChatContent
         , showChatContent
         , Guess(..)
-        , ClassicMsg(..)
-        , RoundStart_
+        , RoundStart
+        , RoundScore(..)
+        , VisibleEvent(..)
+        , HiddenEvent(..)
         )
 
 {-| Exposes the necessary functions and types to access the backend Api.
@@ -237,7 +236,7 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
         address =
             "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
 
-        decodeWithNiceError serverResponse =
+        withNiceError serverResponse =
             case serverResponse of
                 NeatSocket.Message toDecode ->
                     Dec.decodeString decoderGameMsg toDecode
@@ -249,56 +248,26 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
                 NeatSocket.Refused ->
                     Err BadSend
     in
-        case continuation of
-            Nothing ->
-                NeatSocket.keepAlive address
-
-            Just continuation_ ->
-                NeatSocket.listen address <|
-                    continuation_ << decodeWithNiceError
+        continuation
+            |> Maybe.map (\c -> NeatSocket.listen address (c << withNiceError))
+            |> Maybe.withDefault Sub.none
 
 
---- GameEvent ---
-
-
-
-type GameEvent
-    = EventLeft Name
-    | EventJoined Name
-    | EventMessage ChatMsg_
-
-
-decoderGameEvent : Decoder GameEvent
-decoderGameEvent =
-    let
-        intoChatMsg content author =
-            EventMessage <| ChatMsg_ content author
-    in
-        oneOf
-            [ "joined" := EventJoined <*| decoderName
-            , "left" := EventLeft <*| decoderName
-            , "message" := intoChatMsg
-                <*| "content" :* Dec.map ChatContent_ Dec.string
-                |*| "author" :* Dec.map Name_ Dec.string
-            ]
-
-
-
---- RoundSummary ---
+--- RoundScore ---
 
 
 type alias Score = Int
 
 
-type RoundSummary
+type RoundScore
     = WasArtist Score
     | HasGuessed Score
     | HasFailed
     | WasAbsent
 
 
-decoderRoundSummary : Decoder RoundSummary
-decoderRoundSummary =
+decoderRoundScore : Decoder RoundScore
+decoderRoundScore =
     oneOf
         [ "artist" := WasArtist <*| Dec.int
         , "guessed" := HasGuessed <*| Dec.int
@@ -306,28 +275,21 @@ decoderRoundSummary =
         , "absent" :- WasAbsent
         ]
 
+type alias Scoreboard = List (Name, List RoundScore)
 
-decoderScore : Decoder (List (Name, List RoundSummary))
+decoderScoreboard : Decoder Scoreboard
+decoderScoreboard =
+    Dec.list ((,)
+        <*| 0 :^ decoderName
+        |*| 1 :^ Dec.list decoderRoundScore
+    )
+
+decoderScore : Decoder (List (Name, RoundScore))
 decoderScore =
     Dec.list ((,)
         <*| 0 :^ decoderName
-        |*| 1 :^ Dec.list decoderRoundSummary
-        )
-
-
-
---- ScoresState ---
-
-
-type alias ScoresState =
-    { scores : List (Name, List RoundSummary)
-    }
-
-
-decoderScoresState : Decoder ScoresState
-decoderScoresState =
-    ScoresState
-        <*| "scores" :* decoderScore
+        |*| 1 :^ decoderRoundScore
+    )
 
 
 
@@ -352,7 +314,7 @@ decoderLobbyState =
 
 
 type alias RoundState =
-    { playerScores : List (Name, List RoundSummary)
+    { playerScores : List (Name, RoundScore)
     , artist : Name
     , timeout : Int
     }
@@ -361,7 +323,7 @@ type alias RoundState =
 decoderRoundState : Decoder RoundState
 decoderRoundState =
     RoundState
-        <*| "players" :* decoderScore
+        <*| "scores" :* decoderScore
         |*| "artist" :* decoderName
         |*| "timeout" :* Dec.int
 
@@ -399,7 +361,8 @@ decoderDrawing =
 
 
 type GameState
-    = Summary ScoresState
+    = Summary Scoreboard
+    | RoundScores (List (Name, RoundScore))
     | Round Drawing RoundState
     | Lobby LobbyState
 
@@ -407,51 +370,14 @@ type GameState
 decoderGameState : Decoder GameState
 decoderGameState =
     oneOf
-        [ "summary" := Summary <*| decoderScoresState
+        [ "endsummary" := Summary <*| decoderScoreboard
+        , "scores" := RoundScores <*| decoderScore
         , "round" := Round
             <*| 0 :^ decoderDrawing
             |*| 1 :^ decoderRoundState
         , "lobby" := Lobby <*| decoderLobbyState
         ]
 
-
-
---- InfoMsg ---
-
-
-type InfoMsg
-    = Joined Name
-    | Left Name
-    | Sync GameState (List GameEvent)
-    | Mastery
-
-
-decoderInfo : Decoder InfoMsg
-decoderInfo =
-    oneOf
-        [ "joined" := Joined <*| decoderName
-        , "left" := Left <*| decoderName
-        , "sync" := Sync
-            <*| 0 :^ decoderGameState
-            |*| 1 :^ Dec.list decoderGameEvent
-        , "mastery" :- Mastery
-        ]
-
-
-
---- InfoRequest ---
-
-
-type InfoRequest
-    = ReqSync
-    | ReqStart
-
-
-encoderInfoRequest : InfoRequest -> Value
-encoderInfoRequest infoRequest =
-    case infoRequest of
-        ReqSync -> Enc.string "sync"
-        ReqStart -> Enc.string "start"
 
 
 --- CanvasMsg ---
@@ -514,37 +440,38 @@ encoderCanvasMsg msg =
 
 type GameMsg
     = CanvasMsg CanvasMsg
-    | InfoMsg InfoMsg
-    | ChatMsg ChatMsg_
-    | ClassicMsg ClassicMsg
+    | VisibleEvent VisibleEvent
+    | HiddenEvent HiddenEvent
 
 
-type alias ChatMsg_ =
+
+type alias ChatMsg =
         { content : ChatContent
         , author : Name
         }
 
+decoderChatMsg : Decoder ChatMsg
+decoderChatMsg =
+    ChatMsg
+        <*| "content" :* Dec.map ChatContent_ Dec.string
+        |*| "author" :* Dec.map Name_ Dec.string
 
 type GameReq
     = CanvasReq CanvasMsg
-    | InfoReq InfoRequest
     | ChatReq ChatContent
+    | ReqStart
+    | ReqSync
 
 
 decoderGameMsg : Decoder GameMsg
 decoderGameMsg =
-    let
-        intoChatMsg content author =
-            ChatMsg <| ChatMsg_ content author
-    in
-        oneOf
-            [ "canvas" := CanvasMsg <*| decoderCanvasMsg
-            , "info" := InfoMsg <*| decoderInfo
-            , "chat" := intoChatMsg
-                <*| "content" :* Dec.map ChatContent_ Dec.string
-                |*| "author" :* Dec.map Name_ Dec.string
-            , "classic" := ClassicMsg <*| decoderClassicMsg
+    oneOf
+        [ "canvas" := CanvasMsg <*| decoderCanvasMsg
+        , "event" := oneOf
+            [ Dec.map VisibleEvent decoderVisibleEvent
+            , Dec.map HiddenEvent decoderHiddenEvent
             ]
+        ]
 
 encoderGameReq : GameReq -> Value
 encoderGameReq req =
@@ -552,39 +479,31 @@ encoderGameReq req =
         CanvasReq req_ ->
             Enc.object [ ("canvas", encoderCanvasMsg req_)]
 
-        InfoReq req_ ->
-            Enc.object [ ("info", encoderInfoRequest req_)]
-
         ChatReq (ChatContent_ req_) ->
             Enc.object [ ("chat", Enc.string req_)]
 
+        ReqSync -> Enc.string "sync"
+        ReqStart -> Enc.string "start"
 
 
----   ClassicMsg / Guess   ---
+
+---   Events / Guess   ---
 
 
-
-type ClassicMsg
-    = ClaGuessed Name
-    | ClaCorrect String
-    | ClaTimeout Int
-    | RoundOver String (List (Name, RoundSummary))
-    | RoundStart RoundStart_
-    | ClaReveal Int Char
 
 type Guess
     = ForArtist String
     | GuessOfLength Int
 
-type alias RoundStart_ =
+type alias RoundStart =
     { timeout : Int
     , artist : Name
     , word : Guess
     }
 
-decoderRoundStart : Decoder RoundStart_
+decoderRoundStart : Decoder RoundStart
 decoderRoundStart =
-    RoundStart_
+    RoundStart
         <*| "timeout" :* Dec.int
         |*| "artist" :* decoderName
         |*| "word" :* decoderGuess
@@ -596,26 +515,56 @@ decoderGuess =
         , "guess" := GuessOfLength <*| Dec.int
         ]
 
-decoderClassicMsg : Decoder ClassicMsg
-decoderClassicMsg =
-    let
-        decoderRoundOver =
-            Dec.map2 (,) (0 :^ decoderName) (1 :^ decoderRoundSummary)
+type VisibleEvent
+    = EvGuessed Name
+    | EvLeft Name
+    | EvJoined Name
+    | EvMessage ChatMsg
+    | EvStart Name
+    | EvOver String
 
+
+type HiddenEvent
+    = EhCorrect String
+    | EhTimeout Int
+    | EhSync GameState (List VisibleEvent)
+    | EhMastery
+    | EhOver String (List (Name, RoundScore))
+    | EhStart RoundStart
+    | EhReveal Int Char
+
+
+decoderVisibleEvent : Decoder VisibleEvent
+decoderVisibleEvent =
+    oneOf
+        [ "guessed" := EvGuessed <*| decoderName
+        , "left" := EvLeft <*| decoderName
+        , "joined" := EvJoined <*| decoderName
+        , "message" := EvMessage <*| decoderChatMsg
+        , "syncstart" := EvStart <*| decoderName
+        , "syncover" := EvOver <*| Dec.string
+        ]
+
+decoderHiddenEvent : Decoder HiddenEvent
+decoderHiddenEvent =
+    let
         decoderChar string =
             case String.toList string of
                 char::[] -> Dec.succeed char
                 _ -> Dec.fail "Character is not a character"
     in
         oneOf
-            [ "guessed" := ClaGuessed <*| decoderName
-            , "correct" := ClaCorrect <*| Dec.string
-            , "timeoutsync" := ClaTimeout <*| Dec.int
-            , "over" := RoundOver
+            [ "correct" := EhCorrect <*| Dec.string
+            , "timeoutsync" := EhTimeout <*| Dec.int
+            , "sync" := EhSync
+                <*| 0 :^ decoderGameState
+                |*| 1 :^ Dec.list decoderVisibleEvent
+            , "mastery" :- EhMastery
+            , "over" := EhOver
                 <*| 0 :^ Dec.string
-                |*| 1 :^ Dec.list decoderRoundOver
-            , "start" := RoundStart <*| decoderRoundStart
-            , "reveal" := ClaReveal
+                |*| 1 :^ decoderScore
+            , "start" := EhStart <*| decoderRoundStart
+            , "reveal" := EhReveal
                 <*| 0 :^ Dec.int
                 |*| 1 :^ (Dec.andThen decoderChar Dec.string)
             ]
