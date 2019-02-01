@@ -66,7 +66,10 @@ update msg (Word guess) =
             Word { guess | word = Completed completeWord }
 
         SetTimeout timeout ->
-            Word { guess | timeout = timeout }
+            if timeout < guess.timeout - 1 || timeout > guess.timeout + 1 then
+                Word { guess | timeout = timeout }
+            else
+                Word guess
 
         TickDown ->
             Word { guess | timeout = guess.timeout - 1 }
@@ -83,8 +86,11 @@ view (Word { word, timeout }) =
                 Nothing ->
                     a [ class "guess-hidden" ] [ text "_" ]
 
+        viewTimeoutValue =
+            if timeout < 0 then "···" else toString timeout
+
         viewTimeout =
-            a [ id "timer" ] [ text <| toString timeout ]
+            a [ id "timer" ] [ text viewTimeoutValue ]
 
         viewWord =
             case word of

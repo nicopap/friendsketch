@@ -19,7 +19,6 @@ Created Tuesday 26 September 2017
 
 ==== Client ====
 * Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
-* Handle "tick" to synchronize server sync event with client tickdown (don't change time if server time within one second of client time)
 
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc
