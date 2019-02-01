@@ -20,10 +20,9 @@ artist in the game part of the game.
 
 -}
 
-import Html as H exposing (Html, div, text, ul, li, label)
-import Html.Attributes exposing (id, class, align, classList)
-import List.Nonempty exposing (Nonempty(..), filter, uniq, fromElement, cons, toList, (:::), sortWith)
-import List exposing (map, sortBy)
+import Html as H exposing (Html, text, ul, li, a)
+import Html.Attributes exposing (id, classList)
+import List.Nonempty exposing (Nonempty(Nonempty), (:::), filter, fromElement, cons, toList, sortWith)
 import Api
 
 
@@ -53,55 +52,38 @@ handled properly.
 In order to initialize the room during a "round", see `joinRound`.
 -}
 newInLobby : Api.Name -> Api.Name -> List Api.Name -> Room
-newInLobby master me opponentsList_ =
-    let
-        opponentsList =
-            List.filter ((/=) me) opponentsList_
-    in
-        case opponentsList of
-            [] ->
-                Room me Alone
-
-            h :: t ->
-                case master == me of
-                    True ->
-                        Room me <| MasterOf <| uniq <| Nonempty h t
-
-                    False ->
-                        Room me <| LobbyWith <| uniq <| Nonempty h t
+newInLobby master me others =
+    case List.filter ((/=) me) others of
+        []   -> Room me Alone
+        h::t ->
+            if master == me then
+                Room me <| MasterOf <| Nonempty h t
+            else
+                Room me <| LobbyWith <| Nonempty h t
 
 
 {-| Create a room for player joining while the scores are shown
 -}
 joinBreak : Api.Name -> List Api.Name -> Room
-joinBreak me opponentsList_ =
-    let
-        opponentsList = List.filter (\n -> n /= me) opponentsList_
-    in
-        case opponentsList of
-            [] -> Room me Alone
-            h :: t -> Room me <| BreakWith <| uniq <| Nonempty h t
+joinBreak me others =
+    case List.filter (\n -> n /= me) others of
+        []   -> Room me Alone
+        h::t -> Room me <| BreakWith <| Nonempty h t
 
 
 {-| Create a room in "round" state.
 -}
 joinRound : Api.Name -> List Api.Name -> Api.Name -> Room
-joinRound me opponentsList_ artist =
+joinRound me others_ artist =
     let
-        opponentsList =
-            List.filter (\n -> n /= me && n /= artist) opponentsList_
+        others = List.filter (\n -> n /= me && n /= artist) others_
     in
-        case artist == me of
-            True ->
-                case opponentsList of
-                    [] ->
-                        Room me Alone
-
-                    h :: t ->
-                        Room me <| ArtistWith <| uniq <| Nonempty h t
-
-            False ->
-                Room me <| PlayingWith <| uniq <| Nonempty artist opponentsList
+        if artist == me then
+            case others of
+                []   -> Room me Alone
+                h::t -> Room me <| ArtistWith <| Nonempty h t
+        else
+            Room me <| PlayingWith <| Nonempty artist others
 
 
 {-| Remove a name from the opponents list, operation on the state.
@@ -109,91 +91,63 @@ joinRound me opponentsList_ artist =
 popState : Api.Name -> State -> State
 popState leaving state =
     let
-        removeFromState state_ opponents =
-            case opponents of
+        pop state_ others =
+            case others of
                 Nonempty head [] ->
                     if head == leaving then
                         Alone
                     else
                         state_ <| fromElement head
 
-                Nonempty head (tail :: []) ->
-                    if head == leaving then
-                        state_ <| fromElement tail
-                    else if tail == leaving then
-                        state_ <| fromElement head
-                    else
-                        state_ opponents
-
-                Nonempty head (head2 :: tail) ->
-                    state_ <| filter ((/=) leaving) head opponents
+                Nonempty head ((subHead :: subTail) as tail) ->
+                    state_ <|
+                        if head == leaving then
+                            Nonempty subHead subTail
+                        else if subHead == leaving then
+                            Nonempty head subTail
+                        else
+                            Nonempty head (List.filter ((/=) leaving) tail)
     in
         case state of
-            Alone ->
-                Alone
-
-            BreakWith opponents ->
-                removeFromState BreakWith opponents
-
-            LobbyWith opponents ->
-                removeFromState LobbyWith opponents
-
-            MasterOf opponents ->
-                removeFromState MasterOf opponents
-
-            -- We need to handle what happens if the leaver is the artist
-            PlayingWith (Nonempty artist opponents) ->
+            Alone -> Alone
+            BreakWith  others -> pop BreakWith others
+            LobbyWith  others -> pop LobbyWith others
+            MasterOf   others -> pop MasterOf others
+            ArtistWith others -> pop ArtistWith others
+            PlayingWith (Nonempty artist others) ->
                 if artist == leaving then
-                    case opponents of
-                        [] ->
-                            Alone
-
-                        h :: t ->
-                            removeFromState BreakWith <| Nonempty h t
+                    case others of
+                        []   -> Alone
+                        h::t -> pop BreakWith <| Nonempty h t
                 else
-                    removeFromState PlayingWith <| Nonempty artist opponents
+                    pop PlayingWith <| Nonempty artist others
 
-            ArtistWith opponents ->
-                removeFromState ArtistWith opponents
 
 
 {-| Add an opponent to the list of users, operation on state.
 -}
 pushState : Api.Name -> State -> State
-pushState joining state =
+pushState new state =
     case state of
-        Alone ->
-            MasterOf <| fromElement joining
-
-        BreakWith opponents ->
-            BreakWith <| uniq <| cons joining opponents
-
-        LobbyWith opponents ->
-            LobbyWith <| uniq <| cons joining opponents
-
-        MasterOf opponents ->
-            MasterOf <| uniq <| cons joining opponents
-
-        PlayingWith (Nonempty head tail) ->
-            PlayingWith <| uniq <| Nonempty head (joining :: tail)
-
-        ArtistWith opponents ->
-            ArtistWith <| uniq <| cons joining opponents
+        Alone -> MasterOf <| fromElement new
+        BreakWith others -> BreakWith <| cons new others
+        LobbyWith others -> LobbyWith <| cons new others
+        MasterOf  others -> MasterOf  <| cons new others
+        ArtistWith others -> ArtistWith <| cons new others
+        PlayingWith (Nonempty artist others) ->
+            PlayingWith <| Nonempty artist (new :: others)
 
 
 {-| Promote user as master from given state.
 
-This does nothing if the `state` is in a "Round" state.
+This does nothing if the `state` is not in the Lobby state.
 
 -}
 masterState : State -> State
 masterState state =
     case state of
-        LobbyWith opponents ->
-            MasterOf opponents
-
-        anyelse ->
-            anyelse
+        LobbyWith others -> MasterOf others
+        anyelse -> anyelse
 
 
 {-| The given room where an opponent left.
@@ -214,31 +168,26 @@ becomeMaster room =
 setArtist : Api.Name -> Room -> Room
 setArtist newArtist { me, state } =
     let
-        updateState others =
-            if newArtist == me then
-                { me = me, state = ArtistWith others }
-            else
-                let
-                    artistFirst first second =
-                        if first == newArtist then
-                            LT
-                        else if second == newArtist then
-                            GT
-                        else
-                            EQ
+        withArtist others =
+            let a = newArtist
+                artistFirst elem next =
+                    if elem == a then LT else if next == a then GT else EQ
 
-                    newState =
-                        PlayingWith <| sortWith artistFirst others
-                in
-                    { me = me, state = newState }
+                othersArtistFirst =
+                    sortWith artistFirst others
+            in
+                if newArtist == me then
+                    { me = me, state = ArtistWith others }
+                else
+                    { me = me, state = PlayingWith othersArtistFirst }
     in
         case state of
-            BreakWith others   -> updateState others
-            PlayingWith others -> updateState others
-            LobbyWith others   -> updateState others
-            ArtistWith others  -> updateState others
-            MasterOf others    -> updateState others
-            anyelse -> { me = me, state = anyelse }
+            BreakWith   others -> withArtist others
+            PlayingWith others -> withArtist others
+            LobbyWith   others -> withArtist others
+            ArtistWith  others -> withArtist others
+            MasterOf others -> withArtist others
+            Alone -> { me = me, state = Alone }
 
 
 
@@ -247,9 +196,9 @@ setArtist newArtist { me, state } =
 isMaster : Room -> Bool
 isMaster { state } =
     case state of
-        Alone -> True
+        Alone      -> True
         MasterOf _ -> True
-        _ -> False
+        anyelse    -> False
 
 
 {-| Whether the room contains only the current player
@@ -257,21 +206,21 @@ isMaster { state } =
 alone : Room -> Bool
 alone room =
     case room.state of
-        Alone -> True
-        _ -> False
+        Alone   -> True
+        anyelse -> False
 
 {-| The given room where someone new joined.
 -}
 joins : Api.Name -> Room -> Room
-joins joining ({ me } as room) =
-    if joining == me then
+joins joining room =
+    if joining == room.me then
         room
     else
         { room | state = pushState joining room.state }
 
 
 view : Room -> Html msg
-view ({ me, state } as room) =
+view { me, state } =
     let
         userRow artistName name =
             li
@@ -281,33 +230,22 @@ view ({ me, state } as room) =
                     , ( "userentry-artist", Just name == artistName )
                     ]
                 ]
-                [ label [ class "username", align "left" ]
-                    [ text <| Api.showName name ]
-                , label [ class "userscore", align "right" ]
-                    [ text "100" ]
+                [ a [] [ text <| Api.showName name ]
+                , a [] [ text "" ]
                 ]
 
-        nameList maybeartist opponents =
-            toList opponents
-                |> sortBy Api.showName
-                |> map (userRow maybeartist)
-                |> ul [ id "userlist", class "top-layout" ]
+        render maybeartist others =
+            toList others
+                |> List.sortBy Api.showName
+                |> List.map (userRow maybeartist)
+                |> ul [ id "userlist" ]
     in
         case state of
-            Alone ->
-                nameList Nothing <| fromElement me
+            Alone -> render Nothing (fromElement me)
+            BreakWith others  -> render Nothing (me ::: others)
+            LobbyWith others  -> render Nothing (me ::: others)
+            MasterOf others   -> render Nothing (me ::: others)
+            ArtistWith others -> render (Just me) (me ::: others)
+            PlayingWith (Nonempty artist others) ->
+                render (Just artist) (Nonempty artist (me :: others))
 
-            BreakWith opponents ->
-                nameList Nothing (me ::: opponents)
-
-            LobbyWith opponents ->
-                nameList Nothing (me ::: opponents)
-
-            MasterOf opponents ->
-                nameList Nothing (me ::: opponents)
-
-            PlayingWith (Nonempty artist opponents) ->
-                nameList (Just artist) (artist ::: Nonempty me opponents)
-
-            ArtistWith opponents ->
-                nameList (Just me) (me ::: opponents)
