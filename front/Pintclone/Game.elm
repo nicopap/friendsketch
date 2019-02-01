@@ -182,7 +182,18 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
             let (newChat, chatCmd) = chatEvent chatEvent_ chat
                 newRoom = Room.leaves player room
             in
-                (Game { game | chat = newChat , room = newRoom }, chatCmd)
+                if Room.alone newRoom then
+                    (Game
+                        { chat = newChat
+                        , room = newRoom
+                        , gamePart = LobbyState { hideId = True }
+                        , canvas = Canvas.new Canvas.Demo
+                        }
+                    , chatCmd
+                    )
+
+                else
+                    (Game { game | chat = newChat , room = newRoom }, chatCmd)
 
         (Ok ((Api.EvJoined player) as chatEvent_), _) ->
             let (newChat, chatCmd) = chatEvent chatEvent_ chat
