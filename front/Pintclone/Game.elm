@@ -7,10 +7,12 @@ module Pintclone.Game exposing
     , view
     , update
     , receive
+    , subs
     )
 
 
 import Tuple exposing (first, mapFirst, mapSecond)
+import Time exposing (every, second)
 
 import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
 import Html.Attributes as HA exposing (id, class, href)
@@ -83,6 +85,7 @@ type Msg
     | ChatMsg Chat.Msg
     | StartGame
     | TogglePassView
+    | TickDown
 
 receive : Api.GameMsg -> Msg
 receive msg =
@@ -96,6 +99,14 @@ type GameCmd
     | Execute (Cmd Msg)
 doNothing : GameCmd
 doNothing = Execute (Cmd.none)
+
+
+tickTimer : Game_ -> Game
+tickTimer ({ gamePart } as game) =
+    case gamePart of
+        Round guess ->
+            Game { game | gamePart = Round (Guess.update Guess.TickDown guess) }
+        _ -> Game game
 
 
 togglePass : Game_ -> Game
@@ -125,6 +136,7 @@ update msg (Game ({ canvas, chat } as game)) =
 
         TogglePassView -> (togglePass game, doNothing)
         StartGame -> (Game game, Send Api.ReqStart)
+        TickDown -> (tickTimer game, doNothing)
 
 
 chatMsg : Chat.Msg -> Chat -> ( Chat, GameCmd )
@@ -206,6 +218,13 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
 
         (anyElse, _) ->
             Debug.log "inconsistency" anyElse |> (\_ -> (Game game, doNothing))
+
+
+subs : Game -> Sub Msg
+subs (Game { gamePart }) =
+    case gamePart of
+        Round _ -> every second (always TickDown)
+        _ -> Sub.none
 
 
 masterDialog : Bool -> Bool -> Api.RoomID -> Html Msg

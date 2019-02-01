@@ -24,6 +24,7 @@ type Word
 type Msg
     = RevealOne Int Char
     | SetTimeout Int
+    | TickDown
     | RevealAll String
 
 
@@ -66,6 +67,9 @@ update msg (Word guess) =
 
         SetTimeout timeout ->
             Word { guess | timeout = timeout }
+
+        TickDown ->
+            Word { guess | timeout = guess.timeout - 1 }
 
 
 view : Guess -> Html msg

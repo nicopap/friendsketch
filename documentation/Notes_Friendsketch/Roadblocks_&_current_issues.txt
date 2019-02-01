@@ -15,11 +15,11 @@ Created Tuesday 26 September 2017
 * Think about how to introduce ''-'' and spaces in guess word
 * FRONTEND: Implement "between round state" before ''start'' and after ''over'' 
 * Add score changes to ''Room'' and all the ravioli
-* Tick down the clock on frontend
 * Do not relay messages from artist containing word to guess
 
 ==== Client ====
 * Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
+* Handle "tick" to synchronize server sync event with client tickdown (don't change time if server time within one second of client time)
 
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc

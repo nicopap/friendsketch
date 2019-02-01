@@ -34,7 +34,7 @@ type alias Pintclone =
     { state : GameLobby
     , roomid : Api.RoomID
     , username : Api.Name
-    , wslisten : Maybe (Result Api.ListenError GameMsg -> Msg) -> Sub Msg
+    , wslisten : (Result Api.ListenError GameMsg -> Msg) -> Sub Msg
     , wssend : Api.GameReq -> Cmd Msg
     , syncRetries : Int
     , openGameRetries : Int
@@ -200,13 +200,14 @@ subs { wslisten, state } =
                 Ok (Api.HiddenEvent (Api.EhSync gameState chatHistory)) ->
                     Sync gameState chatHistory
                 Ok _ -> Dummy
-        adaptor =
-            case state of
-                Running game -> Just adaptApi
-                Uninit  -> Just waitSync
-                Error _ -> Nothing
     in
-        wslisten adaptor
+        case state of
+            Running game -> Sub.batch
+                [ Sub.map GameMsg <| Game.subs game
+                , wslisten adaptApi
+                ]
+            Uninit  -> wslisten waitSync
+            Error _ -> Sub.none
 
 
 view : Pintclone -> Html Msg

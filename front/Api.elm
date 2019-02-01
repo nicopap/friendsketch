@@ -230,7 +230,7 @@ type ListenError
 
 {-| Generic way of accessing (listening to) a game websocket.
 -}
-wsListen : RoomID -> Name -> Maybe (Result ListenError GameMsg -> msg) -> Sub msg
+wsListen : RoomID -> Name -> (Result ListenError GameMsg -> msg) -> Sub msg
 wsListen (RoomID_ roomid) (Name_ name) continuation =
     let
         address =
@@ -248,9 +248,7 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
                 NeatSocket.Refused ->
                     Err BadSend
     in
-        continuation
-            |> Maybe.map (\c -> NeatSocket.listen address (c << withNiceError))
-            |> Maybe.withDefault Sub.none
+        NeatSocket.listen address (continuation << withNiceError)
 
 
 --- RoundScore ---
