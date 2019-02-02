@@ -33,8 +33,9 @@ body { font-family: sans-serif }
 	border: 2px solid #cdcdcd;
 	transition: color 0.1s;
 }
-.userentry-me .username::before { content:"me: " }
+.userentry-me::before { content:"🎮 " }
 .userentry-artist { background-color: #cce9b6; }
+.userentry-artist::before { content: "🎨 " }
 
 
 /* ** Canvas ** */
