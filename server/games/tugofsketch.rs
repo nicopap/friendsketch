@@ -1,7 +1,7 @@
 use super::game::{self, JoinResponse, LeaveResponse};
 use crate::api::{self, ChatMsg, GameState, Name, Stroke, VisibleEvent};
 use arraydeque::{ArrayDeque, Wrapping};
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use rand::seq::IteratorRandom;
 use slotmap::{new_key_type, SlotMap};
 use std::{
@@ -56,7 +56,7 @@ pub struct Game {
     round_no:    u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum RoundScore {
     Failed,
     Absent,
@@ -75,7 +75,7 @@ impl Into<api::RoundScore> for RoundScore {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Player {
     name:        Name,
     score:       Vec<RoundScore>,
@@ -185,6 +185,7 @@ impl Game {
         macro_rules! start_round {
             ($next_artist:expr) => {{
                 info!("Starting round {}", self.round_no);
+                debug!("scores: {:#?}", self.players);
                 self.players.iter_mut().for_each(|(id, player)| {
                     player.score.push(RoundScore::Absent);
                     player.has_guessed = id == $next_artist;

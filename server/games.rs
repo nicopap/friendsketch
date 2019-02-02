@@ -170,7 +170,7 @@ impl HangupChallenger {
     /// will be "Given up".
     fn disconnect(&mut self, id: Id) -> Option<Name> {
         self.remaining.remove(&id).map(|name| {
-            self.drop_in(3, name.clone(), id);
+            self.drop_in(5, name.clone(), id);
             name
         })
     }
@@ -394,6 +394,7 @@ where
         let (buffer_sink, buffer_stream) = mpsc::unbounded();
         warp::spawn(
             buffer_stream
+                .inspect(|resp| debug!("ws send: {:?}", resp))
                 .map_err(|()| -> warp::Error {
                     panic!("unreachable at games.rs:{}", line!());
                 })
@@ -405,15 +406,15 @@ where
         let client_stream = socket_stream
             .inspect(|req| debug!("ws receive: {:?}", req))
             .map(move |msg| {
-            msg.to_str()
-                .map_err(|()| Error::custom("invalid string"))
-                .and_then(from_str)
-                .map(|v| ManagerRequest::Msg(id, v))
-                .unwrap_or_else(|err| {
-                    error!("message validation: {}/ `{:?}`", err, msg.to_str());
-                    ManagerRequest::Terminate(id)
-                })
-        });
+                msg.to_str()
+                    .map_err(|()| Error::custom("invalid string"))
+                    .and_then(from_str)
+                    .map(|v| ManagerRequest::Msg(id, v))
+                    .unwrap_or_else(|err| {
+                        error!("validation: {}/ `{:?}`", err, msg.to_str());
+                        ManagerRequest::Terminate(id)
+                    })
+            });
         let sink_to_manager = self.manager_sink.clone();
         warp::spawn(
             client_stream
@@ -464,12 +465,10 @@ where
         other: &Option<api::GameMsg>,
     ) {
         let message = to_string(message).unwrap();
-        debug!("sending {} to all but one", message);
         for (id, connection) in self.connections.iter_mut() {
             if *id == except {
                 if let Some(other) = other {
                     let message = to_string(other).unwrap();
-                    debug!("sending {} to special snowflake", message);
                     send!(connection.0, message);
                 }
             } else {
@@ -486,7 +485,6 @@ where
 
     fn broadcast_to_all(&mut self, message: &api::GameMsg) {
         let message = to_string(message).unwrap();
-        debug!("sending {} to all", message);
         for connection in self.connections.values_mut() {
             send!(connection.0, message);
         }
