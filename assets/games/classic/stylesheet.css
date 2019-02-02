@@ -32,10 +32,12 @@ body { font-family: sans-serif }
 	margin-bottom: -2px;
 	border: 2px solid #cdcdcd;
 	transition: color 0.1s;
+	display:flex;
+	justify-content: space-between;
 }
-.userentry-me::before { content:"🎮 " }
+.userentry-me :first-child { text-decoration: underline }
 .userentry-artist { background-color: #cce9b6; }
-.userentry-artist::before { content: "🎨 " }
+
 
 
 /* ** Canvas ** */

@@ -7,9 +7,13 @@ module Pintclone.Room
         , leaves
         , becomeMaster
         , setArtist
+        , syncScores
         , isMaster
         , view
         , alone
+        , canStart
+        , amArtist
+        , myName
         , Room
         )
 
@@ -20,25 +24,47 @@ artist in the game part of the game.
 
 -}
 
+import Tuple exposing (first, second, mapFirst)
+import Maybe exposing (withDefault)
+import Dict exposing (Dict, fromList, get, remove, insert, empty, isEmpty, singleton, update, toList)
 import Html as H exposing (Html, text, ul, li, a)
 import Html.Attributes exposing (id, classList)
-import List.Nonempty exposing (Nonempty(Nonempty), (:::), filter, fromElement, cons, toList, sortWith)
 import Api
 
 
 type alias Room =
-    { me : Api.Name
+    { me : (Api.Name, Score)
     , state : State
     }
 
+type alias Score = List Api.RoundScore
+type alias Scores = Dict String Score
 
 type State
-    = LobbyWith (Nonempty Api.Name)
-    | MasterOf (Nonempty Api.Name)
-    | PlayingWith (Nonempty Api.Name) -- head is the artist
-    | ArtistWith (Nonempty Api.Name)
-    | BreakWith (Nonempty Api.Name)
+    = LobbyWith Scores
+    | MasterOf Scores
+    | PlayingWith String Scores
+    | ArtistWith Scores
+    | BreakWith Scores
     | Alone
+
+
+{-| New room with `Scores` not containing myName -}
+new : Scores -> Api.Name -> Score -> (Scores -> State) -> Room
+new scores myName myScore notAlone =
+    let state = if isEmpty scores then Alone else notAlone scores
+    in  Room (myName, myScore) state
+
+{-| New room from `Api.Scoreboard` (assumes `myName in Scoreboard`) -}
+newFromList : Api.Scoreboard -> Api.Name -> (Scores -> State) -> Room
+newFromList scoreboard myName =
+    let
+        myName_ = Api.showName myName
+        scores = fromList (List.map (mapFirst Api.showName) scoreboard)
+        myScore = withDefault [] <| get myName_ scores
+        scoresWithoutMe = remove myName_ scores
+    in
+        new scoresWithoutMe myName myScore
 
 
 {-| newInLobby, returns an initialized Room
@@ -51,110 +77,72 @@ handled properly.
 
 In order to initialize the room during a "round", see `joinRound`.
 -}
-newInLobby : Api.Name -> Api.Name -> List Api.Name -> Room
-newInLobby master me others =
-    case List.filter ((/=) me) others of
-        []   -> Room me Alone
-        h::t ->
-            if master == me then
-                Room me <| MasterOf <| Nonempty h t
-            else
-                Room me <| LobbyWith <| Nonempty h t
+newInLobby : Api.Name -> Api.Name -> Api.Scoreboard -> Room
+newInLobby master myName scoreboard =
+    let notAlone =
+            if master == myName then MasterOf else LobbyWith
+    in
+        newFromList scoreboard myName notAlone
 
 
 {-| Create a room for player joining while the scores are shown
 -}
-joinBreak : Api.Name -> List Api.Name -> Room
-joinBreak me others =
-    case List.filter (\n -> n /= me) others of
-        []   -> Room me Alone
-        h::t -> Room me <| BreakWith <| Nonempty h t
+joinBreak : Api.Name -> Api.Scoreboard -> Room
+joinBreak me scoreboard = newFromList scoreboard me BreakWith
 
 
 {-| Create a room in "round" state.
 -}
-joinRound : Api.Name -> List Api.Name -> Api.Name -> Room
-joinRound me others_ artist =
+joinRound : Api.Name -> Api.Name -> Api.Scoreboard -> Room
+joinRound artistName myName scoreboard =
     let
-        others = List.filter (\n -> n /= me && n /= artist) others_
+        artistName_ = Api.showName artistName
+        notAlone =
+            if artistName == myName then ArtistWith else PlayingWith artistName_
     in
-        if artist == me then
-            case others of
-                []   -> Room me Alone
-                h::t -> Room me <| ArtistWith <| Nonempty h t
-        else
-            Room me <| PlayingWith <| Nonempty artist others
-
-
-{-| Remove a name from the opponents list, operation on the state.
--}
-popState : Api.Name -> State -> State
-popState leaving state =
-    let
-        pop state_ others =
-            case others of
-                Nonempty head [] ->
-                    if head == leaving then
-                        Alone
-                    else
-                        state_ <| fromElement head
-
-                Nonempty head ((subHead :: subTail) as tail) ->
-                    state_ <|
-                        if head == leaving then
-                            Nonempty subHead subTail
-                        else if subHead == leaving then
-                            Nonempty head subTail
-                        else
-                            Nonempty head (List.filter ((/=) leaving) tail)
-    in
-        case state of
-            Alone -> Alone
-            BreakWith  others -> pop BreakWith others
-            LobbyWith  others -> pop LobbyWith others
-            MasterOf   others -> pop MasterOf others
-            ArtistWith others -> pop ArtistWith others
-            PlayingWith (Nonempty artist others) ->
-                if artist == leaving then
-                    case others of
-                        []   -> Alone
-                        h::t -> pop BreakWith <| Nonempty h t
-                else
-                    pop PlayingWith <| Nonempty artist others
-
-
-
-{-| Add an opponent to the list of users, operation on state.
--}
-pushState : Api.Name -> State -> State
-pushState new state =
-    case state of
-        Alone -> MasterOf <| fromElement new
-        BreakWith others -> BreakWith <| cons new others
-        LobbyWith others -> LobbyWith <| cons new others
-        MasterOf  others -> MasterOf  <| cons new others
-        ArtistWith others -> ArtistWith <| cons new others
-        PlayingWith (Nonempty artist others) ->
-            PlayingWith <| Nonempty artist (new :: others)
-
-
-{-| Promote user as master from given state.
-
-This does nothing if the `state` is not in the Lobby state.
-
--}
-masterState : State -> State
-masterState state =
-    case state of
-        LobbyWith others -> MasterOf others
-        anyelse -> anyelse
+        newFromList scoreboard myName notAlone
 
 
 {-| The given room where an opponent left.
 -}
 leaves : Api.Name -> Room -> Room
-leaves leaving room =
-    { room | state = popState leaving room.state }
+leaves leaving_ { me, state } =
+    let
+        leaving = Api.showName leaving_
+        (myName, myScore) = me
+        pop scores = new (remove leaving scores) myName myScore
+    in
+        case state of
+            Alone -> { me = me, state = Alone }
+            BreakWith  others -> pop others BreakWith
+            LobbyWith  others -> pop others LobbyWith
+            MasterOf   others -> pop others MasterOf
+            ArtistWith others -> pop others ArtistWith
+            PlayingWith artistName others ->
+                if artistName == leaving then
+                    pop others BreakWith
+                else
+                    pop others (PlayingWith artistName)
+
+
+
+{-| The given room where someone new joined.
+TODO: `repeat roundCount Api.Absent`
+-}
+joins : Api.Name -> Room -> Room
+joins joining_ { me, state } =
+    let
+        joining = Api.showName joining_
+        (myName, myScore) = me
+        push scores = new (insert joining [] scores) myName myScore
+    in
+        case state of
+            Alone -> push empty MasterOf
+            BreakWith  others -> push others BreakWith
+            LobbyWith  others -> push others LobbyWith
+            MasterOf   others -> push others MasterOf
+            ArtistWith others -> push others ArtistWith
+            PlayingWith a others -> push others (PlayingWith a)
 
 
 {-| Turn the user into the game master (that means he has the role of
@@ -162,33 +150,32 @@ starting the game).
 -}
 becomeMaster : Room -> Room
 becomeMaster room =
-    { room | state = masterState room.state }
+    let
+        masterState state =
+            case state of
+                LobbyWith others -> MasterOf others
+                anyelse -> anyelse
+    in
+        { room | state = masterState room.state }
 
 
 setArtist : Api.Name -> Room -> Room
-setArtist newArtist { me, state } =
+setArtist newArtist_ { me, state } =
     let
+        newArtist = Api.showName newArtist_
         withArtist others =
-            let a = newArtist
-                artistFirst elem next =
-                    if elem == a then LT else if next == a then GT else EQ
-
-                othersArtistFirst =
-                    sortWith artistFirst others
-            in
-                if newArtist == me then
-                    { me = me, state = ArtistWith others }
-                else
-                    { me = me, state = PlayingWith othersArtistFirst }
+            if newArtist == Api.showName (first me) then
+                { me = me, state = ArtistWith others }
+            else
+                { me = me, state = PlayingWith newArtist others }
     in
         case state of
-            BreakWith   others -> withArtist others
-            PlayingWith others -> withArtist others
-            LobbyWith   others -> withArtist others
-            ArtistWith  others -> withArtist others
-            MasterOf others -> withArtist others
             Alone -> { me = me, state = Alone }
-
+            BreakWith  others -> withArtist others
+            LobbyWith  others -> withArtist others
+            ArtistWith others -> withArtist others
+            MasterOf   others -> withArtist others
+            PlayingWith _ others -> withArtist others
 
 
 {-| Whether the player is master of the room or not.
@@ -201,7 +188,15 @@ isMaster { state } =
         anyelse    -> False
 
 
-{-| Whether the room contains only the current player
+{-| Whether the player is the artist
+-}
+amArtist : Room -> Bool
+amArtist room =
+    case room.state of
+        ArtistWith _ -> True
+        anyelse      -> False
+
+{-| Whether the player is left alone in the game
 -}
 alone : Room -> Bool
 alone room =
@@ -209,43 +204,98 @@ alone room =
         Alone   -> True
         anyelse -> False
 
-{-| The given room where someone new joined.
+
+{-| Whether the room leader can start the game
 -}
-joins : Api.Name -> Room -> Room
-joins joining room =
-    if joining == room.me then
-        room
-    else
-        { room | state = pushState joining room.state }
+canStart : Room -> Bool
+canStart room =
+    case room.state of
+        MasterOf ps -> Dict.size ps > 1
+        anyelse -> False
+
+
+{-| Update scores to make sure they are as the server sees them
+-}
+syncScores : List (Api.Name, Api.RoundScore) -> Room -> Room
+syncScores roundScores_ { me, state } =
+    let
+        (myName_, myScore) = me
+        myName = Api.showName myName_
+        roundScores =
+            List.map (mapFirst Api.showName) roundScores_
+                |> List.filter ((/=) myName << first)
+
+        maybeAddScore : Api.RoundScore -> Maybe Score -> Maybe Score
+        maybeAddScore roundScore = Just << (::) roundScore << withDefault []
+
+        updatePlayer : (String, Api.RoundScore) -> Scores -> Scores
+        updatePlayer (name, roundScore) =
+            update name (maybeAddScore roundScore)
+
+        updateOthers scores = List.foldl updatePlayer scores roundScores
+
+        myNewScore =
+            List.filter ((==) myName_ << first) roundScores_
+                |> List.head
+                |> Maybe.map (\(_,newScore) -> newScore :: second me)
+                |> withDefault []
+
+        updateAll others = new (updateOthers others) myName_ myNewScore
+    in
+        case state of
+            Alone -> { me = me, state = Alone }
+            BreakWith  others -> updateAll others BreakWith
+            LobbyWith  others -> updateAll others LobbyWith
+            ArtistWith others -> updateAll others ArtistWith
+            MasterOf   others -> updateAll others MasterOf
+            PlayingWith a others -> updateAll others (PlayingWith a)
+
+
+myName : Room -> Api.Name
+myName { me } = first me
+
+showScore : Score -> String
+showScore =
+    let
+        addScore score acc =
+            case score of
+                Api.WasArtist  s -> s + acc
+                Api.HasGuessed s -> s + acc
+                Api.HasFailed -> acc
+                Api.WasAbsent -> acc
+    in
+        toString << List.foldl addScore 0
 
 
 view : Room -> Html msg
 view { me, state } =
     let
-        userRow artistName name =
+        showMe = mapFirst Api.showName me
+        userRow : Maybe String -> ( String, Score ) -> Html msg
+        userRow artistName ( name, score ) =
             li
                 [ classList
                     [ ( "userentry", True )
-                    , ( "userentry-me", name == me )
+                    , ( "userentry-me", name == first showMe )
                     , ( "userentry-artist", Just name == artistName )
                     ]
                 ]
-                [ a [] [ text <| Api.showName name ]
-                , a [] [ text "" ]
+                [ a [] [ text name ]
+                , a [] [ text <| showScore score ]
                 ]
 
         render maybeartist others =
-            toList others
-                |> List.sortBy Api.showName
+            others
+                |> List.sortBy first
                 |> List.map (userRow maybeartist)
                 |> ul [ id "userlist" ]
     in
         case state of
-            Alone -> render Nothing (fromElement me)
-            BreakWith others  -> render Nothing (me ::: others)
-            LobbyWith others  -> render Nothing (me ::: others)
-            MasterOf others   -> render Nothing (me ::: others)
-            ArtistWith others -> render (Just me) (me ::: others)
-            PlayingWith (Nonempty artist others) ->
-                render (Just artist) (Nonempty artist (me :: others))
+            Alone -> render Nothing [ showMe ]
+            BreakWith  others -> render Nothing (showMe :: toList others)
+            LobbyWith  others -> render Nothing (showMe :: toList others)
+            MasterOf   others -> render Nothing (showMe :: toList others)
+            ArtistWith others -> render (Just (first showMe)) (showMe :: toList others)
+            PlayingWith artistName others ->
+                render (Just artistName) (showMe :: toList others)
 

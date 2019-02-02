@@ -51,7 +51,7 @@ type alias Flags =
 type Msg
     = GameMsg Game.Msg
     | ListenError Api.ListenError
-    | Sync Api.GameState (List Api.VisibleEvent)
+    | Sync Api.GameState
     | Dummy
     | Reopen
 
@@ -169,8 +169,8 @@ update msg ({ roomid, username, openGameRetries, syncRetries, wssend } as pintcl
                     Api.Pintclone roomid username (openGameRetries + 1)
                 )
 
-            Sync state c ->
-                withGameUpdate <| Game.sync state c username
+            Sync state ->
+                withGameUpdate <| Game.sync state username
 
             GameMsg gameMsg ->
                 case pintclone.state of
@@ -197,8 +197,8 @@ subs { wslisten, state } =
         waitSync msg =
             case msg of
                 Err err -> ListenError err
-                Ok (Api.HiddenEvent (Api.EhSync gameState chatHistory)) ->
-                    Sync gameState chatHistory
+                Ok (Api.HiddenEvent (Api.EhSync gameState)) ->
+                    Sync gameState
                 Ok _ -> Dummy
     in
         case state of

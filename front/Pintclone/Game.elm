@@ -29,7 +29,7 @@ import Chat exposing (Chat)
 type GamePart
     = LobbyState { hideId : Bool }
     | Round Guess
-    | BetweenRound (List ( Api.Name, Api.RoundScore ))
+    | BetweenRound
 
 type alias Game_ =
     { room : Room
@@ -42,36 +42,36 @@ type alias Game_ =
 type Game = Game Game_
 
 
-sync : Api.GameState -> List Api.VisibleEvent -> Api.Name -> ( Game, GameCmd )
-sync gameState chatHistory username =
-    let (gamePart, room, canvasInit, cmd) = case gameState of
-        Api.Summary _ ->
+sync : Api.GameState -> Api.Name -> ( Game, GameCmd )
+sync { screen, history, scores } username =
+    let (gamePart, makeRoom, canvasInit, cmd) = case screen of
+        Api.Summary ->
             Debug.crash "final game summary not supported yet"
 
-        Api.RoundScores scores ->
-            ( BetweenRound scores
-            , Room.joinBreak username <| List.map first scores
+        Api.RoundScores ->
+            ( BetweenRound
+            , Room.joinBreak
             , Canvas.Demo
             , Cmd.none
             )
-        Api.Round drawing { playerScores, artist, timeout } ->
+        Api.Round { drawing, artist, timeout } ->
             ( Round <| Guess.new Nothing timeout
-            , Room.joinRound username (List.map first playerScores) artist
+            , Room.joinRound artist
             , Canvas.Receiver drawing
             , Cmd.none
             )
-        Api.Lobby { players, master } ->
+        Api.Lobby master ->
             ( LobbyState { hideId = True }
-            , Room.newInLobby master username players
+            , Room.newInLobby master
             , Canvas.Demo
             , Ports.selectRoomid ()
             )
     in
         ( Game
-            { room = room
+            { room = makeRoom username scores
             , canvas = Canvas.new canvasInit
             , gamePart = gamePart
-            , chat = Chat.new username chatHistory
+            , chat = Chat.new username history
             }
         , Execute cmd
         )
@@ -163,8 +163,8 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
             in  (Game { game | gamePart = Round guess_ }, doNothing)
 
     in case (event, gamePart) of
-        (Err (Api.EhSync gameState chatHistory), _) ->
-            sync gameState chatHistory room.me
+        (Err (Api.EhSync gameState), _) ->
+            sync gameState (Room.myName room)
 
         (Err Api.EhMastery, LobbyState _) ->
             (Game { game | room = Room.becomeMaster room } , doNothing)
@@ -185,7 +185,8 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
                 if Room.alone newRoom then
                     (Game
                         { chat = newChat
-                        , room = newRoom
+                        , room = Room.newInLobby
+                            (Room.myName room) (Room.myName room) []
                         , gamePart = LobbyState { hideId = True }
                         , canvas = Canvas.new Canvas.Demo
                         }
@@ -204,20 +205,26 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
 
         (Err (Api.EhOver word scores), Round _ ) ->
             let (newChat, chatCmd) = chatEvent (Api.EvOver word) chat
-                newPart = BetweenRound scores
-                newGame = Game { game | chat = newChat , gamePart = newPart }
+                newRoom = Room.syncScores scores room
+                newPart = BetweenRound
+                newGame = Game
+                    { game
+                        | chat = newChat
+                        , gamePart = newPart
+                        , room = newRoom
+                    }
             in
                 (newGame, chatCmd)
 
         (Err (Api.EhStart { timeout, artist, word }), _) ->
             let (newChat, chatCmd) = chatEvent (Api.EvStart artist) chat
                 newGamePart = Round (Guess.new (Just word) timeout)
+                newRoom = Room.setArtist artist room
                 newCanvas =
-                    if artist == room.me then
+                    if Room.amArtist newRoom then
                         Canvas.new Canvas.Sender
                     else
                         Canvas.new <| Canvas.Receiver []
-                newRoom = Room.setArtist artist room
                 newGame = Game
                     { room = newRoom
                     , canvas = newCanvas
@@ -239,7 +246,7 @@ subs (Game { gamePart }) =
 
 
 masterDialog : Bool -> Bool -> Api.RoomID -> Html Msg
-masterDialog isAlone hideId roomid =
+masterDialog canStart hideId roomid =
     let
         roomdisplayAttributes =
             [ HA.type_ "text"
@@ -254,10 +261,10 @@ masterDialog isAlone hideId roomid =
             , HA.type_ "checkbox"
             ]
         startButton =
-            if isAlone then
-                H.button [ HA.disabled True ]
-            else
+            if canStart then
                 H.button [ HE.onClick StartGame ]
+            else
+                H.button [ HA.disabled True ]
     in
         div [ id "roomiddialog" ]
             [ div []
@@ -289,12 +296,12 @@ view roomid (Game { room, gamePart, chat, canvas }) =
                     flavorText = "The game leader is waiting to start the game"
                     topBar =
                         if Room.isMaster room then
-                            masterDialog (Room.alone room) hideId roomid
+                            masterDialog (Room.canStart room) hideId roomid
                           else
                             p [id "top-bar"] [ text flavorText]
                 in
                     gameView topBar
 
             Round guess -> gameView (Guess.view guess)
-            BetweenRound _ -> h1 [] [ text "NOT IMPLEMENTED YET" ]
+            BetweenRound -> h1 [] [ text "NOT IMPLEMENTED YET" ]
 

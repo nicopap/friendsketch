@@ -113,13 +113,8 @@ RoundScore
 	| { failed: () }
 	| { absent: () }
 	
-LobbyState =
-	{ players: [Name]
-	, master: Name
-	}
-
 RoundState =
-	{ scores: [ (Name, RoundScore) ]
+	{ drawing: Drawing
 	, artist: Name
 	, timeout: Int
 	}
@@ -128,11 +123,17 @@ Scoreboard = [ (Name, [RoundScore]) ]
 
 Drawing = [ (Point, [ Point ], Color, Size) ]
 
-GameState
-	= { scores: [ (Name, RoundScore) ] }
-	| { endsummary: Scoreboard }
-	| { round: (Drawing, RoundState) }
-	| { lobby: LobbyState }
+GameState =
+	{ scores: Scoreboard
+	, screen: GameScreen
+	, history: [ VisibleGameEvent ]
+	}
+
+GameScreen
+	= { scores: () }
+	| { endsummary: () }
+	| { round: RoundState }
+	| { lobby: { master: Name } }
 
 CanvasMsg
 	= { start: ( Point, Color, Size ) }
@@ -171,7 +172,7 @@ VisibleGameEvent
 HiddenGameEvent
 	= { correct: String }
 	| { timeoutsync: Int }
-	| { sync: (GameState, [ VisibleGameEvent ]) }
+	| { sync: GameState }
 	| { mastery: () }
 	| { over: (String, [ (Name, RoundScore) ]) }
 	| { start: RoundStart }

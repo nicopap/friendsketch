@@ -1,9 +1,9 @@
 use super::game::{self, JoinResponse, LeaveResponse};
-use crate::api::{self, ChatMsg, GameState, Name, Stroke, VisibleEvent};
+use crate::api::{self, ChatMsg, Name, Stroke, VisibleEvent};
 use arraydeque::{ArrayDeque, Wrapping};
-use log::{error, info, warn, debug};
+use log::{debug, error, info, warn};
 use rand::seq::IteratorRandom;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::{
     iter::repeat,
     time::{Duration, Instant},
@@ -18,7 +18,7 @@ new_key_type! {
 enum Game_ {
     Empty,
     Lobby {
-        room_leader: Id,
+        leader: Id,
     },
     /// Result screen for the previous round where `artist` was the artist
     RoundResults {
@@ -28,7 +28,9 @@ enum Game_ {
         drawing: Vec<Stroke>,
         artist: Id,
         word: &'static str,
-        round_start_time: Instant,
+        lap: Instant,
+        scores: SecondaryMap<Id, RoundScore>,
+        anyone_guessed: bool,
     },
 }
 
@@ -77,16 +79,13 @@ impl Into<api::RoundScore> for RoundScore {
 
 #[derive(Clone, Debug)]
 struct Player {
-    name:        Name,
-    score:       Vec<RoundScore>,
-    has_guessed: bool,
+    name:  Name,
+    score: Vec<RoundScore>,
 }
-impl Into<(Name, api::RoundScore)> for Player {
-    fn into(self) -> (Name, api::RoundScore) {
-        let Player {
-            name, mut score, ..
-        } = self;
-        let score = score.pop().unwrap_or(RoundScore::Absent).into();
+impl Into<(Name, Vec<api::RoundScore>)> for Player {
+    fn into(self) -> (Name, Vec<api::RoundScore>) {
+        let Player { name, score, .. } = self;
+        let score = score.into_iter().map(Into::into).collect();
         (name, score)
     }
 }
@@ -112,62 +111,47 @@ macro_rules! broadcast {
     };
 }
 
-#[rustfmt::skip]
-static WORD_LIST: [&str; 256] = [ "Aardvark", "Albatross", "Alligator", "Alpaca", "Ant", "Anteater", "Antelope", "Ape", "Armadillo", "Baboon", "Badger", "Barracuda", "Bat", "Bear", "Beaver", "Bee", "Beetle", "Bird", "Bison", "Boar", "Bobcat", "Buffalo", "Bull", "Butterfly", "Camel", "Caribou", "Cassowary", "Cat", "Caterpillar", "Cattle", "Chameleon", "Chamois", "Cheetah", "Chicken", "Chimpanzee", "Chinchilla", "Chipmunk", "Chough", "Civet", "Coati", "Cobra", "Cockroach", "Cod", "Cormorant", "Cougar", "Cow", "Coyote", "Crab", "Crane", "Crocodile", "Crow", "Cuckoo", "Curlew", "Deer", "Dinosaur", "Doe", "Dog", "Dogfish", "Dolphin", "Donkey", "Dotterel", "Dove", "Dragonfly", "Dromedary", "Duck", "Dugong", "Dunlin", "Eagle", "Echidna", "Eel", "Eland", "Elephant", "ElephantSeal", "Elk", "Emu", "Falcon", "Ferret", "Finch", "Fish", "Flamingo", "Fly", "Fox", "Frog", "Gaur", "Gazelle", "Gerbil", "GiantPanda", "Giraffe", "Gnat", "Gnu", "Goat", "Goldfinch", "Goosander", "Goose", "Gorilla", "Goshawk", "Grasshopper", "Grouse", "Guanaco", "GuineaFowl", "GuineaPig", "Gull", "Hamster", "Hare", "Hawk", "Hedgehog", "Heron", "Herring", "Hippo", "Hornet", "Horse", "Hummingbird", "Hyena", "Ibex", "Ibis", "Impala", "Jackal", "Jaguar", "Jay", "Jellyfish", "Kangaroo", "Kinkajou", "Kitten", "Kiwi", "Koala", "KomodoDragon", "Kouprey", "Kudu", "Ladybug", "Lapwing", "Lark", "Lemur", "Leopard", "Lion", "Lizard", "Llama", "Lobster", "Locust", "Loris", "Louse", "Lynx", "Lyrebird", "Magpie", "Mallard", "Mammoth", "Manatee", "Mandrill", "Marmoset", "Mink", "Mole", "Mongoose", "Monkey", "Moose", "Mosquito", "Moth", "Mouse", "Narwhal", "Newt", "Nightlingale", "Ocelot", "Octopus", "Okapi", "Opossum", "Ostrich", "Otter", "Owl", "Oyster", "Panda", "Panther", "Parrot", "Partridge", "Peafowl", "Pelican", "Penguin", "Pheasant", "Pig", "Pigeon", "Pika", "PolarBear", "Polecat", "Pony", "Porcupine", "Porpoise", "PrairieDog", "Pug", "Puma", "Puppy", "Quail", "Quelea", "Quetzal", "Rabbit", "Raccoon", "Ram", "Rat", "Raven", "RedDeer", "RedPanda", "Reindeer", "Rhinoceros", "Rook", "Rooster", "Salamander", "Salmon", "SandDollar", "Sandpiper", "Sardine", "SeaLion", "Seahorse", "Seal", "Shark", "Sheep", "Shrew", "Siamang", "Skunk", "Sloth", "Slug", "Snail", "Snake", "Snowshoe", "Sow", "Sparrow", "Spider", "Squid", "Squirrel", "Stalion", "Starling", "Stegosaurus", "Stoat", "Swan", "Tapir", "Tarsier", "Termite", "Tiger", "Toad", "Tortoise", "Turkey", "Turtle", "Vicuna", "Viper", "Vole", "Vulture", "Wallaby", "Walrus", "Wasp", "WaterBuffalo", "Weasel", "Whale", "Wolf", "Wolverine", "Wombat", "Woodpecker", "Worm", "Wren", "Yak", "Zebra", "Zebu" ];
-
 const ROUND_LENGTH: i16 = 30;
 
 const TICK_UPDATE: Duration = Duration::from_secs(10);
 
-fn sync_msg(
-    state: GameState,
-    events: impl Iterator<Item = VisibleEvent>,
-) -> api::GameMsg {
-    use api::{GameMsg::HiddenEvent, HiddenEvent::Sync_};
-    HiddenEvent(Sync_(state, events.collect()))
-}
-
 impl Game {
+    fn api_scores(&self) -> api::Scoreboard {
+        self.players.iter().map(|(_, x)| x.clone().into()).collect()
+    }
+
     fn into_sync_msg(&self) -> api::GameMsg {
-        use self::GameState::{Lobby, Round};
-        macro_rules! list {
-            ($map:expr) => {
-                self.players.iter().map($map).collect();
-            };
-        }
-        let state = match self.state {
+        use api::{
+            GameMsg::HiddenEvent,
+            GameScreen::{Lobby, Round, Scores},
+        };
+        let scores = self.api_scores();
+        let history = self.game_log.iter().map(Clone::clone).collect();
+        let screen = match self.state {
             Game_::Empty => {
                 error!("Attempt to sync to empty state");
                 panic!("tugofsketch:{} unreachable path", line!())
             }
-            Game_::Lobby { room_leader } => {
-                let players = list!(|(_, p)| p.name.clone());
-                let master = self.players[room_leader].name.clone();
-                Lobby { players, master }
-            }
-            Game_::RoundResults { artist, .. } => {
-                error!("Unimplemented RoundResults sync");
-                let players = list!(|(_, p)| p.name.clone());
-                let master = self.players[artist].name.clone();
-                Lobby { players, master }
-            }
+            Game_::Lobby { leader } => Lobby {
+                master: self.players[leader].name.clone(),
+            },
+            Game_::RoundResults { .. } => Scores,
             Game_::Playing {
                 ref drawing,
                 artist,
-                round_start_time,
+                lap,
                 ..
-            } => {
-                let round_state = api::RoundState {
-                    scores:  self.player_scores().collect(),
-                    artist:  self.players[artist].name.clone(),
-                    timeout: ROUND_LENGTH
-                        - round_start_time.elapsed().as_secs() as i16,
-                };
-                Round(drawing.clone(), round_state)
-            }
+            } => Round {
+                timeout: ROUND_LENGTH - lap.elapsed().as_secs() as i16,
+                drawing: drawing.clone(),
+                artist:  self.players[artist].name.clone(),
+            },
         };
-        let events = self.game_log.clone().into_iter();
-        sync_msg(state, events)
+        HiddenEvent(api::HiddenEvent::Sync {
+            screen,
+            history,
+            scores,
+        })
     }
 
     /// Initiate a new round, with new artist, new word etc
@@ -186,17 +170,18 @@ impl Game {
             ($next_artist:expr) => {{
                 info!("Starting round {}", self.round_no);
                 debug!("scores: {:#?}", self.players);
-                self.players.iter_mut().for_each(|(id, player)| {
-                    player.score.push(RoundScore::Absent);
-                    player.has_guessed = id == $next_artist;
-                });
                 let artist = self.players[$next_artist].name.clone();
                 let word = WORD_LIST[rand::random::<u8>() as usize];
+                let mut scores =
+                    SecondaryMap::with_capacity(self.players.capacity());
+                scores.insert($next_artist, RoundScore::Artist(0));
                 self.state = Game_::Playing {
                     drawing: vec![],
                     artist: $next_artist,
                     word,
-                    round_start_time: Instant::now(),
+                    lap: Instant::now(),
+                    anyone_guessed: false,
+                    scores,
                 };
                 let make_msg = |word| {
                     HiddenEvent(Start(RoundStart {
@@ -220,9 +205,9 @@ impl Game {
             }};
         }
         match self.state {
-            Game_::Lobby { room_leader } if instigator == Some(room_leader) => {
+            Game_::Lobby { leader } if instigator == Some(leader) => {
                 self.round_no = 0;
-                start_round!(room_leader)
+                start_round!(leader)
             }
             Game_::RoundResults { artist } => {
                 let next_artist: Id = self
@@ -246,58 +231,67 @@ impl Game {
         }
     }
 
-    fn player_scores(&self) -> impl Iterator<Item = (Name, api::RoundScore)> {
-        self.players
-            .clone()
-            .into_iter()
-            .map(|(_, player)| player.into())
-    }
-
     /// Update players scores accordingly. Returns whehter all players guessed
     /// correctly
     fn guesses_correctly(&mut self, player: Id) -> bool {
-        let round = self.round_no as usize;
-        let is_first = self.players.iter().any(|(_, p)| {
-            if let RoundScore::Guessed(_) = p.score[round] {
-                true
-            } else {
-                false
-            }
-        });
-        match self.state {
-            Game_::Playing { artist, .. } if artist != player => {
-                if let Some(to_change) = self.players.get_mut(player) {
-                    if !to_change.has_guessed {
-                        let score = if is_first { 3 } else { 1 };
-                        to_change.score[round] = RoundScore::Guessed(score);
-                        to_change.has_guessed = true;
-                    }
+        use self::RoundScore::{Artist, Guessed};
+        if let Game_::Playing {
+            artist,
+            ref mut scores,
+            ref mut anyone_guessed,
+            ..
+        } = self.state
+        {
+            if !scores.contains_key(player) {
+                let score = if *anyone_guessed {
+                    1
+                } else {
+                    *anyone_guessed = true;
+                    3
+                };
+                scores.insert(player, Guessed(score));
+                // NOTE: problem here? aliasing safe though (`player != artist`
+                // because `scores.insert(artist,..)` at `start_round`)
+                if let Artist(ref mut artist_score) = scores[artist] {
+                    *artist_score += score;
+                } else {
+                    error!("The artist score was not set");
+                    scores.insert(artist, Artist(score));
                 }
-            }
-            _ => error!("A guess occured outside of a regular play time"),
+            };
+            self.players.len() == scores.len() // Did all player guess?
+        } else {
+            warn!("A guess occured outside of a regular play time");
+            true // Force termination of round if something fishy is going on
         }
-        self.players.iter().all(|(_, p)| p.has_guessed)
     }
 
     /// Set game state to "Round summary" and indicate that all players who
-    /// haven't guessed yet have failed
-    fn end_round(&mut self) {
+    /// haven't guessed yet have failed.
+    /// Returns the scores for the round that is being terminated.
+    fn end_round(&mut self) -> Vec<(Name, api::RoundScore)> {
+        use self::RoundScore::Failed;
         info!("Ending round {}", self.round_no);
-        let mut total_scores = 0;
-        let round = self.round_no as usize;
-        self.players.iter_mut().for_each(|(_, player)| {
-            if let RoundScore::Guessed(x) = player.score[round] {
-                total_scores += x
-            } else {
-                player.score[round] = RoundScore::Failed
-            }
-        });
-        if let Game_::Playing { artist, .. } = self.state {
-            self.players[artist].score[round] =
-                RoundScore::Artist(total_scores);
+        if let Game_::Playing {
+            artist,
+            ref mut scores,
+            ..
+        } = self.state
+        {
+            let ret = self
+                .players
+                .iter_mut()
+                .map(|(id, player)| {
+                    let score = scores.remove(id).unwrap_or(Failed);
+                    player.score.push(score.clone());
+                    (player.name.clone(), score.into())
+                })
+                .collect();
             self.state = Game_::RoundResults { artist };
+            ret
         } else {
             error!("Ending a round that is not happening");
+            Vec::new()
         }
     }
 }
@@ -325,27 +319,22 @@ impl game::Game<Id> for Game {
         {
             JoinResponse::Refuse
         } else {
-            use self::{api::VisibleEvent, Game_::*};
+            use self::{api::VisibleEvent, Game_::*, RoundScore::Absent};
             self.game_log.push_front(VisibleEvent::Joined(name.clone()));
-            let rounds = self.round_no as usize;
-            let rounds_elapsed: usize = match self.state {
-                Playing { .. } | RoundResults { .. } => rounds + 1,
-                Empty | Lobby { .. } => rounds,
+            let rounds_elapsed = match self.state {
+                RoundResults { .. } => self.round_no as usize + 1,
+                Playing { .. } | Empty | Lobby { .. } => self.round_no as usize,
             };
-            let new_score =
-                repeat(RoundScore::Absent).take(rounds_elapsed).collect();
-            let id = self.players.insert(Player {
-                name,
-                score: new_score,
-                has_guessed: false,
-            });
+            let score = repeat(Absent).take(rounds_elapsed).collect();
+            let id = self.players.insert(Player { name, score });
             match self.state {
-                Game_::Empty => {
-                    self.state = Game_::Lobby { room_leader: id };
+                Empty => {
+                    self.state = Lobby { leader: id };
                 }
-                Game_::Lobby { .. } => {}
-                Game_::Playing { .. } => {}
-                Game_::RoundResults { .. } => {}
+                Playing { ref mut scores, .. } => {
+                    scores.insert(id, Absent);
+                }
+                Lobby { .. } | RoundResults { .. } => {}
             };
             JoinResponse::Accept(id)
         }
@@ -362,28 +351,37 @@ impl game::Game<Id> for Game {
                 self.game_log.push_front(Left(name.clone()));
                 if let Some((id, _)) = self.players.iter().next() {
                     let response = match self.state {
-                        Game_::Lobby {
-                            ref mut room_leader,
-                        } if *room_leader == player => {
-                            *room_leader = id;
+                        Game_::Lobby { ref mut leader }
+                            if *leader == player =>
+                        {
+                            *leader = id;
                             broadcast!(to_unique, id, HiddenEvent(Mastery))
                         }
                         Game_::Playing {
                             ref mut artist,
                             word,
+                            ref mut scores,
                             ..
-                        } if *artist == player => {
-                            *artist = id;
-                            let scores = self.player_scores().collect();
-                            let msg =
-                                HiddenEvent(Over(word.to_string(), scores));
-                            self.game_log.push_back(SyncOver(word.to_string()));
-                            broadcast!(to_all, msg)
+                        } => {
+                            scores.remove(player);
+                            if *artist == player {
+                                *artist = id;
+                                let scores = self.end_round();
+                                let msg =
+                                    HiddenEvent(Over(word.to_string(), scores));
+                                self.game_log
+                                    .push_back(SyncOver(word.to_string()));
+                                broadcast!(to_all, msg)
+                            } else {
+                                broadcast!(nothing)
+                            }
                         }
                         _ => broadcast!(nothing),
                     };
                     if self.players.len() == 1 {
-                        self.state = Game_::Lobby { room_leader: id };
+                        self.round_no = 0;
+                        self.players[id].score = Vec::new();
+                        self.state = Game_::Lobby { leader: id };
                     }
                     LeaveResponse::Successfully(name, response)
                 } else {
@@ -405,7 +403,7 @@ impl game::Game<Id> for Game {
             VisibleEvent::Message,
         };
         let msg = match request {
-            GameReq::Sync_ => None,
+            GameReq::Sync => None,
             GameReq::Start => self.start_round(Some(player)),
             GameReq::Canvas(msg) => {
                 // TODO: write this better
@@ -526,9 +524,9 @@ impl game::Game<Id> for Game {
             }
             (Playing { word, .. }, EndRound) => {
                 let word = word.to_string();
-                self.end_round();
+                let scores = self.end_round();
                 self.game_log.push_front(SyncOver(word.clone()));
-                let send = Over(word, self.player_scores().collect());
+                let send = Over(word, scores);
                 let msg = Feedback_::NextRound;
                 let cmd = game::Cmd::In(
                     Duration::from_secs(3),
@@ -536,21 +534,13 @@ impl game::Game<Id> for Game {
                 );
                 Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
             }
-            (
-                Playing {
-                    round_start_time,
-                    word,
-                    ..
-                },
-                TickTimeout,
-            ) => {
-                let timeout =
-                    ROUND_LENGTH - round_start_time.elapsed().as_secs() as i16;
+            (Playing { lap, word, .. }, TickTimeout) => {
+                let timeout = ROUND_LENGTH - lap.elapsed().as_secs() as i16;
                 let (classic_reply, cmd) = if timeout <= 0 {
                     self.game_log.push_front(SyncOver(word.to_string()));
                     let word_s = word.to_string();
-                    self.end_round();
-                    let send = Over(word_s, self.player_scores().collect());
+                    let scores = self.end_round();
+                    let send = Over(word_s, scores);
                     let msg = Feedback_::NextRound;
                     let cmd = game::Cmd::In(
                         Duration::from_secs(3),
@@ -578,3 +568,6 @@ impl game::Game<Id> for Game {
         }
     }
 }
+
+#[rustfmt::skip]
+static WORD_LIST: [&str; 256] = [ "Aardvark", "Albatross", "Alligator", "Alpaca", "Ant", "Anteater", "Antelope", "Ape", "Armadillo", "Baboon", "Badger", "Barracuda", "Bat", "Bear", "Beaver", "Bee", "Beetle", "Bird", "Bison", "Boar", "Bobcat", "Buffalo", "Bull", "Butterfly", "Camel", "Caribou", "Cassowary", "Cat", "Caterpillar", "Cattle", "Chameleon", "Chamois", "Cheetah", "Chicken", "Chimpanzee", "Chinchilla", "Chipmunk", "Chough", "Civet", "Coati", "Cobra", "Cockroach", "Cod", "Cormorant", "Cougar", "Cow", "Coyote", "Crab", "Crane", "Crocodile", "Crow", "Cuckoo", "Curlew", "Deer", "Dinosaur", "Doe", "Dog", "Dogfish", "Dolphin", "Donkey", "Dotterel", "Dove", "Dragonfly", "Dromedary", "Duck", "Dugong", "Dunlin", "Eagle", "Echidna", "Eel", "Eland", "Elephant", "ElephantSeal", "Elk", "Emu", "Falcon", "Ferret", "Finch", "Fish", "Flamingo", "Fly", "Fox", "Frog", "Gaur", "Gazelle", "Gerbil", "GiantPanda", "Giraffe", "Gnat", "Gnu", "Goat", "Goldfinch", "Goosander", "Goose", "Gorilla", "Goshawk", "Grasshopper", "Grouse", "Guanaco", "GuineaFowl", "GuineaPig", "Gull", "Hamster", "Hare", "Hawk", "Hedgehog", "Heron", "Herring", "Hippo", "Hornet", "Horse", "Hummingbird", "Hyena", "Ibex", "Ibis", "Impala", "Jackal", "Jaguar", "Jay", "Jellyfish", "Kangaroo", "Kinkajou", "Kitten", "Kiwi", "Koala", "KomodoDragon", "Kouprey", "Kudu", "Ladybug", "Lapwing", "Lark", "Lemur", "Leopard", "Lion", "Lizard", "Llama", "Lobster", "Locust", "Loris", "Louse", "Lynx", "Lyrebird", "Magpie", "Mallard", "Mammoth", "Manatee", "Mandrill", "Marmoset", "Mink", "Mole", "Mongoose", "Monkey", "Moose", "Mosquito", "Moth", "Mouse", "Narwhal", "Newt", "Nightlingale", "Ocelot", "Octopus", "Okapi", "Opossum", "Ostrich", "Otter", "Owl", "Oyster", "Panda", "Panther", "Parrot", "Partridge", "Peafowl", "Pelican", "Penguin", "Pheasant", "Pig", "Pigeon", "Pika", "PolarBear", "Polecat", "Pony", "Porcupine", "Porpoise", "PrairieDog", "Pug", "Puma", "Puppy", "Quail", "Quelea", "Quetzal", "Rabbit", "Raccoon", "Ram", "Rat", "Raven", "RedDeer", "RedPanda", "Reindeer", "Rhinoceros", "Rook", "Rooster", "Salamander", "Salmon", "SandDollar", "Sandpiper", "Sardine", "SeaLion", "Seahorse", "Seal", "Shark", "Sheep", "Shrew", "Siamang", "Skunk", "Sloth", "Slug", "Snail", "Snake", "Snowshoe", "Sow", "Sparrow", "Spider", "Squid", "Squirrel", "Stalion", "Starling", "Stegosaurus", "Stoat", "Swan", "Tapir", "Tarsier", "Termite", "Tiger", "Toad", "Tortoise", "Turkey", "Turtle", "Vicuna", "Viper", "Vole", "Vulture", "Wallaby", "Walrus", "Wasp", "WaterBuffalo", "Weasel", "Whale", "Wolf", "Wolverine", "Wombat", "Woodpecker", "Worm", "Wren", "Yak", "Zebra", "Zebu" ];

@@ -11,12 +11,12 @@ module Api
         , roomsCreateRequest
         , roomsJoinRequest
         , reportError
-        , LobbyState
         , RoundState
         , Scoreboard
         , Stroke
         , Drawing
-        , GameState(..)
+        , GameState
+        , GameScreen(..)
         , GameMsg(..)
         , GameReq(..)
         , wsListen
@@ -291,28 +291,11 @@ decoderScore =
 
 
 
---- LobbyState ---
-
-
-type alias LobbyState =
-    { players : List Name
-    , master : Name
-    }
-
-
-decoderLobbyState : Decoder LobbyState
-decoderLobbyState =
-    LobbyState
-        <*| "players" :* Dec.list decoderName
-        |*| "master" :* decoderName
-
-
-
 --- RoundState ---
 
 
 type alias RoundState =
-    { playerScores : List (Name, RoundScore)
+    { drawing : List Stroke
     , artist : Name
     , timeout : Int
     }
@@ -321,7 +304,7 @@ type alias RoundState =
 decoderRoundState : Decoder RoundState
 decoderRoundState =
     RoundState
-        <*| "scores" :* decoderScore
+        <*| "drawing" :* decoderDrawing
         |*| "artist" :* decoderName
         |*| "timeout" :* Dec.int
 
@@ -357,23 +340,34 @@ decoderDrawing =
 
 --- GameState ---
 
+type alias GameState =
+    { scores : Scoreboard
+    , screen : GameScreen
+    , history : List VisibleEvent
+    }
 
-type GameState
-    = Summary Scoreboard
-    | RoundScores (List (Name, RoundScore))
-    | Round Drawing RoundState
-    | Lobby LobbyState
+type GameScreen
+    = Summary
+    | RoundScores
+    | Round RoundState
+    | Lobby Name
 
 
 decoderGameState : Decoder GameState
 decoderGameState =
+    GameState
+        <*| "scores" :* decoderScoreboard
+        |*| "screen" :* decoderGameScreen
+        |*| "history" :* Dec.list decoderVisibleEvent
+
+
+decoderGameScreen : Decoder GameScreen
+decoderGameScreen =
     oneOf
-        [ "endsummary" := Summary <*| decoderScoreboard
-        , "scores" := RoundScores <*| decoderScore
-        , "round" := Round
-            <*| 0 :^ decoderDrawing
-            |*| 1 :^ decoderRoundState
-        , "lobby" := Lobby <*| decoderLobbyState
+        [ "endsummary" :- Summary
+        , "scores" :- RoundScores
+        , "round" := Round <*| decoderRoundState
+        , "lobby" := Lobby <*| "master" :* decoderName
         ]
 
 
@@ -525,7 +519,7 @@ type VisibleEvent
 type HiddenEvent
     = EhCorrect String
     | EhTimeout Int
-    | EhSync GameState (List VisibleEvent)
+    | EhSync GameState
     | EhMastery
     | EhOver String (List (Name, RoundScore))
     | EhStart RoundStart
@@ -554,9 +548,7 @@ decoderHiddenEvent =
         oneOf
             [ "correct" := EhCorrect <*| Dec.string
             , "timeoutsync" := EhTimeout <*| Dec.int
-            , "sync" := EhSync
-                <*| 0 :^ decoderGameState
-                |*| 1 :^ Dec.list decoderVisibleEvent
+            , "sync" := EhSync <*| decoderGameState
             , "mastery" :- EhMastery
             , "over" := EhOver
                 <*| 0 :^ Dec.string

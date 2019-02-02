@@ -136,25 +136,24 @@ pub enum RoundScore {
     Absent,
 }
 
-#[derive(Debug, Serialize, Clone)]
-pub struct RoundState {
-    pub scores:  Vec<(Name, RoundScore)>,
-    pub artist:  Name,
-    pub timeout: i16,
-}
-
-type Scoreboard = Vec<(Name, Vec<RoundScore>)>;
+pub type Scoreboard = Vec<(Name, Vec<RoundScore>)>;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Stroke(pub Point, pub Vec<Point>, pub Color, pub Size);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum GameState {
-    Scores(Vec<(Name, RoundScore)>),
-    EndSummary(Scoreboard),
-    Round(Vec<Stroke>, RoundState),
-    Lobby { players: Vec<Name>, master: Name },
+pub enum GameScreen {
+    Scores,
+    EndSummary,
+    Round {
+        drawing: Vec<Stroke>,
+        artist:  Name,
+        timeout: i16,
+    },
+    Lobby {
+        master: Name,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -182,8 +181,7 @@ pub enum CanvasMsg {
 pub enum GameReq {
     Canvas(CanvasMsg),
     Chat(ChatContent),
-    #[serde(rename = "sync")]
-    Sync_,
+    Sync,
     Start,
 }
 
@@ -233,8 +231,11 @@ pub enum VisibleEvent {
 pub enum HiddenEvent {
     Correct(String),
     TimeoutSync(i16),
-    #[serde(rename = "sync")]
-    Sync_(GameState, Vec<VisibleEvent>),
+    Sync {
+        scores:  Scoreboard,
+        screen:  GameScreen,
+        history: Vec<VisibleEvent>,
+    },
     Mastery,
     Over(String, Vec<(Name, RoundScore)>),
     Start(RoundStart),
