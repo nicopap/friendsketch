@@ -14,7 +14,7 @@ import Time exposing (second)
 import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
 import Html.Attributes as HA exposing (id, class, href)
 
-import Pintclone.Game as Game exposing (Game)
+import Game exposing (Game)
 import Api exposing (GameMsg)
 
 

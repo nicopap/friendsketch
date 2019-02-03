@@ -1,4 +1,4 @@
-module Pintclone.Room
+module Game.Room
     exposing
         ( newInLobby
         , joinBreak

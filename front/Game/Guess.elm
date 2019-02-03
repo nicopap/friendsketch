@@ -1,4 +1,4 @@
-module Pintclone.Guess exposing (Guess, Msg(..), view, update, new)
+module Game.Guess exposing (Guess, Msg(..), view, update, new)
 
 import Api
 import String exposing (toList, fromChar)

@@ -1,4 +1,4 @@
-module Pintclone.Game exposing
+module Game exposing
     ( Game
     , Msg
     , Event
@@ -22,8 +22,8 @@ import Html.Events as HE
 
 import Api
 import Ports
-import Pintclone.Room as Room exposing (Room)
-import Pintclone.Guess as Guess exposing (Guess)
+import Game.Room as Room exposing (Room)
+import Game.Guess as Guess exposing (Guess)
 import Canvas exposing (Canvas)
 import Chat exposing (Chat)
 
