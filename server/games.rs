@@ -1,14 +1,13 @@
 mod game;
 mod tugofsketch;
 
-use fnv::FnvHashMap;
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
 use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
 use quick_error::quick_error;
 use serde::de::Error;
 use serde_json::{de::from_str, ser::to_string};
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::{sync, time::Duration};
 use tokio_timer::sleep;
 use warp::{
@@ -25,12 +24,6 @@ use crate::{
 };
 
 type ManagerChannel = mpsc::Sender<ManagerRequest<Feedback>>;
-
-macro_rules! default {
-    () => {
-        Default::default()
-    };
-}
 
 quick_error! {
     #[derive(Debug)]
@@ -95,7 +88,7 @@ pub enum ManagerResponse {
 /// timeouts and such.
 struct HangupChallenger {
     newcomings:   FxHashMap<Name, (Id, Challenge)>,
-    remaining:    FnvHashMap<Id, Name>,
+    remaining:    SecondaryMap<Id, Name>,
     challenges:   SlotMap<Challenge, ()>,
     manager_sink: ManagerChannel,
 }
@@ -105,8 +98,11 @@ impl HangupChallenger {
     /// `manager_sink`: where to send `ManagerRequest` back.
     fn new(manager_sink: ManagerChannel) -> Self {
         HangupChallenger {
-            newcomings: FxHashMap::with_capacity_and_hasher(4, default!()),
-            remaining: FnvHashMap::with_capacity_and_hasher(16, default!()),
+            newcomings: FxHashMap::with_capacity_and_hasher(
+                4,
+                Default::default(),
+            ),
+            remaining: SecondaryMap::with_capacity(16),
             challenges: SlotMap::with_capacity_and_key(4),
             manager_sink,
         }
@@ -169,21 +165,21 @@ impl HangupChallenger {
     /// can reconnect without issue. If they do not reconnect by then, they
     /// will be "Given up".
     fn disconnect(&mut self, id: Id) -> Option<Name> {
-        self.remaining.remove(&id).map(|name| {
+        self.remaining.remove(id).map(|name| {
             self.drop_in(5, name.clone(), id);
             name
         })
     }
 
     /// Player `id` was forecefully removed from the game.
-    fn remove(&mut self, id: &Id) {
-        self.remaining.remove(&id);
+    fn remove(&mut self, id: Id) {
+        self.remaining.remove(id);
     }
 }
 
 struct ConnectionManager<G> {
     room_name:    String,
-    connections:  FnvHashMap<Id, Connection>,
+    connections:  SecondaryMap<Id, Connection>,
     manager_sink: ManagerChannel,
     respond:      sync::mpsc::SyncSender<ManagerResponse>,
     hangups:      HangupChallenger,
@@ -229,7 +225,7 @@ where
         }
         ManagerRequest::Disconnect(id) => {
             let room = &manager.room_name;
-            if !manager.connections.remove(&id).is_some() {
+            if !manager.connections.remove(id).is_some() {
                 warn!("disconnect non-conn {:?}: {}", id, room);
             }
             if let Some(name) = manager.hangups.disconnect(id) {
@@ -237,8 +233,8 @@ where
             }
         }
         ManagerRequest::Terminate(id) => {
-            manager.hangups.remove(&id);
-            let removed = manager.connections.remove(&id).is_some();
+            manager.hangups.remove(id);
+            let removed = manager.connections.remove(id).is_some();
             match manager.game.leaves(id) {
                 LeaveResponse::Successfully(name, broadcast) => {
                     let room = &manager.room_name;
@@ -315,7 +311,7 @@ impl GameRoom {
         let manager = ConnectionManager {
             room_name: room_name.clone(),
             respond,
-            connections: FnvHashMap::with_capacity_and_hasher(16, default!()),
+            connections: SecondaryMap::with_capacity(16),
             manager_sink: manager_sink.clone(),
             hangups: HangupChallenger::new(manager_sink.clone()),
             game: tugofsketch::Game::new(),
@@ -440,12 +436,12 @@ where
             Broadcast::ToList(ids, message) => {
                 let message: String = to_string(&message).unwrap();
                 for id in ids.iter() {
-                    let mut connection = &self.connections[id].0;
+                    let mut connection = &self.connections[*id].0;
                     send!(connection, message);
                 }
                 for id in ids.iter() {
                     debug!("polling {:?}", id);
-                    let mut connection = &self.connections[id].0;
+                    let mut connection = &self.connections[*id].0;
                     connection.poll_complete().unwrap_or_else(|e| {
                         panic!("poll fail '{:?}' at game.rs:{}", e, line!())
                     });
@@ -466,7 +462,7 @@ where
     ) {
         let message = to_string(message).unwrap();
         for (id, connection) in self.connections.iter_mut() {
-            if *id == except {
+            if id == except {
                 if let Some(other) = other {
                     let message = to_string(other).unwrap();
                     send!(connection.0, message);

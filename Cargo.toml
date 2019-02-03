@@ -18,7 +18,6 @@ arraydeque = "0.4"
 # regex = "1.1.0"
 # parking_lot = "0.7.0"
 fxhash = "0.2.1"
-fnv = "1.0.6"
 slotmap = { version = "0.3", features = ["unstable"] }
 rand = "0.6"
 chashmap = "2.2"

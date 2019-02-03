@@ -399,22 +399,16 @@ impl game::Game<Id> for Game {
         player: Id,
         request: api::GameReq,
     ) -> Result<(Broadcast, Cmd), ()> {
-        use self::api::{
-            GameMsg::{self, VisibleEvent},
-            GameReq,
-            VisibleEvent::Message,
-        };
+        use self::api::{GameMsg, GameReq};
         let msg = match request {
             GameReq::Sync => None,
             GameReq::Start => self.start_round(Some(player)),
-            GameReq::Canvas(msg) => {
-                // TODO: write this better
-                if let Game_::Playing {
+            GameReq::Canvas(msg) => match self.state {
+                Game_::Playing {
                     ref mut drawing,
                     artist,
                     ..
-                } = self.state
-                {
+                } => {
                     if artist != player {
                         None
                     } else {
@@ -436,56 +430,45 @@ impl game::Game<Id> for Game {
                             game::Cmd::None,
                         ))
                     }
-                } else {
-                    None
                 }
-            }
-            GameReq::Chat(content) => {
-                // TODO: write this better
-                if let Game_::Playing { artist, word, .. } = self.state {
-                    if player != artist && word.as_bytes() == content.as_bytes()
-                    {
-                        use api::{
-                            GameMsg::{HiddenEvent, VisibleEvent},
-                            HiddenEvent::Correct,
-                            VisibleEvent::Guessed,
+                _ => None,
+            },
+            GameReq::Chat(content) => match self.state {
+                Game_::Playing { artist, word, .. }
+                    if player != artist
+                        && word.as_bytes() == content.as_bytes() =>
+                {
+                    use api::{
+                        GameMsg::HiddenEvent, HiddenEvent::Correct,
+                        VisibleEvent::Guessed,
+                    };
+                    let all_guessed = self.guesses_correctly(player);
+                    let guesser = self.players[player].name.clone();
+                    let msg = GameMsg::VisibleEvent(Guessed(guesser));
+                    let correct = Some(HiddenEvent(Correct(word.to_string())));
+                    let cmd = if all_guessed {
+                        let end_round = Feedback {
+                            sent_round: self.round_no,
+                            msg:        Feedback_::EndRound,
                         };
-                        let all_guessed = self.guesses_correctly(player);
-                        let guesser = self.players[player].name.clone();
-                        let msg = VisibleEvent(Guessed(guesser));
-                        let correct =
-                            Some(HiddenEvent(Correct(word.to_string())));
-                        let cmd = if all_guessed {
-                            let end_round = Feedback {
-                                sent_round: self.round_no,
-                                msg:        Feedback_::EndRound,
-                            };
-                            game::Cmd::Immediately(end_round)
-                        } else {
-                            game::Cmd::None
-                        };
-                        Some(Some((
-                            broadcast!(to_all_but, player, msg, correct),
-                            cmd,
-                        )))
+                        game::Cmd::Immediately(end_round)
                     } else {
-                        None
-                    }
-                } else {
-                    None
+                        game::Cmd::None
+                    };
+                    Some((broadcast!(to_all_but, player, msg, correct), cmd))
                 }
-                .unwrap_or_else(|| {
-                    let final_msg = Message(ChatMsg {
+                _ => {
+                    let final_msg = api::VisibleEvent::Message(ChatMsg {
                         content,
                         author: self.players[player].name.clone(),
                     });
                     self.game_log.push_front(final_msg.clone());
                     Some((
-                        broadcast!(to_all, VisibleEvent(final_msg)),
+                        broadcast!(to_all, GameMsg::VisibleEvent(final_msg)),
                         game::Cmd::None,
                     ))
-                })
-            }
+                }
+            },
         };
         let msg = msg.unwrap_or_else(|| {
             (
@@ -530,10 +513,8 @@ impl game::Game<Id> for Game {
                 self.game_log.push_front(SyncOver(word.clone()));
                 let send = Over(word, scores);
                 let msg = Feedback_::NextRound;
-                let cmd = game::Cmd::In(
-                    TALLY_LENGTH,
-                    Feedback { sent_round, msg },
-                );
+                let cmd =
+                    game::Cmd::In(TALLY_LENGTH, Feedback { sent_round, msg });
                 Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
             }
             (Playing { lap, word, .. }, TickTimeout) => {

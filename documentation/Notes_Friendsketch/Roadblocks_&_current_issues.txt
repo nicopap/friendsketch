@@ -26,7 +26,6 @@ Created Tuesday 26 September 2017
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
-* Use ''SecondaryMap'' instead of dumb hash maps.
 
 ===== Game Event Log =====
 
