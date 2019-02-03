@@ -7,7 +7,6 @@ Created Tuesday 26 September 2017
 
 ===== Game =====
 
-* disable toolbox control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
 * Fix "spectators" being able to guess
 * Do not relay messages from anyone containing word to guess

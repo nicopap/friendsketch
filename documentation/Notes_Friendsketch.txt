@@ -29,6 +29,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Possible optimisation: serialize ''GameEvent'' when adding them to game log
 
+> Give feedback (like ''ghost'' in chat) when drawing.
+
 ===== Current roadmap =====
 * Improve how the backend handles stuff
 * Add tests

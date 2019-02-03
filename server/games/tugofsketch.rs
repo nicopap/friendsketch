@@ -541,6 +541,9 @@ impl game::Game<Id> for Game {
                 };
                 Ok((broadcast!(to_all, classic_reply), cmd))
             }
+            (RoundResults { .. }, TickTimeout) => {
+                Ok((broadcast!(nothing), game::Cmd::None))
+            }
             (RoundResults { .. }, NextRound) => {
                 Ok(self.start_round(None).unwrap())
             }
