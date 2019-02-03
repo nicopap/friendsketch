@@ -172,7 +172,9 @@ update msg ({ roomid, username, openGameRetries, syncRetries, wssend } as pintcl
                 )
 
             Sync state ->
-                withGameUpdate <| Game.sync state username
+                let game = Game.sync state username
+                in ( { pintclone | state = Running game }, Cmd.none )
+
 
             GameMsg gameMsg ->
                 case pintclone.state of

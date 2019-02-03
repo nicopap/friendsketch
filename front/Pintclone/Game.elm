@@ -46,9 +46,9 @@ type alias Game_ =
 type Game = Game Game_
 
 
-sync : Api.GameState -> Api.Name -> ( Game, GameCmd )
+sync : Api.GameState -> Api.Name -> Game
 sync { screen, history, scores } username =
-    let (gamePart, makeRoom, canvasInit, cmd) = case screen of
+    let (gamePart, makeRoom, canvasInit) = case screen of
         Api.Summary ->
             Debug.crash "final game summary not supported yet"
 
@@ -56,29 +56,24 @@ sync { screen, history, scores } username =
             ( BetweenRound <| Guess.new Nothing 0
             , Room.joinBreak
             , Canvas.Demo
-            , Cmd.none
             )
         Api.Round { drawing, artist, timeout } ->
             ( Round <| Guess.new Nothing timeout
             , Room.joinRound artist
             , Canvas.Receiver drawing
-            , Cmd.none
             )
         Api.Lobby master ->
             ( LobbyState { hideId = True }
             , Room.newInLobby master
             , Canvas.Demo
-            , Ports.selectRoomid ()
             )
     in
-        ( Game
+        Game
             { room = makeRoom username scores
             , canvas = Canvas.new canvasInit
             , gamePart = gamePart
             , chat = Chat.new username history
             }
-        , Execute cmd
-        )
 
 
 type alias Event = Result Api.HiddenEvent Api.VisibleEvent
@@ -90,6 +85,7 @@ type Msg
     | StartGame
     | TogglePassView
     | TickDown
+    | SelectRoomid
     | UpdateTally
 
 receive : Api.GameMsg -> Msg
@@ -158,6 +154,7 @@ update msg (Game ({ canvas, chat } as game)) =
         TogglePassView -> (togglePass game, doNothing)
         StartGame -> (Game game, Send Api.ReqStart)
         TickDown -> (tickTimer game, doNothing)
+        SelectRoomid -> (Game game, Execute <| Ports.selectRoomid ())
         UpdateTally ->
             case game.gamePart of
                 BetweenRoundFrameOne guess ->
@@ -193,7 +190,7 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
 
     in case (event, gamePart) of
         (Err (Api.EhSync gameState), _) ->
-            sync gameState (Room.myName room)
+            (sync gameState (Room.myName room), doNothing)
 
         (Err Api.EhMastery, LobbyState _) ->
             (Game { game | room = Room.becomeMaster room } , doNothing)
@@ -286,14 +283,15 @@ masterDialog canStart hideId roomid =
     let
         roomdisplayAttributes =
             [ HA.type_ "text"
-            , class "roomid"
-            , id (if hideId then "hidden-roomid" else "display-roomid")
+            , id "roomid"
+            , class (if hideId then "hidden" else "display")
             , HA.value <| Api.showRoomID roomid
             , HA.readonly True
+            , HE.onClick SelectRoomid
             ]
         checkboxAttrs =
             [ HE.onClick TogglePassView
-            , id "roomid-toggle"
+            , class "toggle"
             , HA.type_ "checkbox"
             ]
         startButton =
@@ -302,12 +300,12 @@ masterDialog canStart hideId roomid =
             else
                 H.button [ HA.disabled True ] [ text "Needs 3 players" ]
     in
-        div [ id "roomiddialog" ]
+        div [ id "roomid-mod" ]
             [ div []
                 [ b [] [ text "Room name:" ]
                 , div [ id "roomid-border" ]
                     [ input roomdisplayAttributes []
-                    , H.label [ id "roomid-toggle" ]
+                    , H.label [ class "toggle" ]
                         [ input checkboxAttrs [], H.span [] [] ]
                     ]
                 ]

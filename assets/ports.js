@@ -21,11 +21,7 @@ function openLink(link) {
 }
 
 function selectRoomid() {
-    setTimeout(function() {
-        function selectText(e) {
-            this.focus();
-            this.select();
-        };
-        document.getElementById("hidden-roomid").onclick = selectText;
-    }, 100);
+    var spoilerField = document.getElementById("roomid");
+    spoilerField.focus();
+    spoilerField.select();
 }
