@@ -181,7 +181,8 @@ chatEvent event = chatMsg (Chat.receive event) doNothing
 
 updateByEvent : Event -> Game_ -> ( Game, GameCmd )
 updateByEvent event ({ room, canvas, gamePart, chat} as game) =
-    let simpleChatMsg message =
+    let
+        simpleChatMsg message =
             chatEvent message chat |> mapFirst (\c -> Game { game | chat = c })
 
         guessMsg message guess =
@@ -195,9 +196,16 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Err Api.EhMastery, LobbyState _) ->
             (Game { game | room = Room.becomeMaster room } , doNothing)
 
-        (Err (Api.EhCorrect w  ), Round g) -> guessMsg (Guess.RevealAll w) g
         (Err (Api.EhReveal  i c), Round g) -> guessMsg (Guess.RevealOne i c) g
         (Err (Api.EhTimeout t  ), Round g) -> guessMsg (Guess.SetTimeout t) g
+        (Err (Api.EhCorrect word), Round guess) ->
+            let guess_ = Guess.update (Guess.RevealAll word) guess
+                (chat_, chatCmd) = chatMsg (Chat.correct word) doNothing chat
+                part_ = Round guess_
+            in
+                ( Game { game | gamePart = part_, chat = chat_ }
+                , chatCmd
+                )
 
         (Ok ((Api.EvGuessed _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvMessage _) as message), _) -> simpleChatMsg message

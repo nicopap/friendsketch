@@ -1,4 +1,4 @@
-module Chat exposing (Chat, new, Msg, ChatCmd(..), update, view, receive)
+module Chat exposing (Chat, new, Msg, ChatCmd(..), update, view, receive, correct)
 
 import Api
 import Html exposing (Html, div, input, text)
@@ -15,6 +15,7 @@ type Message
     | Start String
     | Over String
     | Guessed String
+    | Correct String
 
 
 type alias Chat =
@@ -29,7 +30,10 @@ type Msg
     = Event Api.VisibleEvent
     | UpdateInput String
     | SubmitInput
+    | CorrectGuess String
 
+correct : String -> Msg
+correct = CorrectGuess
 
 type ChatCmd
     = Send Api.ChatContent
@@ -80,6 +84,9 @@ messageView self message =
             Guessed name ->
                 genericMessage "guessed" (name ++ " guessed the word")
 
+            Correct word  ->
+                genericMessage "guessed" (word ++ " was the correct answer!!")
+
             Start name ->
                 genericMessage "start" (name ++ " is going to draw")
 
@@ -124,6 +131,14 @@ submit content chat =
         , inputContent = ""
     }
 
+correctGuess : String -> Chat -> Chat
+correctGuess word ({ history, pending } as chat) =
+    let
+        pendingRemoved = List.filter ((/=) word << Api.showChatContent) pending
+        historyAdded = history ++ [ Correct word ]
+    in
+        { chat | history = historyAdded, pending = pendingRemoved }
+
 
 update : Msg -> Chat -> ( Chat, ChatCmd )
 update msg ({ inputContent } as chat) =
@@ -133,6 +148,9 @@ update msg ({ inputContent } as chat) =
 
         UpdateInput newText ->
             ( { chat | inputContent = newText }, DoNothing )
+
+        CorrectGuess word ->
+            ( correctGuess word chat, DoNothing )
 
         SubmitInput ->
             Api.validChatContent inputContent
