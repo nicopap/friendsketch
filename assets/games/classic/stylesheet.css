@@ -1,4 +1,4 @@
-body { font-family: sans-serif }
+body { font-family: sans-serif; color: #282c34 }
 
 #masterlayout {
 	display: flex;
@@ -13,7 +13,11 @@ body { font-family: sans-serif }
 }
 
 
-/* *** User list (Room) *** */
+
+
+/* *** ------- User list (Room) ------- *** */
+
+
 
 
 #userlist {
@@ -24,10 +28,7 @@ body { font-family: sans-serif }
 	margin: 0 10px auto 10px;
 	height: auto;
 }
-.userentry:last-child {
-	margin-bottom: 0;
-}
-.userentry {
+.user {
 	padding: 4px 0;
 	margin-bottom: -2px;
 	border: 2px solid #cdcdcd;
@@ -35,19 +36,25 @@ body { font-family: sans-serif }
 	display:flex;
 	justify-content: space-between;
 }
-.userentry-me :first-child { text-decoration: underline }
-.userentry-artist { background-color: #cce9b6; }
+.user:last-child { margin-bottom: 0 }
+.user.me :first-child { text-decoration: underline }
+.user.artist { background: #cce9b6 }
+.user.leader::before { content: "♚" }
+/*.user.guessed: cf .message.guessed*/
 
 
 
-/* ** Canvas ** */
+
+/* ** ------- Toolbox ------- ** */
+
+
 
 
 .colorbox:hover {
 	transform: scale(1.5);
 	z-index: 4;
 }
-.colorbox.selected {
+.selected.colorbox {
 	box-shadow: 0 0 5px 5px #f9f1a5;
 	transform: scale(1.2);
 	z-index:3;
@@ -79,6 +86,10 @@ input[type=color].colorbox {
 	height:1px;
 }
 
+
+/* ** ------- Size slider -------- ** */
+
+
 input[type=range] {
 	-webkit-appearance: none;
 	background: white;
@@ -107,8 +118,8 @@ input[type=range]::-moz-range-thumb {
 	background:#f0f0f0;
 	border: 1px solid #999;
 }
-input[type=range]::-moz-range-track { height:3px;	background: #999 }
-input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	background: #999 }
+input[type=range]::-moz-range-track { height:3px; background: #999 }
+input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; background: #999 }
 
 #toolbox {
 	width: 590px;
@@ -119,6 +130,21 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	border-top: 3px solid #ededf0;
 	z-index:3;
 }
+#tally-box + #artcontainer #palette { filter: grayscale(75%) }
+
+.spectator #toolbox { filter: opacity(50%) }
+.spectator .colorbox:hover { transform: none }
+.spectator .colorbox:focus { box-shadow: none }
+.artist #toolbox { background-color: #cce9b6 }
+
+
+
+
+/* ** ------- Canvas ------- ** */
+
+
+
+
 #canvas {
 	width: 600px;
 	border-top: 3px solid #ededf0;
@@ -126,15 +152,8 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	overflow: hidden;
 	z-index: 2;
 }
-#tally-box + #artcontainer #canvas {
-	filter: blur(5px) grayscale(75%);
-}
-#tally-box + #artcontainer #palette {
-	filter: grayscale(75%);
-}
-#roomid-mod + #artcontainer #canvas {
-	height: 355px;
-}
+#tally-box + #artcontainer #canvas { filter: blur(5px) grayscale(75%) }
+#roomid-mod + #artcontainer #canvas { height: 355px }
 .artist-empty #canvas{
 	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
@@ -168,13 +187,13 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	text-align: center;
 	line-height: 100%;
 }
-.spectator #toolbox { filter: opacity(50%) }
-.spectator .colorbox:hover { transform: none }
-.spectator .colorbox:focus { box-shadow: none }
-.artist #toolbox { background-color: #cce9b6 }
 
 
-/* *** Chat *** */
+
+
+/* *** ------- Chat ------- *** */
+
+
 
 
 #chat {	font-size: 14px }
@@ -199,12 +218,18 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	width: 250px;
 }
 
-.join.message {	background:#cce9b6 }
-.leave.message { background: #f9f1a5 }
+.join.message, .leave.message {	background:#b7eaf8 }
+.over.message, .start.message { background: #cce9b6 }
 .ghost.message { filter: opacity(30%) }
+.guessed { background: #f9f1a5 }
 
 
-/* *** Guess bar *** */
+
+
+/* *** ------- Guess bar ------- *** */
+
+
+
 
 #top-bar, .complete {
 	height:25px;
@@ -223,20 +248,22 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 }
 #timer::before {
 	background-image:url("/friendk/icons/timer.svg");
-	filter: contrast(10%);
+	filter: opacity(30%);
 	display:block;
 	background-size:contain;
 	content:"";
-	height:32px;
-	width: 32px;
-	z-index:6;
+	height:45px;
+	width: 45px;
 }
 #timer {
 	display:flex;
 	align-items: center;
 	width: 100px;
-	padding: 0 30px 0 10px;
+	padding: 0 20px 0 0;
+	font-size: 23px;
+	z-index:6;
 }
+
 #guess-word {
 	margin: auto;
 	display:flex;
@@ -248,7 +275,12 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	margin: 0;
 }
 
-/* *** Room dialog *** */
+
+
+
+/* *** ------- Room leader dialog ------- *** */
+
+
 
 
 #roomid-mod {
@@ -269,9 +301,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	margin: auto;
 	padding: 1px 10px;
 }
-#roomid-mod button:disabled {
-	filter:opacity(70%);
-}
+#roomid-mod button:disabled { filter:opacity(70%) }
 
 #roomid-border {
 	border: #ededf0 solid 1px;
@@ -294,10 +324,9 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 #roomid::selection { background: rgba(97, 175, 239, 0.99) }
 #roomid.hidden { background: black }
 #roomid.hidden::selection { color: #61afef }
+
 .toggle input { display: none }
-.toggle span {
-margin:0;padding:0;
-}
+.toggle span { margin:0;padding:0 }
 .toggle [type=checkbox] + span::before {
 	cursor:pointer;
 	content: " ";
@@ -312,7 +341,11 @@ margin:0;padding:0;
 }
 
 
-/*** *** Room Score Tally *** ***/
+
+
+/*** *** ------- Room Score Tally ------- *** ***/
+
+
 
 
 #tally-round-board {
@@ -347,10 +380,5 @@ margin:0;padding:0;
 	font-weight: bold;
 	margin: 0 5px;
 }
-.tally-diff::before {
-	content: "+" ;
-	color:#cce9b6;
-}
-.tally-diff {
-	color:#cce9b6
-}
+.tally-diff::before { content: "+"; color:#cce9b6 }
+.tally-diff { color:#cce9b6 }

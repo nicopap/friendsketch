@@ -387,9 +387,9 @@ view { me, state } =
         userRow artistName ( name, score ) =
             li
                 [ classList
-                    [ ( "userentry", True )
-                    , ( "userentry-me", name == first showMe )
-                    , ( "userentry-artist", Just name == artistName )
+                    [ ( "user", True )
+                    , ( "me", name == first showMe )
+                    , ( "artist", Just name == artistName )
                     ]
                 ]
                 [ a [] [ text name ]

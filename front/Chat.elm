@@ -72,19 +72,19 @@ messageView self message =
                 in  genericMessage classes (author ++ ": " ++ content)
 
             Left name ->
-                genericMessage "leaves" (name ++ " left")
+                genericMessage "leave" (name ++ " left")
 
             Joined name ->
                 genericMessage "join" (name ++ " joined")
 
             Guessed name ->
-                genericMessage "correct-guess" (name ++ " guessed the word")
+                genericMessage "guessed" (name ++ " guessed the word")
 
             Start name ->
-                genericMessage "round-start" (name ++ " is going to draw")
+                genericMessage "start" (name ++ " is going to draw")
 
             Over word ->
-                genericMessage "round-over" ("round over, the word was " ++ word)
+                genericMessage "over" ("round over, the word was " ++ word)
 
 
 new : Api.Name -> List Api.VisibleEvent -> Chat
