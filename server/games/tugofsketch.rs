@@ -115,6 +115,8 @@ const ROUND_LENGTH: i16 = 30;
 
 const TICK_UPDATE: Duration = Duration::from_secs(10);
 
+const TALLY_LENGTH: Duration = Duration::from_secs(6);
+
 impl Game {
     fn api_scores(&self) -> api::Scoreboard {
         self.players.iter().map(|(_, x)| x.clone().into()).collect()
@@ -529,7 +531,7 @@ impl game::Game<Id> for Game {
                 let send = Over(word, scores);
                 let msg = Feedback_::NextRound;
                 let cmd = game::Cmd::In(
-                    Duration::from_secs(3),
+                    TALLY_LENGTH,
                     Feedback { sent_round, msg },
                 );
                 Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
@@ -543,7 +545,7 @@ impl game::Game<Id> for Game {
                     let send = Over(word_s, scores);
                     let msg = Feedback_::NextRound;
                     let cmd = game::Cmd::In(
-                        Duration::from_secs(3),
+                        TALLY_LENGTH,
                         Feedback { sent_round, msg },
                     );
                     (HiddenEvent(send), cmd)
