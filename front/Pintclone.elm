@@ -128,8 +128,10 @@ update msg ({ roomid, username, openGameRetries, syncRetries, wssend } as pintcl
         withGameUpdate (game, gameCmd) =
             ( { pintclone | state = Running game }
             , case gameCmd of
-                Game.Send req -> wssend  req
+                Game.Send req -> wssend req
                 Game.Execute cmd -> Cmd.map GameMsg cmd
+                Game.SendExecute req cmd ->
+                    Cmd.batch [ wssend req , Cmd.map GameMsg cmd ]
             )
     in
         case msg of

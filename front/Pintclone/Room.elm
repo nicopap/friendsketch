@@ -14,6 +14,8 @@ module Pintclone.Room
         , canStart
         , amArtist
         , myName
+        , viewRoundTally
+        , viewPreviousTally
         , Room
         )
 
@@ -24,11 +26,14 @@ artist in the game part of the game.
 
 -}
 
-import Tuple exposing (first, second, mapFirst)
+import Tuple exposing (first, second, mapFirst, mapSecond)
 import Maybe exposing (withDefault)
+import Array
 import Dict exposing (Dict, fromList, get, remove, insert, empty, isEmpty, singleton, update, toList)
-import Html as H exposing (Html, text, ul, li, a)
-import Html.Attributes exposing (id, classList)
+
+import Html as H exposing (Html, text, ul, li, a, div, p)
+import Html.Attributes exposing (id, classList, class, style)
+
 import Api
 
 
@@ -254,17 +259,124 @@ syncScores roundScores_ { me, state } =
 myName : Room -> Api.Name
 myName { me } = first me
 
-showScore : Score -> String
-showScore =
+{-| Displays the score for a player. If first argument is true, will also
+display the differences in points from last round and offset the element to
+reorder the list according to the given offsets.
+-}
+playerTally : Bool -> Int -> String -> Score -> Html msg
+playerTally showDiff offset name score =
     let
-        addScore score acc =
-            case score of
-                Api.WasArtist  s -> s + acc
-                Api.HasGuessed s -> s + acc
-                Api.HasFailed -> acc
-                Api.WasAbsent -> acc
+        scoreDiff = case score of
+            h :: _ ->
+                if showDiff
+                then roundAsInt h
+                else 0
+            []    -> 0
+
+        styleOffset = style [("top", toString (offset * 30) ++ "px")]
+
+        totalScore = toString <| scoreAsInt score
+        viewScore =
+            if scoreDiff /= 0 then
+                [ a [ class "tally-value" ] [ text totalScore ]
+                , a [ class "tally-diff" ]  [ text <| toString scoreDiff ]
+                ]
+            else
+                [ a [ class "tally-value" ] [ text totalScore ] ]
     in
-        toString << List.foldl addScore 0
+        div [ styleOffset, class "tally" ]
+            [ a [ class "tally-name" ] [text (name ++ " :")]
+            , p [ class "tally-score" ] viewScore
+            ]
+
+
+{-|Given a list of things that can be compared with a given criteria,
+get the offsets for each element when the list is ordered by the criteria:
+
+     -- list after ordering: [ 'a', 'b', 'c', 'd', 'e', 'f', 'g' ]
+     offsetBy identity [ 'c', 'a', 'b', 'd', 'e', 'g', 'f' ]
+         --> [ 2, -1, -1, 0, 0, 1, -1 ]
+
+In our example, 'c' went from index 0 -> 2 (offset = +2) and 'a' 1 -> 0 (= -1),
+etc.
+-}
+offsetBy : (a -> comparable) -> List a -> List Int
+offsetBy sortCriteria ordered =
+    let
+        newOrder =
+            List.indexedMap (,) ordered
+                |> List.sortBy (sortCriteria << second)
+                |> List.indexedMap (\ni (oi,_) -> (ni, oi))
+
+        setRankChange (current, previous) =
+            Array.set previous (current - previous)
+
+        initArray =
+            Array.repeat (List.length newOrder) 0
+    in
+        List.foldl setRankChange initArray newOrder |> Array.toList
+
+
+{-| Sorted list of tally for this round, with differences. -}
+viewRoundTally : Room -> Html msg
+viewRoundTally room =
+    let
+        previousRankings =
+            roomAsList room
+                |> List.sortBy (\(_, score) ->
+                    -(scoreAsInt (List.drop 1 score))
+                )
+
+        offsets =
+            offsetBy (\(_, score) -> -(scoreAsInt score)) previousRankings
+
+        toTallies offset (name, score) =
+            playerTally True offset name score
+    in
+        div [ id "tally-round-board" ]
+            (List.map2 toTallies offsets previousRankings)
+
+
+{-| Sorted list of tally for the previous round -}
+viewPreviousTally : Room -> Html msg
+viewPreviousTally room =
+    let
+        roomList =
+            roomAsList room
+                |> List.map (mapSecond (List.drop 1))
+                |> List.sortBy (\(_, score) -> -(scoreAsInt score))
+    in
+        div [ id "tally-round-board" ]
+            (List.map (uncurry (playerTally False 0)) roomList)
+
+
+{-| List of association Player <-> Score (including `me`)
+-}
+roomAsList : Room -> List (String, Score)
+roomAsList { me, state } =
+    let
+        fullList ps = (mapFirst Api.showName me :: toList ps)
+    in
+        case state of
+            Alone -> [ mapFirst Api.showName me ]
+            BreakWith  ps -> fullList ps
+            LobbyWith  ps -> fullList ps
+            MasterOf   ps -> fullList ps
+            ArtistWith ps -> fullList ps
+            PlayingWith _ ps -> fullList ps
+
+
+roundAsInt : Api.RoundScore -> Int
+roundAsInt roundScore =
+    case roundScore of
+        Api.WasArtist  s -> s
+        Api.HasGuessed s -> s
+        Api.HasFailed -> 0
+        Api.WasAbsent -> 0
+
+scoreAsInt : Score -> Int
+scoreAsInt =
+    List.foldl (+) 0 << List.map roundAsInt
 
 
 view : Room -> Html msg
@@ -281,7 +393,7 @@ view { me, state } =
                     ]
                 ]
                 [ a [] [ text name ]
-                , a [] [ text <| showScore score ]
+                , a [] [ text <| toString <| scoreAsInt score ]
                 ]
 
         render maybeartist others =

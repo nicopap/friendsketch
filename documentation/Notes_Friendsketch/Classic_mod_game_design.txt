@@ -83,3 +83,13 @@ Considerations:
 ==== Game loop ====
 {{../../ClassicState.svgz}}
 It's actually very simple lol
+
+==== Round summary ====
+Displays the score **chages** that happend last round, to quickly give an idea of what happend:
+* Display **score before, after, and differences**
+* Display **changes in ranks** (possibly: by showing animation of things moving)
+* Display **in order of highest score to lowest**
+* Must not be that different from complete game tally
+
+=> Tallies are updated during round, however, we want to keep track of last round's standings as well
+* Not a problem, as the whole score from beginning to end is kept track of, just need a way to display old tallies

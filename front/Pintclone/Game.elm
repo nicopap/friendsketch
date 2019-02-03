@@ -13,6 +13,8 @@ module Pintclone.Game exposing
 
 import Tuple exposing (first, mapFirst, mapSecond)
 import Time exposing (every, second)
+import Task
+import Process exposing (sleep)
 
 import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
 import Html.Attributes as HA exposing (id, class, href)
@@ -29,7 +31,9 @@ import Chat exposing (Chat)
 type GamePart
     = LobbyState { hideId : Bool }
     | Round Guess
-    | BetweenRound
+    | BetweenRound Guess
+    | BetweenRoundFrameOne Guess
+
 
 type alias Game_ =
     { room : Room
@@ -49,7 +53,7 @@ sync { screen, history, scores } username =
             Debug.crash "final game summary not supported yet"
 
         Api.RoundScores ->
-            ( BetweenRound
+            ( BetweenRound <| Guess.new Nothing 0
             , Room.joinBreak
             , Canvas.Demo
             , Cmd.none
@@ -86,6 +90,7 @@ type Msg
     | StartGame
     | TogglePassView
     | TickDown
+    | UpdateTally
 
 receive : Api.GameMsg -> Msg
 receive msg =
@@ -97,6 +102,21 @@ receive msg =
 type GameCmd
     = Send Api.GameReq
     | Execute (Cmd Msg)
+    | SendExecute Api.GameReq (Cmd Msg)
+
+combineCmds : GameCmd -> GameCmd -> GameCmd
+combineCmds gameCmd1 gameCmd2 =
+    case (gameCmd1, gameCmd2) of
+        (Send req1, Send req2) -> Send req1
+        (Send req1, Execute cmd2) -> SendExecute req1 cmd2
+        (Send req1, SendExecute req2 cmd2) -> SendExecute req1 cmd2
+        (Execute cmd1, Send req2) -> SendExecute req2 cmd1
+        (Execute cmd1, Execute cmd2) -> Execute (Cmd.batch [cmd1, cmd2])
+        (Execute cmd1, SendExecute req2 cmd2) -> SendExecute req2 (Cmd.batch [cmd1, cmd2])
+        (SendExecute req1 cmd1, Send req2) -> SendExecute req1 cmd1
+        (SendExecute req1 cmd1, Execute cmd2) -> SendExecute req1 (Cmd.batch [cmd1, cmd2])
+        (SendExecute req1 cmd1, SendExecute req2 cmd2) -> SendExecute req1 (Cmd.batch [cmd1, cmd2])
+
 doNothing : GameCmd
 doNothing = Execute (Cmd.none)
 
@@ -132,15 +152,22 @@ update msg (Game ({ canvas, chat } as game)) =
                 ( Game { game | canvas = newCanvas } , cmd )
 
         ChatMsg msg_ ->
-            chatMsg msg_ chat |> mapFirst (\c -> Game { game | chat = c })
+            chatMsg msg_ doNothing chat
+                |> mapFirst (\c -> Game { game | chat = c })
 
         TogglePassView -> (togglePass game, doNothing)
         StartGame -> (Game game, Send Api.ReqStart)
         TickDown -> (tickTimer game, doNothing)
+        UpdateTally ->
+            case game.gamePart of
+                BetweenRoundFrameOne guess ->
+                    (Game { game | gamePart = BetweenRound guess }, doNothing)
+                anyelse ->
+                    Debug.log "update tally not shown" (Game game, doNothing)
 
 
-chatMsg : Chat.Msg -> Chat -> ( Chat, GameCmd )
-chatMsg msg chat =
+chatMsg : Chat.Msg -> GameCmd -> Chat -> ( Chat, GameCmd )
+chatMsg msg combine chat =
     let
         handleChatCmd chatCmd =
             case chatCmd of
@@ -148,10 +175,12 @@ chatMsg msg chat =
                 Chat.Send text -> Send <| Api.ChatReq text
                 Chat.UpdateScroll -> Execute <| Ports.bottomScrollChat ()
     in
-        Chat.update msg chat |> mapSecond handleChatCmd
+        Chat.update msg chat
+            |> mapSecond (combineCmds combine << handleChatCmd)
+
 
 chatEvent : Api.VisibleEvent -> Chat -> ( Chat, GameCmd )
-chatEvent = chatMsg << Chat.receive
+chatEvent event = chatMsg (Chat.receive event) doNothing
 
 updateByEvent : Event -> Game_ -> ( Game, GameCmd )
 updateByEvent event ({ room, canvas, gamePart, chat} as game) =
@@ -203,10 +232,17 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
                 (Game { game | chat = newChat , room = newRoom } , chatCmd)
 
 
-        (Err (Api.EhOver word scores), Round _ ) ->
-            let (newChat, chatCmd) = chatEvent (Api.EvOver word) chat
+        (Err (Api.EhOver word scores), Round guess ) ->
+            let
+                updateTally =
+                    sleep (1 * second)
+                        |> Task.perform (always UpdateTally)
+                        |> Execute
+                (newChat, chatCmd) =
+                    chatMsg (Chat.receive <| Api.EvOver word) updateTally chat
                 newRoom = Room.syncScores scores room
-                newPart = BetweenRound
+                newGuess = Guess.update (Guess.RevealAll word) guess
+                newPart = BetweenRoundFrameOne newGuess
                 newGame = Game
                     { game
                         | chat = newChat
@@ -262,9 +298,9 @@ masterDialog canStart hideId roomid =
             ]
         startButton =
             if canStart then
-                H.button [ HE.onClick StartGame ]
+                H.button [ HE.onClick StartGame ] [ text "Start the game!" ]
             else
-                H.button [ HA.disabled True ]
+                H.button [ HA.disabled True ] [ text "Needs 3 players" ]
     in
         div [ id "roomiddialog" ]
             [ div []
@@ -276,7 +312,7 @@ masterDialog canStart hideId roomid =
                     ]
                 ]
             , p [] [ text "share the room name with friends to let them join your game" ]
-            , startButton [ text "Start the game!" ]
+            , startButton
             ]
 
 
@@ -303,5 +339,10 @@ view roomid (Game { room, gamePart, chat, canvas }) =
                     gameView topBar
 
             Round guess -> gameView (Guess.view guess)
-            BetweenRound -> h1 [] [ text "NOT IMPLEMENTED YET" ]
+            BetweenRoundFrameOne guess ->
+                let tally = Room.viewPreviousTally room
+                in  gameView (div [ id "tally-box" ] [Guess.view guess, tally])
+            BetweenRound guess ->
+                let tally = Room.viewRoundTally room
+                in  gameView (div [ id "tally-box" ] [Guess.view guess, tally])
 

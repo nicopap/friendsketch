@@ -13,16 +13,15 @@ Created Tuesday 26 September 2017
 
 * disable toolbox control for ''Spectator''
 * Think about how to introduce ''-'' and spaces in guess word
-* FRONTEND: Implement "between round state" before ''start'' and after ''over'' 
 * Fix "spectators" being able to guess
 * Do not relay messages from anyone containing word to guess
 
 ==== Client ====
 * Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
-* Update in real time the game scores
+* Update in real time the game scores (CONCIDER: just grey out people who guessed without updating score)
 * Fix the autoselect of roomid
-* Fix size of timer number, as to avoid the word to guess jumping
 * Use unified font, for better cross browser aspect
+* End game when two players remaining rather than only one (currently, only backend does it, meaning you get a broken room when only two people are left)
 
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc

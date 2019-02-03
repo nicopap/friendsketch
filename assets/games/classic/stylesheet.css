@@ -116,16 +116,24 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	padding: 5px;
 	display: flex;
 	flex-wrap: nowrap;
+	border-top: 3px solid #ededf0;
+	z-index:3;
 }
 #canvas {
 	width: 600px;
-	border-bottom: 3px solid #ededf0;
 	border-top: 3px solid #ededf0;
 	height: 400px;
+	overflow: hidden;
+	z-index: 2;
+}
+#tally-box + #artcontainer #canvas {
+	filter: blur(5px) grayscale(75%);
+}
+#tally-box + #artcontainer #palette {
+	filter: grayscale(75%);
 }
 #roomiddialog + #artcontainer #canvas {
 	height: 355px;
-	overflow: hidden;
 }
 .artist-empty #canvas{
 	background-image: url('/friendk/icons/stripbg.svg');
@@ -221,10 +229,12 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px;	backg
 	content:"";
 	height:32px;
 	width: 32px;
+	z-index:6;
 }
 #timer {
 	display:flex;
 	align-items: center;
+	width: 100px;
 	padding: 0 30px 0 10px;
 }
 #guess-word {
@@ -299,4 +309,48 @@ margin:0;padding:0;
 }
 #roomid-toggle [type=checkbox]:checked + span::before {
 	background-image: url("/friendk/icons/hide.svg");
+}
+
+
+/*** *** Room Score Tally *** ***/
+
+
+#tally-round-board {
+	width: 600px;
+	position: absolute;
+	background: #0009;
+	color: #f0f0f0;
+	height:495px;
+	border-top: 3px solid #ededf0;
+	padding: 30px 50px;
+	box-sizing: border-box;
+	font-size: 23px;
+	z-index:5;
+}
+.tally {
+	display: flex;
+	transition: all 2s;
+    height: 30px;
+    position: relative;
+}
+.tally-name {
+	width: 180px;
+	margin-right:10px;
+	display: block;
+	text-align: right;
+}
+.tally-score {
+	display:inline;
+  margin: 0;
+}
+.tally-value {
+	font-weight: bold;
+	margin: 0 5px;
+}
+.tally-diff::before {
+	content: "+" ;
+	color:#cce9b6;
+}
+.tally-diff {
+	color:#cce9b6
 }
