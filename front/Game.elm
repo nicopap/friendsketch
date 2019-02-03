@@ -230,7 +230,6 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
                         }
                     , chatCmd
                     )
-
                 else
                     (Game { game | chat = newChat , room = newRoom }, chatCmd)
 

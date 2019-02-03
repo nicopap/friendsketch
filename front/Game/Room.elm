@@ -127,7 +127,12 @@ leaves : Api.Name -> Room -> Room
 leaves leaving_ { me, state } =
     let
         leaving = Api.showName leaving_
-        pop scores notAlone = Room me  <| notAlone <| remove leaving scores
+        pop scores notAlone =
+            let removed = remove leaving scores
+            in  if isEmpty removed then
+                    { me = me, state = Alone }
+                else
+                    Room me <| notAlone <| removed
     in
         case state of
             Alone -> { me = me, state = Alone }
