@@ -200,17 +200,21 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Err (Api.EhTimeout t  ), Round g) -> guessMsg (Guess.SetTimeout t) g
         (Err (Api.EhCorrect word), Round guess) ->
             let guess_ = Guess.update (Guess.RevealAll word) guess
+                room_ = Room.correct room
                 (chat_, chatCmd) = chatMsg (Chat.correct word) doNothing chat
                 part_ = Round guess_
             in
-                ( Game { game | gamePart = part_, chat = chat_ }
+                ( Game { game | gamePart = part_, room = room_, chat = chat_ }
                 , chatCmd
                 )
 
-        (Ok ((Api.EvGuessed _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvMessage _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvStart   _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvOver    _) as message), _) -> simpleChatMsg message
+        (Ok ((Api.EvGuessed player) as msg), _) ->
+            simpleChatMsg msg
+                |> mapFirst
+                    (\(Game g) -> Game { g | room = Room.guessed player room })
 
         (Ok ((Api.EvLeft player) as chatEvent_), _) ->
             let (newChat, chatCmd) = chatEvent chatEvent_ chat

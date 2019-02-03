@@ -16,6 +16,8 @@ module Pintclone.Room
         , myName
         , viewRoundTally
         , viewPreviousTally
+        , correct
+        , guessed
         , Room
         )
 
@@ -38,30 +40,41 @@ import Api
 
 
 type alias Room =
-    { me : (Api.Name, Score)
+    { me : (Api.Name, Player)
     , state : State
     }
 
-type alias Score = List Api.RoundScore
+type alias Player =
+    { succeeded : Bool
+    , score : Score
+    }
+
+type alias Players = Dict String Player
+
 type alias Scores = Dict String Score
+type alias Score = List Api.RoundScore
 
 type State
-    = LobbyWith Scores
-    | MasterOf Scores
-    | PlayingWith String Scores
-    | ArtistWith Scores
-    | BreakWith Scores
+    = LobbyWith Players
+    | MasterOf Players
+    | PlayingWith String Players
+    | ArtistWith Players
+    | BreakWith Players
     | Alone
 
 
 {-| New room with `Scores` not containing myName -}
-new : Scores -> Api.Name -> Score -> (Scores -> State) -> Room
+new : Scores -> Api.Name -> List Api.RoundScore -> (Players -> State) -> Room
 new scores myName myScore notAlone =
-    let state = if isEmpty scores then Alone else notAlone scores
-    in  Room (myName, myScore) state
+    let state =
+            if isEmpty scores
+            then Alone
+            else notAlone <| Dict.map (always (Player False)) scores
+    in
+        Room (myName, Player False myScore) state
 
 {-| New room from `Api.Scoreboard` (assumes `myName in Scoreboard`) -}
-newFromList : Api.Scoreboard -> Api.Name -> (Scores -> State) -> Room
+newFromList : Api.Scoreboard -> Api.Name -> (Players -> State) -> Room
 newFromList scoreboard myName =
     let
         myName_ = Api.showName myName
@@ -114,8 +127,7 @@ leaves : Api.Name -> Room -> Room
 leaves leaving_ { me, state } =
     let
         leaving = Api.showName leaving_
-        (myName, myScore) = me
-        pop scores = new (remove leaving scores) myName myScore
+        pop scores notAlone = Room me  <| notAlone <| remove leaving scores
     in
         case state of
             Alone -> { me = me, state = Alone }
@@ -130,16 +142,14 @@ leaves leaving_ { me, state } =
                     pop others (PlayingWith artistName)
 
 
-
 {-| The given room where someone new joined.
-TODO: `repeat roundCount Api.Absent`
 -}
 joins : Api.Name -> Room -> Room
 joins joining_ { me, state } =
     let
         joining = Api.showName joining_
-        (myName, myScore) = me
-        push scores = new (insert joining [] scores) myName myScore
+        push scores notAlone =
+            Room me <| notAlone <| insert joining (Player False []) scores
     in
         case state of
             Alone -> push empty MasterOf
@@ -224,16 +234,20 @@ canStart room =
 syncScores : List (Api.Name, Api.RoundScore) -> Room -> Room
 syncScores roundScores_ { me, state } =
     let
-        (myName_, myScore) = me
+        (myName_, mePlay) = me
         myName = Api.showName myName_
         roundScores =
             List.map (mapFirst Api.showName) roundScores_
                 |> List.filter ((/=) myName << first)
 
-        maybeAddScore : Api.RoundScore -> Maybe Score -> Maybe Score
-        maybeAddScore roundScore = Just << (::) roundScore << withDefault []
+        maybeAddScore : Api.RoundScore -> Maybe Player -> Maybe Player
+        maybeAddScore newScore =
+            let
+                addScore old = Player False (newScore :: old.score)
+            in
+                Just << addScore << withDefault (Player False [])
 
-        updatePlayer : (String, Api.RoundScore) -> Scores -> Scores
+        updatePlayer : (String, Api.RoundScore) -> Players -> Players
         updatePlayer (name, roundScore) =
             update name (maybeAddScore roundScore)
 
@@ -242,10 +256,12 @@ syncScores roundScores_ { me, state } =
         myNewScore =
             List.filter ((==) myName_ << first) roundScores_
                 |> List.head
-                |> Maybe.map (\(_,newScore) -> newScore :: second me)
-                |> withDefault []
+                |> Maybe.map (\(_,s) -> Player False (s :: mePlay.score))
+                |> withDefault (Player False [])
 
-        updateAll others = new (updateOthers others) myName_ myNewScore
+        updateAll others notAlone =
+            Room (myName_, myNewScore)
+                <| notAlone (updateOthers others)
     in
         case state of
             Alone -> { me = me, state = Alone }
@@ -259,12 +275,34 @@ syncScores roundScores_ { me, state } =
 myName : Room -> Api.Name
 myName { me } = first me
 
+correct : Room -> Room
+correct { me, state } =
+    { me = mapSecond (\x -> { x | succeeded = True }) me, state = state }
+
+{-| Set a player as having guessed the word correctly.
+!!!! This doesn't work for the current player (me) !!!!
+Use `correct` instead.
+-}
+guessed : Api.Name -> Room -> Room
+guessed guesser { state, me } =
+    let
+        setSuccess = Maybe.map (\player -> { player | succeeded = True })
+        withGuess s notA =
+            Room me <| notA <| update (Api.showName guesser) setSuccess s
+    in case state of
+            Alone -> { me = me, state = Alone }
+            BreakWith  others -> withGuess others BreakWith
+            LobbyWith  others -> withGuess others LobbyWith
+            ArtistWith others -> withGuess others ArtistWith
+            MasterOf   others -> withGuess others MasterOf
+            PlayingWith a others -> withGuess others (PlayingWith a)
+
 {-| Displays the score for a player. If first argument is true, will also
 display the differences in points from last round and offset the element to
 reorder the list according to the given offsets.
 -}
-playerTally : Bool -> Int -> String -> Score -> Html msg
-playerTally showDiff offset name score =
+playerTally : Bool -> Int -> String -> Player -> Html msg
+playerTally showDiff offset name { score } =
     let
         scoreDiff = case score of
             h :: _ ->
@@ -323,12 +361,12 @@ viewRoundTally room =
     let
         previousRankings =
             roomAsList room
-                |> List.sortBy (\(_, score) ->
+                |> List.sortBy (\(_, {score}) ->
                     -(scoreAsInt (List.drop 1 score))
                 )
 
         offsets =
-            offsetBy (\(_, score) -> -(scoreAsInt score)) previousRankings
+            offsetBy (\(_, {score}) -> -(scoreAsInt score)) previousRankings
 
         toTallies offset (name, score) =
             playerTally True offset name score
@@ -343,16 +381,16 @@ viewPreviousTally room =
     let
         roomList =
             roomAsList room
-                |> List.map (mapSecond (List.drop 1))
-                |> List.sortBy (\(_, score) -> -(scoreAsInt score))
+                |> List.map (\(x, p) -> (x, { p | score = List.drop 1 p.score}))
+                |> List.sortBy (\(_, {score}) -> -(scoreAsInt score))
     in
         div [ id "tally-round-board" ]
             (List.map (uncurry (playerTally False 0)) roomList)
 
 
-{-| List of association Player <-> Score (including `me`)
+{-| List of association name <-> Player (including `me`)
 -}
-roomAsList : Room -> List (String, Score)
+roomAsList : Room -> List (String, Player)
 roomAsList { me, state } =
     let
         fullList ps = (mapFirst Api.showName me :: toList ps)
@@ -383,13 +421,14 @@ view : Room -> Html msg
 view { me, state } =
     let
         showMe = mapFirst Api.showName me
-        userRow : Maybe String -> ( String, Score ) -> Html msg
-        userRow artistName ( name, score ) =
+        userRow : Maybe String -> ( String, Player ) -> Html msg
+        userRow artistName ( name, { score, succeeded } ) =
             li
                 [ classList
                     [ ( "user", True )
                     , ( "me", name == first showMe )
                     , ( "artist", Just name == artistName )
+                    , ( "guessed", succeeded )
                     ]
                 ]
                 [ a [] [ text name ]

@@ -14,13 +14,13 @@ Created Tuesday 26 September 2017
 
 ==== Client ====
 * Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
-* Update in real time the game scores (CONCIDER: just grey out people who guessed without updating score)
 * Use unified font, for better cross browser aspect
 * End game when two players remaining rather than only one (currently, only backend does it, meaning you get a broken room when only two people are left)
 
 ==== Server ====
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
+* Keep track of user guesses
 
 ===== Game Event Log =====
 
