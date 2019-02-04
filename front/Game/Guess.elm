@@ -84,7 +84,7 @@ view (Word { word, timeout }) =
                     a [ class "guess-letter" ] [ text (fromChar char) ]
 
                 Nothing ->
-                    a [ class "guess-hidden" ] [ text "_" ]
+                    a [ class "guess-hidden" ] [ text " " ]
 
         viewTimeoutValue =
             if timeout < 0 then "···" else toString timeout

@@ -31,7 +31,7 @@ body { font-family: sans-serif; color: #282c34 }
 .user {
 	padding: 4px 0;
 	margin-bottom: -2px;
-	border: 2px solid #cdcdcd;
+	border: 2px solid #0002;
 	transition: color 0.1s;
 	display:flex;
 	justify-content: space-between;
@@ -154,30 +154,15 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 }
 #tally-box + #artcontainer #canvas { filter: blur(5px) grayscale(75%) }
 #roomid-mod + #artcontainer #canvas { height: 355px }
-.artist-empty #canvas{
+.artist-empty #canvas, .pregame #canvas {
 	background-image: url('/friendk/icons/stripbg.svg');
 	background-size: 128px;
 }
 
-.pregame #canvas{
-	background-image: url('/friendk/icons/stripbg.svg');
-	background-size: 128px;
-}
+.pregame #canvas::before {content: "The round hasn't started yet"}
+.artist-empty #canvas::before {content: "It is your turn to draw"}
 
-.pregame #canvas::before {
-	content: "The round hasn't started yet";
-	color: #dedede;
-	font-size: 4em;
-	font-weight: bold;
-	position: absolute;
-	margin: 90px 110px;
-	width: 400px;
-	text-align: center;
-	line-height: 100%;
-}
-
-.artist-empty #canvas::before {
-	content: "It is your turn to draw";
+.artist-empty #canvas::before, .pregame #canvas::before {
 	color: #dedede;
 	font-size: 4em;
 	font-weight: bold;
@@ -213,12 +198,14 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 .message {
 	padding: 5px 0 7px 0;
 	line-height: 1;
-	border-top: 1px solid #ededf0;
+	border-top: 1px solid #0001;
 	word-break: break-all;
 	width: 250px;
 }
 
-.join.message, .leave.message {	background:#b7eaf8 }
+.join.message, .leave.message {	background:#b7eaf8; color:#282c34a0 }
+.join.message::before {content: "→"; color:#282c34a0; margin:0 5px}
+.leave.message::before {content: "←"; color:#282c34a0; margin:0 5px}
 .over.message, .start.message { background: #cce9b6 }
 .ghost.message { filter: opacity(30%) }
 .guessed { background: #f9f1a5 }
@@ -248,12 +235,11 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 }
 #timer::before {
 	background-image:url("/friendk/icons/timer.svg");
-	filter: opacity(30%);
 	display:block;
 	background-size:contain;
 	content:"";
-	height:45px;
-	width: 45px;
+	height:35px;
+	width: 35px;
 }
 #timer {
 	display:flex;
@@ -267,12 +253,20 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 #guess-word {
 	margin: auto;
 	display:flex;
+	font-family:"Noto Sans";
 	font-weight: bolder;
+	font-size:19px;
 }
-.guess-letter, .guess-hidden {
+.guess-letter {
 	width: 20px;
 	text-align: center;
-	margin: 0;
+	
+}
+.guess-hidden {
+	width:12px;
+	height:16px;
+	margin: 0 4px;
+	border-bottom:solid #282c34;
 }
 
 
@@ -358,6 +352,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 	padding: 30px 50px;
 	box-sizing: border-box;
 	font-size: 23px;
+	transition: background 0.5s;
 	z-index:5;
 }
 .tally {
