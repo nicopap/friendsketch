@@ -233,18 +233,23 @@ impl Game {
         }
     }
 
-    /// Update players scores accordingly. Returns whehter all players guessed
-    /// correctly
-    fn guesses_correctly(&mut self, player: Id) -> bool {
-        use self::RoundScore::{Artist, Guessed};
+    /// check if player guessed the word correctly. Update game state
+    /// accordingly. If the guess was correct, returns `Some(_)`, otherwise
+    /// `None`. If all players have guessed, returns `Some(true)`.
+    fn guesses(&mut self, player: Id, message: &[u8]) -> Option<bool> {
+        use self::{
+            api::VisibleEvent,
+            RoundScore::{Artist, Guessed},
+        };
         if let Game_::Playing {
             artist,
             ref mut scores,
             ref mut anyone_guessed,
+            word,
             ..
         } = self.state
         {
-            if !scores.contains_key(player) {
+            if !scores.contains_key(player) && word.as_bytes() == message {
                 let score = if *anyone_guessed {
                     1
                 } else {
@@ -252,22 +257,24 @@ impl Game {
                     3
                 };
                 let guesser = self.players[player].name.clone();
-                self.game_log
-                    .push_front(api::VisibleEvent::Guessed(guesser));
+                self.game_log.push_front(VisibleEvent::Guessed(guesser));
                 scores.insert(player, Guessed(score));
                 // NOTE: problem here? aliasing safe though (`player != artist`
                 // because `scores.insert(artist,..)` at `start_round`)
                 if let Artist(ref mut artist_score) = scores[artist] {
                     *artist_score += score;
                 } else {
-                    error!("The artist score was not set");
+                    error!("The artist score was not properly set");
                     scores.insert(artist, Artist(score));
                 }
-            };
-            self.players.len() == scores.len() // Did all player guess?
+                // Did all player guess?
+                Some(self.players.len() == scores.len())
+            } else {
+                None
+            }
         } else {
             warn!("A guess occured outside of a regular play time");
-            true // Force termination of round if something fishy is going on
+            Some(true) // Force termination of round if there is something fishy
         }
     }
 
@@ -436,34 +443,48 @@ impl game::Game<Id> for Game {
                 }
                 _ => None,
             },
-            GameReq::Chat(content) => match self.state {
-                Game_::Playing { artist, word, .. }
-                    if player != artist
-                        && word.as_bytes() == content.as_bytes() =>
-                {
+            GameReq::Chat(msg) => match self.state {
+                Game_::Playing { word, .. } => {
+                    use self::game::Cmd;
                     use api::{
-                        GameMsg::HiddenEvent, HiddenEvent::Correct,
+                        GameMsg::{HiddenEvent, VisibleEvent},
+                        HiddenEvent::Correct,
                         VisibleEvent::Guessed,
                     };
-                    let all_guessed = self.guesses_correctly(player);
-                    let guesser = self.players[player].name.clone();
-                    let msg = GameMsg::VisibleEvent(Guessed(guesser));
-                    let correct = Some(HiddenEvent(Correct(word.to_string())));
-                    let cmd = if all_guessed {
-                        let end_round = Feedback {
-                            sent_round: self.round_no,
-                            msg:        Feedback_::EndRound,
+                    if let Some(complete) = self.guesses(player, msg.as_bytes())
+                    {
+                        let guesser = self.players[player].name.clone();
+                        let msg = VisibleEvent(Guessed(guesser));
+                        let correct = HiddenEvent(Correct(word.to_string()));
+                        let cmd = if complete {
+                            let end_round = Feedback {
+                                sent_round: self.round_no,
+                                msg:        Feedback_::EndRound,
+                            };
+                            Cmd::Immediately(end_round)
+                        } else {
+                            Cmd::None
                         };
-                        game::Cmd::Immediately(end_round)
+                        Some((
+                            broadcast!(to_all_but, player, msg, Some(correct)),
+                            cmd,
+                        ))
                     } else {
-                        game::Cmd::None
-                    };
-                    Some((broadcast!(to_all_but, player, msg, correct), cmd))
+                        let final_msg = api::VisibleEvent::Message(ChatMsg {
+                            content: msg,
+                            author:  self.players[player].name.clone(),
+                        });
+                        self.game_log.push_front(final_msg.clone());
+                        Some((
+                            broadcast!(to_all, VisibleEvent(final_msg)),
+                            Cmd::None,
+                        ))
+                    }
                 }
                 _ => {
                     let final_msg = api::VisibleEvent::Message(ChatMsg {
-                        content,
-                        author: self.players[player].name.clone(),
+                        content: msg,
+                        author:  self.players[player].name.clone(),
                     });
                     self.game_log.push_front(final_msg.clone());
                     Some((
