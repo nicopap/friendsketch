@@ -150,7 +150,7 @@ update msg ({ inputContent } as chat) =
             ( { chat | inputContent = newText }, DoNothing )
 
         CorrectGuess word ->
-            ( correctGuess word chat, DoNothing )
+            ( correctGuess word chat, UpdateScroll )
 
         SubmitInput ->
             Api.validChatContent inputContent
