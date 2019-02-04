@@ -251,6 +251,9 @@ impl Game {
                     *anyone_guessed = true;
                     3
                 };
+                let guesser = self.players[player].name.clone();
+                self.game_log
+                    .push_front(api::VisibleEvent::Guessed(guesser));
                 scores.insert(player, Guessed(score));
                 // NOTE: problem here? aliasing safe though (`player != artist`
                 // because `scores.insert(artist,..)` at `start_round`)
