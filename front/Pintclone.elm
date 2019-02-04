@@ -36,7 +36,7 @@ type alias Pintclone =
     , username : Api.Name
     , wslisten : (Result Api.ListenError GameMsg -> Msg) -> Sub Msg
     , wssend : Api.GameReq -> Cmd Msg
-    , syncRetries : Int
+    , isUnsync : Bool
     , openGameRetries : Int
     }
 
@@ -100,7 +100,7 @@ new (roomid, username, openGameRetries) =
       , username = username
       , wslisten = Api.wsListen roomid username
       , wssend = Api.wsSend roomid username
-      , syncRetries = 0
+      , isUnsync = False
       , openGameRetries = openGameRetries
       }
     , Api.wsSend roomid username Api.ReqSync
@@ -108,11 +108,8 @@ new (roomid, username, openGameRetries) =
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
-update msg ({ roomid, username, openGameRetries, syncRetries, wssend } as pintclone_) =
+update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
     let
-        pintclone =
-            { pintclone_ | syncRetries = 0 }
-
         report errorMsg =
             let fullMsg =
                     "Failure in '" ++ Api.showRoomID roomid ++ "' for '"
@@ -182,12 +179,12 @@ update msg ({ roomid, username, openGameRetries, syncRetries, wssend } as pintcl
                         withGameUpdate <| Game.update gameMsg game
 
                     anyelse ->
-                        if syncRetries >= 3 then
+                        if pintclone.isUnsync then
                             updateError <| toError "Synchronisation error" "" NoAttempt
                         else
                             Debug.log
                                 ("Inconsistency:" ++ toString anyelse)
-                                ( { pintclone | syncRetries = syncRetries + 1 }
+                                ( { pintclone | isUnsync = True }
                                 , pintclone.wssend Api.ReqSync
                                 )
 
