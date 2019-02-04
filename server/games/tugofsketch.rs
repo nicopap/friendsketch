@@ -352,7 +352,10 @@ impl game::Game<Id> for Game {
         }
     }
 
-    fn leaves(&mut self, player: Id) -> LeaveResponse<Id, api::GameMsg, ()> {
+    fn leaves(
+        &mut self,
+        player: Id,
+    ) -> LeaveResponse<Id, api::GameMsg, Feedback, ()> {
         use self::api::{
             GameMsg::HiddenEvent,
             HiddenEvent::{Mastery, Over},
@@ -362,12 +365,15 @@ impl game::Game<Id> for Game {
             Some(Player { name, .. }) => {
                 self.game_log.push_front(Left(name.clone()));
                 if let Some((id, _)) = self.players.iter().next() {
-                    let response = match self.state {
+                    let (response, cmd) = match self.state {
                         Game_::Lobby { ref mut leader }
                             if *leader == player =>
                         {
                             *leader = id;
-                            broadcast!(to_unique, id, HiddenEvent(Mastery))
+                            (
+                                broadcast!(to_unique, id, HiddenEvent(Mastery)),
+                                game::Cmd::None,
+                            )
                         }
                         Game_::Playing {
                             ref mut artist,
@@ -381,21 +387,28 @@ impl game::Game<Id> for Game {
                                 let scores = self.end_round();
                                 let msg =
                                     HiddenEvent(Over(word.to_string(), scores));
+                                let cmd = Feedback {
+                                    msg:        Feedback_::NextRound,
+                                    sent_round: self.round_no,
+                                };
                                 self.game_log
                                     .push_back(SyncOver(word.to_string()));
-                                broadcast!(to_all, msg)
+                                (
+                                    broadcast!(to_all, msg),
+                                    game::Cmd::In(TALLY_LENGTH, cmd),
+                                )
                             } else {
-                                broadcast!(nothing)
+                                (broadcast!(nothing), game::Cmd::None)
                             }
                         }
-                        _ => broadcast!(nothing),
+                        _ => (broadcast!(nothing), game::Cmd::None),
                     };
                     if self.players.len() == 1 {
                         self.round_no = 0;
                         self.players[id].score = Vec::new();
                         self.state = Game_::Lobby { leader: id };
                     }
-                    LeaveResponse::Successfully(name, response)
+                    LeaveResponse::Successfully(name, response, cmd)
                 } else {
                     LeaveResponse::Empty(name)
                 }

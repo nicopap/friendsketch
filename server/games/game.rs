@@ -2,9 +2,9 @@ use crate::api;
 use std::time::Duration;
 
 /// How a game responds to a player attempting to leave it.
-pub enum LeaveResponse<Id, Msg, E> {
+pub enum LeaveResponse<Id, Msg, Feedback, E> {
     /// The player left the game, but it keeps going.
-    Successfully(api::Name, Broadcast<Id, Msg>),
+    Successfully(api::Name, Broadcast<Id, Msg>, Cmd<Feedback>),
     /// The player left and there is no one remaining, the game is over.
     Empty(api::Name),
     /// An attempt was made to leave the game, but an error occured
@@ -64,7 +64,7 @@ pub trait Game<Id> {
     fn leaves(
         &mut self,
         player: Id,
-    ) -> LeaveResponse<Id, Self::Response, Self::Error>;
+    ) -> LeaveResponse<Id, Self::Response, Self::Feedback, Self::Error>;
 
     /// A message is sent to the `Game` by `player` identified by `Id`
     fn tells(

@@ -188,14 +188,36 @@ struct ConnectionManager<G> {
 
 struct Connection(mpsc::UnboundedSender<Message>);
 
-fn oversee<
+fn loop_feedback<G>(
+    manager: &mut ConnectionManager<G>,
+    mut cmd: Cmd<Feedback>,
+) -> Result<(), ()>
+where
+    G::Request: From<api::GameReq>,
     G: Game<Id, Error = (), Response = api::GameMsg, Feedback = Feedback>,
->(
+{
+    loop {
+        let msg = match cmd {
+            Cmd::In(delay, feedback) => {
+                manager.queue(delay, feedback);
+                return Ok(());
+            }
+            Cmd::Immediately(msg) => msg,
+            Cmd::None => return Ok(()),
+        };
+        let (response, commands) = manager.game.feedback(msg)?;
+        cmd = commands;
+        manager.broadcast(response);
+    }
+}
+
+fn oversee<G>(
     mut manager: ConnectionManager<G>,
     msg: ManagerRequest<Feedback>,
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
     G::Request: From<api::GameReq>,
+    G: Game<Id, Error = (), Response = api::GameMsg, Feedback = Feedback>,
 {
     use self::api::GameMsg::VisibleEvent;
     match msg {
@@ -205,23 +227,13 @@ where
             }
         }
         ManagerRequest::Msg(id, msg_val) => {
-            let (mut response, mut commands) =
+            let (response, commands) =
                 manager.game.tells(id, msg_val.into())?;
             manager.broadcast(response);
-            loop {
-                let msg = match commands {
-                    Cmd::In(delay, feedback) => {
-                        manager.queue(delay, feedback);
-                        break;
-                    }
-                    Cmd::Immediately(msg) => msg,
-                    Cmd::None => break,
-                };
-                let x = manager.game.feedback(msg)?;
-                response = x.0;
-                commands = x.1;
-                manager.broadcast(response);
-            }
+            loop_feedback(&mut manager, commands)?;
+        }
+        ManagerRequest::Return(msg) => {
+            loop_feedback(&mut manager, Cmd::Immediately(msg))?
         }
         ManagerRequest::Disconnect(id) => {
             let room = &manager.room_name;
@@ -236,7 +248,7 @@ where
             manager.hangups.remove(id);
             let removed = manager.connections.remove(id).is_some();
             match manager.game.leaves(id) {
-                LeaveResponse::Successfully(name, broadcast) => {
+                LeaveResponse::Successfully(name, broadcast, commands) => {
                     let room = &manager.room_name;
                     if removed {
                         info!("{} leaves {}", name, room)
@@ -246,6 +258,7 @@ where
                     let msg = VisibleEvent(api::VisibleEvent::Left(name));
                     manager.broadcast(Broadcast::ToAll(msg));
                     manager.broadcast(broadcast);
+                    loop_feedback(&mut manager, commands)?;
                 }
                 LeaveResponse::Empty(name) => {
                     info!("{} leaves {} empty", name, manager.room_name);
@@ -278,18 +291,6 @@ where
             JoinResponse::Refuse => {
                 warn!("{} refused {}", manager.room_name, name);
                 manager.respond.send(ManagerResponse::Refuse);
-            }
-        },
-        ManagerRequest::Return(mut msg) => loop {
-            let (response, commands) = manager.game.feedback(msg)?;
-            manager.broadcast(response);
-            match commands {
-                Cmd::In(delay, feedback) => {
-                    manager.queue(delay, feedback);
-                    break;
-                }
-                Cmd::Immediately(msg_) => msg = msg_,
-                Cmd::None => break,
             }
         },
     };
