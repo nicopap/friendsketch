@@ -194,19 +194,19 @@ impl Game {
                 self.game_log.push_front(SyncStart(artist.clone()));
                 let msg = make_msg(Guess(word.chars().count()));
                 let artist_msg = make_msg(Artist(word.to_string()));
-                let revealback = Feedback {
+                let make_feedback = |feedback| Feedback {
                     sent_round: self.round_no,
-                    msg:        Feedback_::RevealLetter,
+                    msg: feedback,
                 };
-                let tickback = Feedback {
-                    sent_round: self.round_no,
-                    msg:        Feedback_::TickTimeout,
-                };
+                let revealback = make_feedback(Feedback_::RevealLetter);
+                let tickback = make_feedback(Feedback_::TickTimeout);
+                let overback = make_feedback(Feedback_::EndRound);
                 Some((
                     broadcast!(to_all_but, $next_artist, msg, Some(artist_msg)),
                     game::Cmd::In(vec![
                         (TICK_UPDATE, tickback),
                         (REVEAL_INTERVAL, revealback),
+                        (Duration::from_secs(ROUND_LENGTH as u64), overback),
                     ]),
                 ))
             }};
