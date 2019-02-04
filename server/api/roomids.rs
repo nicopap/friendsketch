@@ -12,7 +12,7 @@ pub(in crate::api) struct RoomId {
 }
 impl RoomId {
     pub(in crate::api) fn try_from(name: &str) -> Option<Self> {
-        let dot_index = name.find('.')?;
+        let dot_index = name.find('-')?;
         let (adj_val, ani_val) = name.split_at(dot_index + 1);
         let adjective = adjective::from(adj_val)?;
         let animal = animal::from(ani_val)?;

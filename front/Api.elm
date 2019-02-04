@@ -150,7 +150,7 @@ showRoomID (RoomID_ stringrep) =
 
 validRoomID : String -> Maybe RoomID
 validRoomID =
-    Maybe.map RoomID_ << regexValidate "^[A-Z][a-z]+\\.[A-Z][a-z]*[A-Z]?[a-z]+$"
+    Maybe.map RoomID_ << regexValidate "^[A-Z][a-z]+-[A-Z][a-z]*[A-Z]?[a-z]+$"
 
 
 roomsCreate : String
