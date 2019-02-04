@@ -198,8 +198,10 @@ where
 {
     loop {
         let msg = match cmd {
-            Cmd::In(delay, feedback) => {
-                manager.queue(delay, feedback);
+            Cmd::In(feedbacks) => {
+                for (delay, feedback) in feedbacks {
+                    manager.queue(delay, feedback);
+                }
                 return Ok(());
             }
             Cmd::Immediately(msg) => msg,

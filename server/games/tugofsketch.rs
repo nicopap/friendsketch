@@ -112,9 +112,8 @@ macro_rules! broadcast {
 }
 
 const ROUND_LENGTH: i16 = 30;
-
 const TICK_UPDATE: Duration = Duration::from_secs(10);
-
+const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
 const TALLY_LENGTH: Duration = Duration::from_secs(6);
 
 impl Game {
@@ -195,14 +194,20 @@ impl Game {
                 self.game_log.push_front(SyncStart(artist.clone()));
                 let msg = make_msg(Guess(word.chars().count()));
                 let artist_msg = make_msg(Artist(word.to_string()));
-                let delay = TICK_UPDATE;
-                let feedback = Feedback {
+                let revealback = Feedback {
+                    sent_round: self.round_no,
+                    msg:        Feedback_::RevealLetter,
+                };
+                let tickback = Feedback {
                     sent_round: self.round_no,
                     msg:        Feedback_::TickTimeout,
                 };
                 Some((
                     broadcast!(to_all_but, $next_artist, msg, Some(artist_msg)),
-                    game::Cmd::In(delay, feedback),
+                    game::Cmd::In(vec![
+                        (TICK_UPDATE, tickback),
+                        (REVEAL_INTERVAL, revealback),
+                    ]),
                 ))
             }};
         }
@@ -395,7 +400,7 @@ impl game::Game<Id> for Game {
                                     .push_back(SyncOver(word.to_string()));
                                 (
                                     broadcast!(to_all, msg),
-                                    game::Cmd::In(TALLY_LENGTH, cmd),
+                                    game::Cmd::In(vec![(TALLY_LENGTH, cmd)]),
                                 )
                             } else {
                                 (broadcast!(nothing), game::Cmd::None)
@@ -530,7 +535,7 @@ impl game::Game<Id> for Game {
             Game_::*,
         };
         if sent_round != self.round_no {
-            warn!("receive feedback from previous round");
+            debug!("receive feedback from previous round");
             return Ok((broadcast!(nothing), game::Cmd::None));
         };
         match (&self.state, msg) {
@@ -539,9 +544,13 @@ impl game::Game<Id> for Game {
                 let (index, letter) =
                     word.chars().enumerate().choose(&mut rng).unwrap();
                 let msg = HiddenEvent(Reveal(index, letter));
+                let cmd = Feedback {
+                    sent_round: self.round_no,
+                    msg:        Feedback_::RevealLetter,
+                };
                 Ok((
                     broadcast!(to_all_but, *artist, msg, None),
-                    game::Cmd::None,
+                    game::Cmd::In(vec![(REVEAL_INTERVAL, cmd)]),
                 ))
             }
             (Playing { word, .. }, EndRound) => {
@@ -550,8 +559,10 @@ impl game::Game<Id> for Game {
                 self.game_log.push_front(SyncOver(word.clone()));
                 let send = Over(word, scores);
                 let msg = Feedback_::NextRound;
-                let cmd =
-                    game::Cmd::In(TALLY_LENGTH, Feedback { sent_round, msg });
+                let cmd = game::Cmd::In(vec![(
+                    TALLY_LENGTH,
+                    Feedback { sent_round, msg },
+                )]);
                 Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
             }
             (Playing { lap, word, .. }, TickTimeout) => {
@@ -562,23 +573,24 @@ impl game::Game<Id> for Game {
                     let scores = self.end_round();
                     let send = Over(word_s, scores);
                     let msg = Feedback_::NextRound;
-                    let cmd = game::Cmd::In(
+                    let cmd = game::Cmd::In(vec![(
                         TALLY_LENGTH,
                         Feedback { sent_round, msg },
-                    );
+                    )]);
                     (HiddenEvent(send), cmd)
                 } else {
                     let send = TimeoutSync(timeout);
                     let msg = Feedback_::TickTimeout;
-                    let cmd = game::Cmd::In(
+                    let cmd = game::Cmd::In(vec![(
                         TICK_UPDATE,
                         Feedback { sent_round, msg },
-                    );
+                    )]);
                     (HiddenEvent(send), cmd)
                 };
                 Ok((broadcast!(to_all, classic_reply), cmd))
             }
-            (RoundResults { .. }, TickTimeout) => {
+            (RoundResults { .. }, TickTimeout)
+            | (RoundResults { .. }, RevealLetter) => {
                 Ok((broadcast!(nothing), game::Cmd::None))
             }
             (RoundResults { .. }, NextRound) => {

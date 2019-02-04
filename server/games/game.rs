@@ -30,7 +30,7 @@ pub enum Broadcast<Id, Msg> {
 /// Order the game manager to do the following effectfull actions
 pub enum Cmd<Msg> {
     /// Send back to `Game` given `Msg` in `Duration`
-    In(Duration, Msg),
+    In(Vec<(Duration, Msg)>),
     /// update `Game` immediately with given `Msg`
     Immediately(Msg),
     /// Do nothing effectfull
