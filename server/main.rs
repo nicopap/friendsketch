@@ -7,7 +7,7 @@ use bytes::buf::Buf;
 use std::sync::Arc;
 
 use chashmap::CHashMap;
-use log::{info, warn};
+use log::{debug, info, warn};
 use pretty_env_logger;
 use warp::{
     self, body,
@@ -132,14 +132,19 @@ fn handle_create(
     let roomid = RoomId::new_random();
     let room_name = format!("{}", roomid);
     let sanitized_room_name = format!("\"{}\"", room_name);
+    let server_ref = server.clone();
+    let roomid_copy = roomid.clone();
+    let on_empty = move || {
+        debug!("Removing {} from server", &roomid_copy);
+        server_ref.remove(&roomid_copy);
+    };
     info!("Room created: {} by user {}", room_name, username);
-    server.insert(roomid, GameRoom::new(room_name));
+    server.insert(roomid, GameRoom::new(room_name, on_empty));
     respond!(StatusCode::CREATED, sanitized_room_name, json)
 }
 
 enum Handle {
     NoRoom,
-    EmptyRoom,
     Refuse,
     Accept,
 }
@@ -153,7 +158,6 @@ fn handle_join(
             Some(mut room) => match room.expect(username) {
                 ManagerResponse::Accept => Handle::Accept,
                 ManagerResponse::Refuse => Handle::Refuse,
-                ManagerResponse::Empty => Handle::EmptyRoom,
             },
             None => Handle::NoRoom,
         };
@@ -164,10 +168,6 @@ fn handle_join(
                 return respond!(StatusCode::OK, "\"classic\"", json);
             }
             Handle::Refuse => StatusCode::CONFLICT,
-            Handle::EmptyRoom => {
-                server.remove(&roomid);
-                StatusCode::NOT_FOUND
-            }
         }
     };
     warn!("Join failed with status code: {}", err_code);

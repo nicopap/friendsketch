@@ -76,8 +76,6 @@ pub enum ManagerResponse {
     Accept,
     /// The player wasn't accepted into the room
     Refuse,
-    /// The room should be closed
-    Empty,
 }
 
 /// Specialized structure to manage how the server reacts to people leaving
@@ -253,7 +251,10 @@ where
             let removed = manager.connections.remove(id).is_some();
             match manager.game.leaves(id) {
                 LeaveResponse::Successfully(name, broadcast, commands) => {
-                    debug!("successful leave: {}, {:?}, {:?}", name, broadcast, commands);
+                    debug!(
+                        "successful leave: {}, {:?}, {:?}",
+                        name, broadcast, commands
+                    );
                     let room = &manager.room_name;
                     if removed {
                         warn!("{} kicked without disconnect in {}", name, room)
@@ -268,7 +269,6 @@ where
                 }
                 LeaveResponse::Empty(name) => {
                     info!("{} leaves {} empty", name, manager.room_name);
-                    manager.respond.send(ManagerResponse::Empty);
                     return Err(GameInteruption::EverybodyLeft);
                 }
                 LeaveResponse::Failed(()) => {
@@ -312,7 +312,10 @@ pub struct GameRoom {
 
 impl GameRoom {
     /// Create a new empty game room.
-    pub fn new(room_name: String) -> Self {
+    pub fn new(
+        room_name: String,
+        on_empty: impl FnOnce() + Send + 'static,
+    ) -> Self {
         let (manager_sink, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
         let manager = ConnectionManager {
@@ -327,9 +330,15 @@ impl GameRoom {
             receiv_chan
                 .from_err::<GameInteruption>()
                 .fold(manager, oversee)
-                .map(|_| panic!("Completed an infinite stream"))
-                .map_err(move |close_cond| {
-                    info!("Closing {} because: {}", room_name, close_cond);
+                .then(move |conclusion| {
+                    on_empty();
+                    if let Err(reason) = conclusion {
+                        info!("Closing {} because: {}", room_name, reason);
+                        Ok(())
+                    } else {
+                        error!("Unreachable path games.rs:{}", line!());
+                        Err(())
+                    }
                 }),
         );
         GameRoom {
@@ -340,7 +349,6 @@ impl GameRoom {
 
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
-        // FIXME: `SendError("...")`
         let errmsg = "Error communicating with game manager. The game state \
                       is corrupted, there is no point keeping this game room \
                       up.";
