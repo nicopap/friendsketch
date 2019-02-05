@@ -1,17 +1,18 @@
 <!DOCTYPE HTML>
 <html>
-	<head>
-		<meta charset="UTF-8">
-		<title>Friendsketch Lobby</title>
-		<link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
-		<link rel="icon" type="image/png" href="/favicon.png">
-	</head>
-	<div id="main"></div>
-	<script src="code.js"></script>
-	<script src="/friendk/ports.js"></script>
-	<script>
-		var app = Elm.Main.fullscreen();
-		app.ports.stashAndOpen.subscribe(stashAndOpen);
-		app.ports.openLink.subscribe(openLink);
-	</script>
+<head>
+<meta charset="UTF-8">
+<title>Friendsketch Lobby</title>
+<link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
+<link rel="icon" type="image/png" href="/favicon.png">
+<script src="code.js"></script>
+<script src="/friendk/ports.js"></script>
+</head>
+<body>
+<script>
+    var app = Elm.Main.fullscreen();
+    app.ports.stashAndOpen.subscribe(stashAndOpen);
+    app.ports.openLink.subscribe(openLink);
+</script>
+</body>
 </html>
