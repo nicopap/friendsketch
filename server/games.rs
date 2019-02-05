@@ -259,6 +259,7 @@ where
                     };
                     let msg = VisibleEvent(api::VisibleEvent::Left(name));
                     manager.broadcast(Broadcast::ToAll(msg));
+                    // FIXME:`invalid SecondaryMap key used`
                     manager.broadcast(broadcast);
                     loop_feedback(&mut manager, commands)?;
                 }
@@ -336,14 +337,15 @@ impl GameRoom {
 
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
+        // FIXME: `SendError("...")`
+        let errmsg = "Error communicating with game manager. The game state \
+                      is corrupted, there is no point keeping this game room \
+                      up.";
         let mut chan = self.manager_sink.clone();
         chan.start_send(ManagerRequest::Expects(user.clone()))
-            .unwrap();
-        chan.poll_complete().unwrap();
-        self.recv_manager.lock().unwrap().recv().expect(
-            "Error communicating with game manager. The game state is \
-             corrupted, there is no point keeping this game room up.",
-        )
+            .expect(errmsg);
+        chan.poll_complete().expect(errmsg);
+        self.recv_manager.lock().unwrap().recv().expect(errmsg)
     }
 
     /// Tell the game to accept a given connection from `user`.

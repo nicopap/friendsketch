@@ -196,7 +196,7 @@ impl Game {
                 let artist_msg = make_msg(Artist(word.to_string()));
                 let make_feedback = |feedback| Feedback {
                     sent_round: self.round_no,
-                    msg: feedback,
+                    msg:        feedback,
                 };
                 let revealback = make_feedback(Feedback_::RevealLetter);
                 let tickback = make_feedback(Feedback_::TickTimeout);

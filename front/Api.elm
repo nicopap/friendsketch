@@ -5,6 +5,7 @@ module Api
         , RoomID
         , validRoomID
         , showRoomID
+        , showRoomLink
         , Name
         , validName
         , showName
@@ -147,6 +148,9 @@ showRoomID : RoomID -> String
 showRoomID (RoomID_ stringrep) =
     stringrep
 
+showRoomLink : RoomID -> String
+showRoomLink (RoomID_ roomid) =
+    "http://localhost:8080/friendk/join/" ++ roomid
 
 validRoomID : String -> Maybe RoomID
 validRoomID =

@@ -10,13 +10,14 @@ path = "server/main.rs"
 name = "friendsketch"
 
 [dependencies]
+base64 = "0.10"
 bytes = "0.4"
 tokio-timer = "0.2.8"
 quick-error = "1.2.2"
 lazy_static = { version = "1.2.0", features = ["nightly"] }
 arraydeque = "0.4"
-# regex = "1.1.0"
-# parking_lot = "0.7.0"
+bart = "0.1.4"
+bart_derive = "0.1.4"
 fxhash = "0.2.1"
 slotmap = { version = "0.3", features = ["unstable"] }
 rand = "0.6"

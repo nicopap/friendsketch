@@ -296,7 +296,7 @@ masterDialog canStart hideId roomid =
             [ HA.type_ "text"
             , id "roomid"
             , class (if hideId then "hidden" else "display")
-            , HA.value <| Api.showRoomID roomid
+            , HA.value <| Api.showRoomLink roomid
             , HA.readonly True
             , HE.onClick SelectRoomid
             ]

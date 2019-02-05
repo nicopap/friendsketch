@@ -11,19 +11,23 @@ Created Tuesday 26 September 2017
 * Do not relay messages from anyone containing word to guess
 
 ==== Client ====
-* Think about inconsistency (unmatched arms in ''Pintclone.Game.updateToEvent''), and ''syncRetries'' : Is it pertinent? What purpose it has? When does it help?
+
 * Use unified font, for better cross browser aspect
 
 
 ==== Server ====
+
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
-
+ ''game.rs:262 FIXME'' : Very likely that we end up with inconsistent server state when multiple people leave at the same time
+* ''game.rs:340 FIXME'' : Happens when we try to close the room. We should somehow remove the room from the ''ServerState'' when it is closed.
 
 ===== Game Event Log =====
 
 * A lot of string copies? What to do?
-	* Replace ''Name'' in game log by Id, avoids extra allocation, but still copies at ''sync'' .
+	* Provide to ''game'' a way to convert ''api::GameMsg'' into serialized form and keep track of it:
+	* Have a ''struct SerializedVisibleEvent(Vec<u8>)'' that can only be constructed by serializing a ''VisibleEvent'' 
+	* Have a ''Into<SerializedVisibleEvent>'' trait and implement it for ''VisibleEvent'', then espect ''Game'' to return ''Into<SerializedVisibleEvent>'' . Have ''Game::serializeMsg(api::VisibleEvent) -> SerializedVisibleEvent bb'' that is callable by the ''Game'' to serialize game messages and return them later for consuption
 
 ===== Custom color picker =====
 I can't seem to get it to work :/

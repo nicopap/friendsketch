@@ -1,6 +1,7 @@
 mod roomids;
 #[macro_use]
 mod autode;
+pub mod pages;
 
 use percent_encoding::percent_decode;
 use quick_error::quick_error;

@@ -1,0 +1,18 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2019-02-04T17:44:11+01:00
+
+====== Joining a game ======
+Created Monday 04 February 2019
+
+The ''create'' page shall only let someone create a game. A different page will be used for joins. Why?:
+* The game creator will have access to a link that he can share with people he wants only.
+	* A link is more convinient to use than a page where you have to enter a specific keyword and click on the right button
+	* The server can redirect to a one-use URL so that what is shown in the address bar can't be used to join a game
+
+It has only a field to choose your name (design from ''create'' page apply here), and button to submit.
+* Future: show game settings, message from room leader (may be difficult, if settings can be changed in-game).
+
+ ''join/RoomId'' : The link to game room visible to user ''join/*/uuid'' : The url to the unique use join lobby
+
+

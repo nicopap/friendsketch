@@ -1,56 +1,49 @@
 html {
 	background-color: white;
-	color: black;
+	color: #282c34;
 }
 
-#lobbydiv {
-	border-radius: 10px;
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	background-color: white;
-	color: black;
-
-	height: 400px;
-	margin-top: -200px;
-
-	width: 600px;
-	margin-left: -300px;
-	padding: 50px 50px 50px 50px;
+body {
+    max-width: 520px;
+    margin: auto;
 }
 
 input.badinput:focus { box-shadow: 0 0 10px red; }
-input.badinput { box-shadow: 0 0 5px red; }
+input.badinput, input.taken, input.invalid { box-shadow: 0 0 2px #f9f1a5; border: solid #f9f1a5 2px;}
+form.taken::after, form.invalid::after {
+    position: relative;
+    top: -12px;
+    margin-left:10px;
+    font-size:12px;
+    color:#be5046
+}
+form.invalid::after {content: "Invalid display name, more than 30 characters is too much."}
+form.taken::after {content: "Display name already taken, use a different one."}
 input.goodinput:focus { box-shadow: 0 0 10px green; }
 input.goodinput { box-shadow: 0 0 5px green; }
 input:focus { box-shadow: 0 0 5px blue; }
 input:disabled { color: #767b87; }
 
-input {
-    background-color: white;
-    color:black;
-    padding-top: 5px;
-    padding-bottom: 5px;
-	margin-left: 5px;
-	margin-right: 5px;
+input[type="text"] {
+    padding: 5px 0;
+	margin: 0 5px;
     border-radius: 3px;
     border: 0;
     box-shadow: 0 0 5px #767b87;
 }
 
 
-button:hover { background-color: #acc996; }
-button:disabled { background-color: #e9b7b8; color: #767b87; }
+button:hover, input[type="button"]:hover, input[type="submit"]:hover { background-color: #acc996; }
+button:disabled { background-color: #e9b7b6; color: #767b87; }
 
-button {
+a:link { text-decoration: none }
+button, input[type="button"], input[type="submit"] {
     background-color: #cce9b6;
     color: black;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    width: auto;
+    padding: 5px;
     border-radius: 3px;
     border: 0;
-    left: 50%;
+    padding: 5px 10%;
 }
 
 div.info {
@@ -65,5 +58,3 @@ div.info.info-warning {
     background-size: 64px;
     background-color: #e9b7b8;
 }
-
-
