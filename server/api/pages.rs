@@ -1,21 +1,15 @@
 //! Dynamic and static pages included in the REST spec
 use bart_derive::BartDisplay;
+use std::fmt;
 
 #[derive(BartDisplay)]
 #[template = "pages-server/join-star-uid.html"]
 pub struct JoinRoomBody(pub super::RoomId);
-impl Into<String> for JoinRoomBody {
-    fn into(self) -> String {
-        format!("{}", self)
-    }
-}
 
-const JOIN_ROOM_ERR: &str =
-    include_str!("../../pages-server/join-star-uid-err.html");
 pub struct JoinRoomErr;
-impl Into<&'static str> for JoinRoomErr {
-    fn into(self) -> &'static str {
-        JOIN_ROOM_ERR
+impl fmt::Display for JoinRoomErr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, include_str!("../../pages-server/join-star-uid-err.html"))
     }
 }
 

@@ -74,26 +74,33 @@ fn main() {
         .or(report)
         .or(join_form)
         .or(join_room);
+
     warp::serve(routes).run(([127, 0, 0, 1], 8073));
+}
+
+macro_rules! respond {
+    ($status:expr, $body:expr, $($header:tt)*) => ({
+        let mut response = Response::builder();
+        respond!(@ response $($header)*)
+            .status($status)
+            .body($body)
+            .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+    });
+    (@ $val:ident none) => ($val);
+    (@ $val:ident json) => ($val.header("Content-Type","text/json"));
+    (@ $val:ident html) => ($val.header("Content-Type","text/html"));
+    (@ $val:ident Location($loc:expr)) => ($val.header("Location",$loc));
 }
 
 fn handle_join_room(
     join_id: join::Uid,
     manager: Arc<JoinManager>,
 ) -> Result<impl Reply, Rejection> {
-    let mut response = Response::builder();
+    let (ok, not_found) = (StatusCode::OK, StatusCode::NOT_FOUND);
     if let Some(roomid) = manager.remove(&join_id) {
-        response
-            .status(StatusCode::OK)
-            .header("Content-Type", "text/html")
-            .body(Into::<String>::into(api::pages::JoinRoomBody(roomid)))
-            .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+        respond!(ok, api::pages::JoinRoomBody(roomid).to_string(), html)
     } else {
-        response
-            .status(StatusCode::NOT_FOUND)
-            .header("Content-Type", "text/html")
-            .body(Into::<&str>::into(api::pages::JoinRoomErr).to_string())
-            .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+        respond!(not_found, api::pages::JoinRoomErr.to_string(), html)
     }
 }
 
@@ -102,7 +109,6 @@ fn handle_join_forms(
     manager: Arc<JoinManager>,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    let mut response = Response::builder();
     if server.get(&roomid).is_some() {
         let new_uid = join::Uid::new(&mut rand::thread_rng());
         let uid_location = {
@@ -111,17 +117,9 @@ fn handle_join_forms(
             stem
         };
         manager.insert(new_uid, roomid);
-        response
-            .status(StatusCode::SEE_OTHER)
-            .header("Location", uid_location)
-            .body("")
-            .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+        respond!(StatusCode::SEE_OTHER, "", Location(uid_location))
     } else {
-        response
-            .status(StatusCode::NOT_FOUND)
-            .header("Content-Type", "text/html")
-            .body(api::pages::JoinFormErr.into())
-            .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+        respond!(StatusCode::NOT_FOUND, api::pages::JoinFormErr.into(), html)
     }
 }
 
@@ -129,7 +127,6 @@ fn handle_create(
     api::CreateReq { username, .. }: api::CreateReq,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    let mut response = Response::builder();
     // TODO: guarenteed to cause collision of room names at one point
     // checking that the roomid isn't already taken would be ideal
     let roomid = RoomId::new_random();
@@ -137,11 +134,7 @@ fn handle_create(
     let sanitized_room_name = format!("\"{}\"", room_name);
     info!("Room created: {} by user {}", room_name, username);
     server.insert(roomid, GameRoom::new(room_name));
-    response
-        .status(StatusCode::CREATED)
-        .header("Content-Type", "text/json")
-        .body(sanitized_room_name)
-        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+    respond!(StatusCode::CREATED, sanitized_room_name, json)
 }
 
 enum Handle {
@@ -168,13 +161,7 @@ fn handle_join(
             Handle::NoRoom => StatusCode::NOT_FOUND,
             Handle::Accept => {
                 info!("{}", logmsg);
-                return Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", "text/json")
-                    .body("\"classic\"")
-                    .map_err(|e| {
-                        panic!("unreachable '{:?}' at main.rs:{}", e, line!())
-                    });
+                return respond!(StatusCode::OK, "\"classic\"", json);
             }
             Handle::Refuse => StatusCode::CONFLICT,
             Handle::EmptyRoom => {
@@ -184,21 +171,13 @@ fn handle_join(
         }
     };
     warn!("Join failed with status code: {}", err_code);
-    let mut response = Response::builder();
-    response
-        .status(err_code)
-        .body("")
-        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+    respond!(err_code, "", none)
 }
 
 fn handle_report(report: body::FullBody) -> Result<impl Reply, Rejection> {
     let report_message = String::from_utf8_lossy(report.bytes());
     warn!("{}", report_message);
-    let mut response = Response::builder();
-    response
-        .status(StatusCode::OK)
-        .body("")
-        .map_err(|e| panic!("unreachable '{:?}' at main.rs:{}", e, line!()))
+    respond!(StatusCode::OK, "", none)
 }
 
 fn accept_conn(
