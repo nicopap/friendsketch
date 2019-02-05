@@ -240,7 +240,9 @@ where
         ManagerRequest::Disconnect(id) => {
             let room = &manager.room_name;
             if !manager.connections.remove(id).is_some() {
-                warn!("disconnect non-conn {:?}: {}", id, room);
+                error!("disconnect non-conn {:?}: {}", id, room);
+            } else {
+                debug!("disconnected {:?}", id);
             }
             if let Some(name) = manager.hangups.disconnect(id) {
                 info!("{} in {} temporarily dropped", name, manager.room_name);
@@ -251,11 +253,12 @@ where
             let removed = manager.connections.remove(id).is_some();
             match manager.game.leaves(id) {
                 LeaveResponse::Successfully(name, broadcast, commands) => {
+                    debug!("successful leave: {}, {:?}, {:?}", name, broadcast, commands);
                     let room = &manager.room_name;
                     if removed {
-                        info!("{} leaves {}", name, room)
+                        warn!("{} kicked without disconnect in {}", name, room)
                     } else {
-                        error!("game user {} wasn't connected: {}", name, room)
+                        info!("confirming {} exits of {}", name, room)
                     };
                     let msg = VisibleEvent(api::VisibleEvent::Left(name));
                     manager.broadcast(Broadcast::ToAll(msg));
@@ -420,7 +423,7 @@ where
         warp::spawn(
             client_stream
                 .or_else(move |err| {
-                    error!("ws recieve:{}", err);
+                    error!("ws recieve {:?}:{}", id, err);
                     Ok(ManagerRequest::Terminate(id))
                 })
                 .take_while(move |msg| {

@@ -20,6 +20,9 @@ Created Tuesday 26 September 2017
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
  ''game.rs:262 FIXME'' : Very likely that we end up with inconsistent server state when multiple people leave at the same time
+	* What is happening: multiple people leave at the same time, they get "disconnected" from the server, but we give them a grace preiod to reconnect.
+	* When the game is notified of a specific persone leaving (after the grace period ended), the game tells manager to send message to a specific player (which is not connected)
+	* The manager attempts to send that message to the disconnected player, and it fails.
 * ''game.rs:340 FIXME'' : Happens when we try to close the room. We should somehow remove the room from the ''ServerState'' when it is closed.
 
 ===== Game Event Log =====

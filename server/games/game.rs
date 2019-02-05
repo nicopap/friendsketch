@@ -19,6 +19,7 @@ pub enum JoinResponse<Id> {
     Accept(Id),
 }
 
+#[derive(Debug)]
 pub enum Broadcast<Id, Msg> {
     ToAll(Msg),
     ToList(Vec<Id>, Msg),
@@ -28,6 +29,7 @@ pub enum Broadcast<Id, Msg> {
 }
 
 /// Order the game manager to do the following effectfull actions
+#[derive(Debug)]
 pub enum Cmd<Msg> {
     /// Send back to `Game` given `Msg` in `Duration`
     In(Vec<(Duration, Msg)>),

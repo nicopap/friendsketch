@@ -35,6 +35,7 @@ enum Game_ {
 }
 
 /// Something that `Game` recieves back from the manager
+#[derive(Debug)]
 pub struct Feedback {
     /// The message itself
     msg: Feedback_,
