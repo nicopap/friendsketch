@@ -1,13 +1,13 @@
 module Api
     exposing
         ( Game(..)
-        , exitToGame
+        , reopenGame
         , RoomID
-        , validRoomID
         , showRoomID
         , showRoomLink
+        , InitFlags
+        , extractInitFlags
         , Name
-        , validName
         , showName
         , reportError
         , RoundState
@@ -49,7 +49,6 @@ import Json.Decode as Dec exposing (Decoder, oneOf)
 import TypeDecoders exposing ((<*|),(|*|),(:=),(:-),(:^), (:*))
 import Http exposing (encodeUri)
 import Task exposing (Task)
-import Regex as Re
 import Maybe
 import NeatSocket
 import Ports
@@ -92,21 +91,6 @@ reportError error_msg =
             |> Task.attempt (\_ -> ())
 
 
-{-| Turns a maybe type decoder into a type decoder that may fail.
--}
-decodeMaybe : String -> Decoder (Maybe a) -> Decoder a
-decodeMaybe errorMessage =
-    Dec.andThen
-        (Maybe.map Dec.succeed >> Maybe.withDefault (Dec.fail errorMessage))
-
-
-regexValidate : String -> String -> Maybe String
-regexValidate re string =
-    if Re.contains (Re.regex re) string then
-        Just string
-    else
-        Nothing
-
 validChatContent : String -> Maybe ChatContent
 validChatContent toValidate =
     if String.length toValidate < 300 && not (String.isEmpty toValidate) then
@@ -132,16 +116,6 @@ showName (Name_ stringrep) =
     stringrep
 
 
-validName : String -> Maybe Name
-validName toValidate =
-    let
-        nameRegex =
-            "^[!-~\\u00A1-\\u02AF\\u0390-\\u04FF][ -~\\u00A1-\\u02AF\\u0390-\\u04FF]{0,50}[!-~\\u00A1-\\u02AF\\u0390-\\u04FF]$"
-    in
-        regexValidate nameRegex toValidate
-            |> Maybe.map Name_
-
-
 showRoomID : RoomID -> String
 showRoomID (RoomID_ stringrep) =
     stringrep
@@ -150,11 +124,6 @@ showRoomLink : RoomID -> String
 showRoomLink (RoomID_ roomid) =
     "http://localhost:8080/friendk/join/" ++ roomid
 
-validRoomID : String -> Maybe RoomID
-validRoomID =
-    Maybe.map RoomID_ << regexValidate "^[A-Z][a-z]+-[A-Z][a-z]*[A-Z]?[a-z]+$"
-
-
 showGame : Game -> String
 showGame game =
     case game of
@@ -162,15 +131,31 @@ showGame game =
             "classic"
 
 
-exitToGame : Game -> RoomID -> Name -> Int -> Cmd msg
-exitToGame game (RoomID_ roomid) (Name_ username) retries =
+reopenGame : RoomID -> Name -> Int -> Cmd msg
+reopenGame (RoomID_ roomid) (Name_ username) retries =
     Ports.stashAndOpen
         ( [ ("roomid", Enc.string roomid)
           , ("username", Enc.string username)
-          , ("retries", Enc.int retries)
+          , ("retries", Enc.int (retries + 1))
           ]
-        , "/friendk/games" +/+ showGame game +/+ "index.html"
+        , "."
         )
+
+
+
+type alias InitFlags = Dec.Value
+
+extractInitFlags : Dec.Value -> Result (String, RoomID, Name) (RoomID, Name, Int)
+extractInitFlags flags =
+    let
+        decodeFlags =
+            (,,)
+                <*| "roomid" :* (Dec.map RoomID_ Dec.string)
+                |*| "username" :* decoderName
+                |*| "retries" :* Dec.int
+    in
+        Dec.decodeValue decodeFlags flags
+            |> Result.mapError (\x -> (toString x, RoomID_ "", Name_ ""))
 
 
 

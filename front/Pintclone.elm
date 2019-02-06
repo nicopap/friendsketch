@@ -5,7 +5,6 @@ room websocket messages and apply changes to the state of modules
 accordingly.
 -}
 
-import Maybe
 import Debug
 import Process
 import Task
@@ -23,12 +22,18 @@ type RetryStatus
     | Attempt Int
     | GivenUp Int
     | NoAttempt
+    | NoInit
 
 type GameLobby
     = Uninit
     | Running Game
-    | Error { title : String, message : String, retry : RetryStatus }
+    | Error Error_
 
+type alias Error_ =
+    { title : String
+    , message : String
+    , retry : RetryStatus
+    }
 
 type alias Pintclone =
     { state : GameLobby
@@ -41,13 +46,6 @@ type alias Pintclone =
     }
 
 
-type alias Flags =
-    { roomid : String
-    , username : String
-    , retries : Int
-    }
-
-
 type Msg
     = GameMsg Game.Msg
     | ListenError Api.ListenError
@@ -57,54 +55,44 @@ type Msg
 
 
 
-main : Program Flags Pintclone Msg
+main : Program Api.InitFlags Pintclone Msg
 main =
     H.programWithFlags
-        { init = new << sanitizeFlags
+        { init = new << Api.extractInitFlags
         , update = update
         , view = view
         , subscriptions = subs
         }
 
 
-{-| Crash if the flags are invalid (because it becomes impossible to
-construct a logical program at this point).
--}
-sanitizeFlags : Flags -> ( Api.RoomID, Api.Name, Int )
-sanitizeFlags { roomid, username, retries } =
-    let
-        maybeSanitized =
-            Maybe.map3 (,,)
-                (Api.validRoomID roomid)
-                (Api.validName username)
-                (Just retries)
 
-        crashMessage =
-            """
-            Game initialization failed, please
-            check if your browser supports sessionStorage:
-
-                http://caniuse.com/#search=sessionStorage
-
-            If not, please come back with a compatible browser :)"""
-    in
-        case maybeSanitized of
-            Nothing -> Debug.crash crashMessage
-            Just ret -> ret
-
-
-new : (Api.RoomID, Api.Name, Int) -> ( Pintclone, Cmd Msg )
-new (roomid, username, openGameRetries) =
-    ( { state = Uninit
-      , roomid = roomid
-      , username = username
-      , wslisten = Api.wsListen roomid username
-      , wssend = Api.wsSend roomid username
-      , isUnsync = False
-      , openGameRetries = openGameRetries
-      }
-    , Api.wsSend roomid username Api.ReqSync
-    )
+new : Result (String, Api.RoomID, Api.Name) (Api.RoomID, Api.Name, Int)
+   -> ( Pintclone, Cmd Msg )
+new flags =
+    case flags of
+        Ok (roomid, username, openGameRetries) ->
+            ( { state = Uninit
+              , roomid = roomid
+              , username = username
+              , wslisten = Api.wsListen roomid username
+              , wssend = Api.wsSend roomid username
+              , isUnsync = False
+              , openGameRetries = openGameRetries
+              }
+            , Api.wsSend roomid username Api.ReqSync
+            )
+        Err (message, fakeRoomid, fakeName) ->
+            ( { state = Error <| Error_ "The game Can't start" message NoInit
+              , roomid = fakeRoomid
+              , username = fakeName
+              , wslisten = always Sub.none
+              , wssend = always Cmd.none
+              , isUnsync = True
+              , openGameRetries = 3
+              }
+            , Api.reportError ("cannot initialize the game:" ++ message)
+                |> Cmd.map (\() -> Dummy)
+            )
 
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
@@ -117,8 +105,6 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
                     ++ errorMsg
             in  Api.reportError fullMsg |> Cmd.map (\() -> Dummy)
 
-        toError title message retry =
-            {message=message, retry=retry, title=title}
         updateError error =
             ({ pintclone | state = Error error }, report error.message)
 
@@ -134,11 +120,12 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
         case msg of
             ListenError Api.BadSend ->
                 if openGameRetries >= 2 then
-                    updateError <| toError
-                        "Communication error"
-                        ("Attempted to connect " ++ toString openGameRetries
-                        ++ " times without success. Giving up")
-                        (GivenUp (openGameRetries + 1))
+                    updateError <|
+                        Error_
+                            "Communication error"
+                            ("Attempted to connect " ++ toString openGameRetries
+                            ++ " times without success. Giving up")
+                            (GivenUp (openGameRetries + 1))
                 else
                     let attempts =
                             if openGameRetries == 0 then
@@ -146,10 +133,11 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
                             else
                                 Attempt (openGameRetries + 1)
                         newError =
-                            Error <| toError
-                                "Communication error (reconnecting)"
-                                "Websocket connection error"
-                                attempts
+                            Error <|
+                                Error_
+                                    "Communication error (reconnecting)"
+                                    "Websocket connection error"
+                                    attempts
                     in
                         ( { pintclone | state = newError }
                         , Process.sleep (2.4 * second)
@@ -157,16 +145,13 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
                         )
 
             ListenError (Api.DecodeError msg) ->
-                updateError <| toError "Communication error" msg NoAttempt
+                updateError <| Error_ "Communication error" msg NoAttempt
 
             Dummy ->
                 ( pintclone, Cmd.none )
 
             Reopen ->
-                ( pintclone
-                , Api.exitToGame
-                    Api.Pintclone roomid username (openGameRetries + 1)
-                )
+                ( pintclone , Api.reopenGame roomid username openGameRetries )
 
             Sync state ->
                 let game = Game.sync state username
@@ -180,7 +165,8 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
 
                     anyelse ->
                         if pintclone.isUnsync then
-                            updateError <| toError "Synchronisation error" "" NoAttempt
+                            updateError <|
+                                Error_ "Synchronisation error" "" NoAttempt
                         else
                             Debug.log
                                 ("Inconsistency:" ++ toString anyelse)
@@ -228,6 +214,7 @@ view pintclone =
                         OneAttempt -> "Couldn't connect to the game. Retrying..."
                         Attempt c -> "After " ++ toString c ++ " tries, we still couldn't connect to the game. Retrying..."
                         NoAttempt -> "An irreversible error occured and your only option is to try to join a different room or change display name."
+                        NoInit -> "The game can't start without proper initialization: use the room creation page or a join link to join a game. Friendsketch is only accessible through those pages."
                 secondParagraph = "We are sorry for the inconvenience this causes you."
                 thirdParagraph = "A copy of the following error message has already been sent to the developers. We will take care that you won't experience this in the future."
             in

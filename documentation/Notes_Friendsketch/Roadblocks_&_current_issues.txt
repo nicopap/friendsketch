@@ -13,7 +13,7 @@ Created Tuesday 26 September 2017
 ==== Client ====
 
 * Use unified font, for better cross browser aspect
-
+* Proper handling of not being able to join the game, instead of just showing ''Opening game'' forever
 
 ==== Server ====
 
