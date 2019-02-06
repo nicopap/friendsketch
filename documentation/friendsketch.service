@@ -1,0 +1,8 @@
+[Unit]
+Description=Process for the friendsketch server software
+
+[Service]
+Environment=RUST_LOG=info
+ExecStart=/home/nicola/server-setup/friendsketch-bin
+Restart=always
+RestartSec=4
