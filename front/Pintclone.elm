@@ -8,7 +8,7 @@ accordingly.
 import Debug
 import Process
 import Task
-import Time exposing (second)
+import Time exposing (Time, second)
 
 import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
 import Html.Attributes as HA exposing (id, class, href)
@@ -23,9 +23,11 @@ type RetryStatus
     | GivenUp Int
     | NoAttempt
     | NoInit
+    | TooLong
 
 type GameLobby
     = Uninit
+    | LongUninit
     | Running Game
     | Error Error_
 
@@ -50,6 +52,8 @@ type Msg
     = GameMsg Game.Msg
     | ListenError Api.ListenError
     | Sync Api.GameState
+    | LongInit
+    | TooLongInit
     | Dummy
     | Reopen
 
@@ -79,7 +83,10 @@ new flags =
               , isUnsync = False
               , openGameRetries = openGameRetries
               }
-            , Api.wsSend roomid username Api.ReqSync
+            , Cmd.batch
+                [ Api.wsSend roomid username Api.ReqSync
+                , delay (3 * second) LongInit
+                ]
             )
         Err (message, fakeRoomid, fakeName) ->
             ( { state = Error <| Error_ "The game Can't start" message NoInit
@@ -94,6 +101,9 @@ new flags =
                 |> Cmd.map (\() -> Dummy)
             )
 
+delay : Time -> Msg -> Cmd Msg
+delay by msg =
+    Process.sleep (2.4 * second) |> Task.perform (always msg)
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
 update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
@@ -140,8 +150,7 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
                                     attempts
                     in
                         ( { pintclone | state = newError }
-                        , Process.sleep (2.4 * second)
-                            |> Task.perform (always Reopen)
+                        , delay (2.4 * second) Reopen
                         )
 
             ListenError (Api.DecodeError msg) ->
@@ -157,6 +166,25 @@ update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =
                 let game = Game.sync state username
                 in ( { pintclone | state = Running game }, Cmd.none )
 
+            LongInit ->
+                case pintclone.state of
+                    Uninit ->
+                        ( { pintclone | state = LongUninit }
+                        , delay (30 * second) TooLongInit
+                        )
+                    _ ->
+                        ( pintclone, Cmd.none )
+
+            TooLongInit ->
+                case pintclone.state of
+                    LongUninit ->
+                        updateError <|
+                            Error_
+                                "Communication error"
+                                "Websocket connection took too long"
+                                TooLong
+                    _ ->
+                        ( pintclone, Cmd.none )
 
             GameMsg gameMsg ->
                 case pintclone.state of
@@ -193,7 +221,8 @@ subs { wslisten, state } =
                 [ Sub.map GameMsg <| Game.subs game
                 , wslisten adaptApi
                 ]
-            Uninit  -> wslisten waitSync
+            Uninit -> wslisten waitSync
+            LongUninit -> wslisten waitSync
             Error _ -> Sub.none
 
 
@@ -202,6 +231,13 @@ view pintclone =
     case pintclone.state of
         Uninit ->
             h1 [] [ text "Opening game" ]
+
+        LongUninit ->
+            div []
+                [ h1 [] [ text "Opening game" ]
+                , p [] [ text "The connection to the server is taking a while..." ]
+                , p [] [ text "Maybe try refreshing?" ]
+                ]
 
         Running game ->
             H.map GameMsg <| Game.view pintclone.roomid game
@@ -215,6 +251,7 @@ view pintclone =
                         Attempt c -> "After " ++ toString c ++ " tries, we still couldn't connect to the game. Retrying..."
                         NoAttempt -> "An irreversible error occured and your only option is to try to join a different room or change display name."
                         NoInit -> "The game can't start without proper initialization: use the room creation page or a join link to join a game. Friendsketch is only accessible through those pages."
+                        TooLong -> "We took too long to join the game, the server probably forgot about us by this time."
                 secondParagraph = "We are sorry for the inconvenience this causes you."
                 thirdParagraph = "A copy of the following error message has already been sent to the developers. We will take care that you won't experience this in the future."
             in
