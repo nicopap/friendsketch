@@ -5,6 +5,8 @@ Creation-Date: 2019-02-04T17:44:11+01:00
 ====== Joining a game ======
 Created Monday 04 February 2019
 
+===== Unique join pages =====
+
 The ''create'' page shall only let someone create a game. A different page will be used for joins. Why?:
 * The game creator will have access to a link that he can share with people he wants only.
 	* A link is more convinient to use than a page where you have to enter a specific keyword and click on the right button
@@ -15,4 +17,7 @@ It has only a field to choose your name (design from ''create'' page apply here)
 
  ''join/RoomId'' : The link to game room visible to user ''join/*/uuid'' : The url to the unique use join lobby
 
+===== Unique connection uri =====
 
+* one ''/ws/connId'' per player in a room
+* The ''connId'' random value persisted in server until room is closed, .

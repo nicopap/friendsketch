@@ -23,6 +23,7 @@ Created Tuesday 26 September 2017
 	* When the game is notified of a specific persone leaving (after the grace period ended), the game tells manager to send message to a specific player (which is not connected)
 	* The manager attempts to send that message to the disconnected player, and it fails.
 	* Hard to solve. (potentially: integrate ''hangup'' manager in the game
+* What happens when one attempts to connect using a connid that has been disconnected from game?
 
 ===== Game Event Log =====
 

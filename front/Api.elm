@@ -31,6 +31,7 @@ module Api
         , RoundScore(..)
         , VisibleEvent(..)
         , HiddenEvent(..)
+        , ConnId
         )
 
 {-| Exposes the necessary functions and types to access the backend Api.
@@ -54,22 +55,16 @@ import NeatSocket
 import Ports
 
 
-type Game
-    = Pintclone
+type Game = Pintclone
+
+type ConnId = ConnId_ String
+type Name = Name_ String
+type ChatContent = ChatContent_ String
+type RoomID = RoomID_ String
 
 decoderGame : Decoder Game
 decoderGame =
     Dec.succeed Pintclone
-
-
-type Name
-    = Name_ String
-
-type ChatContent
-    = ChatContent_ String
-
-type RoomID
-    = RoomID_ String
 
 
 (+/+) : String -> String -> String
@@ -145,12 +140,13 @@ reopenGame (RoomID_ roomid) (Name_ username) retries =
 
 type alias InitFlags = Dec.Value
 
-extractInitFlags : Dec.Value -> Result (String, RoomID, Name) (RoomID, Name, Int)
+extractInitFlags : Dec.Value -> Result (String, RoomID, Name) (ConnId, RoomID, Name, Int)
 extractInitFlags flags =
     let
         decodeFlags =
-            (,,)
-                <*| "roomid" :* (Dec.map RoomID_ Dec.string)
+            (,,,)
+                <*| "connection" :* (Dec.map ConnId_ Dec.string)
+                |*| "roomid" :* (Dec.map RoomID_ Dec.string)
                 |*| "username" :* decoderName
                 |*| "retries" :* Dec.int
     in
@@ -164,13 +160,10 @@ extractInitFlags flags =
 
 {-| Generic way of accessing (sending to) a game websocket.
 -}
-wsSend : RoomID -> Name -> GameReq -> Cmd msg
-wsSend (RoomID_ roomid) (Name_ name) =
-    let
-        address =
-            "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
-    in
-        NeatSocket.send address << Enc.encode 0 << encoderGameReq
+wsSend : ConnId -> GameReq -> Cmd msg
+wsSend (ConnId_ connid) =
+    let address = "ws://localhost:8080/friendk/ws" +/+ connid
+    in  NeatSocket.send address << Enc.encode 0 << encoderGameReq
 
 type ListenError
     = DecodeError String
@@ -178,11 +171,9 @@ type ListenError
 
 {-| Generic way of accessing (listening to) a game websocket.
 -}
-wsListen : RoomID -> Name -> (Result ListenError GameMsg -> msg) -> Sub msg
-wsListen (RoomID_ roomid) (Name_ name) continuation =
-    let
-        address =
-            "ws://localhost:8080/friendk/ws" +/+ roomid +/+ name
+wsListen : ConnId -> (Result ListenError GameMsg -> msg) -> Sub msg
+wsListen (ConnId_ connid) continuation =
+    let address = "ws://localhost:8080/friendk/ws" +/+ connid
 
         withNiceError serverResponse =
             case serverResponse of
@@ -192,9 +183,7 @@ wsListen (RoomID_ roomid) (Name_ name) continuation =
                             "{\"json\":" ++ toString decodeErr ++ ",\"msg\":"++toDecode ++ "}"
                                 |> DecodeError
                         )
-
-                NeatSocket.Refused ->
-                    Err BadSend
+                NeatSocket.Refused -> Err BadSend
     in
         NeatSocket.listen address (continuation << withNiceError)
 

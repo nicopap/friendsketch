@@ -22,10 +22,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
-> Figure out how to URL-decode URLs so as to avoid surprises with %20 and / **(IMPORTANT)**
-	> Do that in the client, for names containing '/'
-	> Test server for how it handles it
-	> This is not a problem if we we don't include user names in URIs
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
 
 > Possible optimisation: serialize ''GameEvent'' when adding them to game log

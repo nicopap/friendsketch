@@ -11,7 +11,7 @@ function sendCreateRequest() {
 		if (xmlHttp.readyState === 4) {
 			switch (xmlHttp.status) {
 			case 201 :
-				var roomToJoin = JSON.parse(xmlHttp.response);
+				var roomToJoin = xmlHttp.response;
                 sendJoinRequest(roomToJoin);
 				break;
 			case 400 :

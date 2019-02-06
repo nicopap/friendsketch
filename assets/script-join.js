@@ -11,8 +11,10 @@ function sendJoinRequest(roomToJoin) {
 		if (xmlHttp.readyState === 4) {
 			switch (xmlHttp.status) {
 			case 200 :
+				var connectionId = xmlHttp.response;
 				stashAndOpen([[
 					[ "roomid", roomToJoin ],
+					[ "connid", connectionId ],
 					[ "username", inputUsername ],
 					[ "retries", 0 ],
 				], "/friendk/games/classic/index.html"]);

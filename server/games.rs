@@ -2,7 +2,6 @@ mod game;
 mod tugofsketch;
 
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
-use fxhash::FxHashMap;
 use log::{debug, error, info, warn};
 use quick_error::quick_error;
 use serde::de::Error;
@@ -19,9 +18,10 @@ use crate::{
     api::{self, Name},
     games::{
         game::{Broadcast, Cmd, Game, JoinResponse, LeaveResponse},
-        tugofsketch::{Feedback, Id},
+        tugofsketch::Feedback,
     },
 };
+pub use tugofsketch::Id;
 
 type ManagerChannel = mpsc::Sender<ManagerRequest<Feedback>>;
 
@@ -48,7 +48,7 @@ enum ManagerRequest<Msg> {
     /// Order the game to drop the given player `Id`
     Terminate(Id),
     /// A connection with given player `Name` has been established
-    Join(Name, WebSocket),
+    Join(Id, WebSocket),
     /// A player `Name` is joining, with an imminent connection
     Expects(Name),
     /// A player was expected to connect a while ago, tell the game
@@ -60,12 +60,12 @@ enum ManagerRequest<Msg> {
     Return(Msg),
 }
 
-/// player `Name` was expected to connect a while ago, tell the game
+/// player `to_drop` was expected to connect a while ago, tell the game
 /// to drop them if they didn't connect. `challenge` identifies the exact
 /// connection to give up.
 #[derive(Debug)]
 struct GiveUp {
-    name:      Name,
+    to_drop:   Id,
     challenge: Challenge,
 }
 
@@ -73,7 +73,7 @@ struct GiveUp {
 #[derive(Debug)]
 pub enum ManagerResponse {
     /// The player was accepted into the room
-    Accept,
+    Accept(Id),
     /// The player wasn't accepted into the room
     Refuse,
 }
@@ -85,8 +85,8 @@ pub enum ManagerResponse {
 /// connectivity in a `ManagerChannel`. It sends delayed messages to implement
 /// timeouts and such.
 struct HangupChallenger {
-    newcomings:   FxHashMap<Name, (Id, Challenge)>,
-    remaining:    SecondaryMap<Id, Name>,
+    newcomings:   SecondaryMap<Id, Challenge>,
+    remaining:    SecondaryMap<Id, ()>,
     challenges:   SlotMap<Challenge, ()>,
     manager_sink: ManagerChannel,
 }
@@ -96,20 +96,17 @@ impl HangupChallenger {
     /// `manager_sink`: where to send `ManagerRequest` back.
     fn new(manager_sink: ManagerChannel) -> Self {
         HangupChallenger {
-            newcomings: FxHashMap::with_capacity_and_hasher(
-                4,
-                Default::default(),
-            ),
+            newcomings: SecondaryMap::with_capacity(16),
             remaining: SecondaryMap::with_capacity(16),
             challenges: SlotMap::with_capacity_and_key(4),
             manager_sink,
         }
     }
 
-    /// Accept given `name` temporarily. `name` will be "Given up" in 30
+    /// Accept given `id` temporarily. `id` will be "Given up" in 30
     /// seconds if they do not properly connect (join) by then.
-    fn accept(&mut self, name: Name, id: Id) {
-        self.drop_in(30, name, id);
+    fn accept(&mut self, id: Id) {
+        self.drop_in(30, id);
     }
 
     /// Process a `GiveUp` message: send a `Terminate` if the concerned player
@@ -117,17 +114,17 @@ impl HangupChallenger {
     /// this does nothing.
     fn challenge(
         &mut self,
-        GiveUp { name, challenge }: GiveUp,
+        GiveUp { to_drop, challenge }: GiveUp,
     ) -> Result<(), GameInteruption> {
         use self::ManagerRequest::Terminate;
-        debug!("Challenging giveup {}", name);
-        if let Some((id, challenged)) = self.newcomings.remove(&name) {
+        debug!("Challenging giveup {:?}", to_drop);
+        if let Some(challenged) = self.newcomings.remove(to_drop) {
             if challenge == challenged {
                 self.challenges.remove(challenged);
-                self.manager_sink.start_send(Terminate(id))?;
+                self.manager_sink.start_send(Terminate(to_drop))?;
                 self.manager_sink.poll_complete()?;
             } else {
-                self.newcomings.insert(name, (id, challenged));
+                self.newcomings.insert(to_drop, challenged);
             }
         }
         Ok(())
@@ -135,10 +132,10 @@ impl HangupChallenger {
 
     /// Schedule for the termination of given `id`'s connection in `delay`
     /// seconds.
-    fn drop_in(&mut self, delay: u64, name: Name, id: Id) {
+    fn drop_in(&mut self, delay: u64, to_drop: Id) {
         let challenge = self.challenges.insert(());
-        self.newcomings.insert(name.clone(), (id, challenge));
-        let request = ManagerRequest::GiveUp(GiveUp { challenge, name });
+        self.newcomings.insert(to_drop, challenge);
+        let request = ManagerRequest::GiveUp(GiveUp { challenge, to_drop });
         let sink_clone = self.manager_sink.clone();
         warp::spawn(
             sleep(Duration::new(delay, 0))
@@ -148,25 +145,27 @@ impl HangupChallenger {
         );
     }
 
-    /// Confirm connection of `name`. They will not be "Given up" on, unless
+    /// Confirm connection of `joins`. They will not be "Given up" on, unless
     /// they disconnect afterward and do not reconnect in time.
-    fn join(&mut self, name: Name) -> Option<Id> {
-        self.newcomings.remove(&name).map(|(id, challenge)| {
-            info!("Connection with {} established", name);
-            self.remaining.insert(id, name);
-            self.challenges.remove(challenge);
-            id
-        })
+    fn join(&mut self, joins: Id) -> bool {
+        self.newcomings
+            .remove(joins)
+            .map(|challenge| {
+                self.remaining.insert(joins, ());
+                self.challenges.remove(challenge);
+            })
+            .is_some()
     }
 
     /// `id` has disconnected. Provide a small windows of time in which they
     /// can reconnect without issue. If they do not reconnect by then, they
     /// will be "Given up".
-    fn disconnect(&mut self, id: Id) -> Option<Name> {
-        self.remaining.remove(id).map(|name| {
-            self.drop_in(5, name.clone(), id);
-            name
-        })
+    /// Returns `true` if `id` was in the room, otherwise `false`
+    fn disconnect(&mut self, id: Id) -> bool {
+        self.remaining
+            .remove(id)
+            .map(|()| self.drop_in(5, id))
+            .is_some()
     }
 
     /// Player `id` was forecefully removed from the game.
@@ -221,10 +220,13 @@ where
 {
     use self::api::GameMsg::VisibleEvent;
     match msg {
-        ManagerRequest::Join(name, ws) => {
-            if let Some(id) = manager.hangups.join(name) {
-                manager.join(id, ws);
+        ManagerRequest::Join(user, ws) => {
+            if manager.hangups.join(user) {
+                info!("Connection with {:?} established", user);
+            } else {
+                warn!("{:?} was not expected", user);
             }
+            manager.join(user, ws);
         }
         ManagerRequest::Msg(id, msg_val) => {
             let (response, commands) =
@@ -242,8 +244,8 @@ where
             } else {
                 debug!("disconnected {:?}", id);
             }
-            if let Some(name) = manager.hangups.disconnect(id) {
-                info!("{} in {} temporarily dropped", name, manager.room_name);
+            if manager.hangups.disconnect(id) {
+                info!("{:?} in {} temporarily dropped", id, manager.room_name);
             }
         }
         ManagerRequest::Terminate(id) => {
@@ -291,8 +293,8 @@ where
                 debug!("with id: {:?}", id);
                 let msg = VisibleEvent(api::VisibleEvent::Joined(name.clone()));
                 manager.broadcast(Broadcast::ToAll(msg));
-                manager.hangups.accept(name, id);
-                manager.respond.send(ManagerResponse::Accept);
+                manager.hangups.accept(id);
+                manager.respond.send(ManagerResponse::Accept(id));
             }
             JoinResponse::Refuse => {
                 warn!("{} refused {}", manager.room_name, name);
@@ -349,21 +351,22 @@ impl GameRoom {
 
     /// Tells the game that `user` is joining. Returns how it was handled.
     pub fn expect(&mut self, user: Name) -> ManagerResponse {
+        use self::ManagerRequest::Expects;
         let errmsg = "Error communicating with game manager. The game state \
                       is corrupted, there is no point keeping this game room \
                       up.";
+        // TODO: verify if I can remove that clone
         let mut chan = self.manager_sink.clone();
-        chan.start_send(ManagerRequest::Expects(user.clone()))
-            .expect(errmsg);
+        chan.start_send(Expects(user.clone())).expect(errmsg);
         chan.poll_complete().expect(errmsg);
         self.recv_manager.lock().unwrap().recv().expect(errmsg)
     }
 
     /// Tell the game to accept a given connection from `user`.
     /// Returns the server response to the connection
-    pub fn accept(&mut self, user: Name, ws: Ws2) -> impl warp::reply::Reply {
+    pub fn accept(&mut self, user: Id, ws: Ws2) -> impl warp::reply::Reply {
         let game_chan = self.manager_sink.clone();
-        debug!("accepting {}", user);
+        debug!("accepting {:?}", user);
         ws.on_upgrade(move |socket| {
             game_chan
                 .send(ManagerRequest::Join(user, socket))

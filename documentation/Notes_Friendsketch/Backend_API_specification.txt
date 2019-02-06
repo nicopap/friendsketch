@@ -14,6 +14,10 @@ Created Tuesday 12 September 2017
 /lobby
 	/index.html : welcome page for connecting to a game
 
+/join
+	/:RoomID : redirects to proper join page
+	/*/uid : join a room thanks to a join link
+
 -- GAMES --
 
 /games
@@ -45,23 +49,26 @@ The string name of an avaliable game. Any other string will be refused.
 * Currently there is only one value possible for it.
 
 === Name ===
-''Name ~= [[::unicode_alphanum::] _-]{2-100}''
+''Name ~= [[::unicode_alphanum::] _-]{2-30}''
 A user name. Can be arbitrary unicode alphanumericals.
 * TODO: handle spaces at the start and end of the string in specification.
 * This is user-generated and shown to other users!
 * Will be refused if the size (in bytes, as opposed to characters) is greater than a certain ammount
 
 === RoomID ===
-''RoomID ~= [A-Z][a-z]+\\.[A-Z][a-z]*[A-Z]?[a-z]+''
+''RoomID ~= [A-Z][a-z]+-[A-Z][a-z]*[A-Z]?[a-z]+''
 A room id, let identify a unique party going on currently.
 * Server-generated. Only values that you got (directly or indirectly) from the server will be accepted,  most likely.
 
+=== ConnId ===
+ ''ConnId ~= [A-Za-z0-9]+'' 
+A unique Id to connect to a unique websocket assigned per player per room
 
 ====== Static pages ======
 
 ==== Lobby welcome page ====
 ''GET /lobby/index.html''
-Html page. User interface to select whether to create or join a game.
+Html page. User interface to create a game.
 
 ==== Classic mode ====
 ''GET /games/classic/index.html ''
@@ -88,9 +95,9 @@ Create a room for given ''game''.
 
 ==== Join a Room ====
 ''POST /rooms/join {roomid: RoomID, username: Name}''
-Attempts to join an existing room ''roomid'' as ''username'' . This will "open" a websocket port at location ''/ws/:roomid/:username'' that the user can connect to to play the game
+Attempts to join an existing room ''roomid'' as ''username'' . This will "open" a websocket port at location ''/ws/:ConnId'' that the user can connect to to play the game
 	* Returns:
-		* __200 success__ Game | The game you are connecting to.
+		* __200 success__ ConnId | The ressource for the websocket reserved for the given player.
 		* __404 not found__ | ''roomid'' is not a room.
 		* __409 conflict__ | ''roomid'' is indeed a room, but ''username'' already taken.
 		* __400 bad request__ | ''username'' is not a valid name.
@@ -192,11 +199,7 @@ GameMsg
 
 
 ==== Websockets ====
-''GET /ws/:RoomID/:Name''
-'''
-/ws/:RoomID/:Name
-'''
- is only available after having ''Post''ed the '':Name'' in the right '':RoomID'' using the ''/rooms/join'' resource.
-The URL of the information websocket, used to recieve informations about the state of the room. does only send data.
+''GET /ws/:ConnId''
+Connect to the websocket assigned to '':ConnId'' . You get a ''ConnId'' by ''POST'' ing on the ''/rooms/join'' ressource.
 	* Accepts: GameReq
 	* Sends: GameMsg

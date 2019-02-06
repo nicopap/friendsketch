@@ -2,12 +2,13 @@
 mod api;
 mod games;
 mod join;
+mod server;
 
 use bytes::buf::Buf;
 use std::sync::Arc;
 
 use chashmap::CHashMap;
-use log::{debug, info, warn};
+use log::warn;
 use pretty_env_logger;
 use warp::{
     self, body,
@@ -19,11 +20,10 @@ use warp::{
 };
 
 use self::{
-    api::{pages, Name, RoomId},
-    games::GameRoom,
+    api::{pages, RoomId},
+    server::ServerState,
 };
 
-type ServerState = CHashMap<RoomId, GameRoom>;
 type JoinManager = CHashMap<join::Uid, RoomId>;
 
 type Server = Arc<ServerState>;
@@ -35,7 +35,7 @@ macro_rules! b {
 }
 
 fn main() {
-    use self::join::Uid;
+    use self::{join::Uid, server::ConnId};
     pretty_env_logger::init();
 
     let join_manager = Arc::new(JoinManager::new());
@@ -63,7 +63,7 @@ fn main() {
 
     let join = url! {("friendk"/"rooms"/"join"), b!(json), handle_join};
     let create = url! {("friendk"/"rooms"/"create"), b!(json), handle_create};
-    let ws_url = url! {("friendk"/"ws"/RoomId/Name), warp::ws2(), accept_conn};
+    let ws_url = url! {("friendk"/"ws"/ConnId), warp::ws2(), accept_conn};
     let report = path!("friendk" / "report")
         .and(b!(concat))
         .and_then(handle_report);
@@ -89,6 +89,7 @@ macro_rules! respond {
     (@ $val:ident none) => ($val);
     (@ $val:ident json) => ($val.header("Content-Type","text/json"));
     (@ $val:ident html) => ($val.header("Content-Type","text/html"));
+    (@ $val:ident text) => ($val.header("Content-Type","text/plain"));
     (@ $val:ident Location($loc:expr)) => ($val.header("Location",$loc));
 }
 
@@ -109,7 +110,7 @@ fn handle_join_redirect(
     manager: Arc<JoinManager>,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    if server.get(&roomid).is_some() {
+    if server.is_active(&roomid) {
         let new_uid = join::Uid::new(&mut rand::thread_rng());
         let uid_location = {
             let mut stem = String::from("*/");
@@ -124,36 +125,22 @@ fn handle_join_redirect(
 }
 
 fn handle_create(
-    api::CreateReq { username, .. }: api::CreateReq,
+    api::CreateReq { .. }: api::CreateReq,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    // TODO: guarenteed to cause collision of room names at one point
-    // checking that the roomid isn't already taken would be ideal
-    let roomid = RoomId::new_random();
-    let room_name = format!("{}", roomid);
-    let sanitized_room_name = format!("\"{}\"", room_name);
-    let server_ref = server.clone();
-    let roomid_copy = roomid.clone();
-    let on_empty = move || {
-        debug!("Removing {} from server", &roomid_copy);
-        server_ref.remove(&roomid_copy);
-    };
-    info!("Room created: {} by user {}", room_name, username);
-    server.insert(roomid, GameRoom::new(room_name, on_empty));
-    respond!(StatusCode::CREATED, sanitized_room_name, json)
+    let roomid = format!("{}", server.create_room());
+    respond!(StatusCode::CREATED, roomid, text)
 }
 
 fn handle_join(
     api::JoinReq { roomid, username }: api::JoinReq,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    use games::ManagerResponse::{Accept, Refuse};
-    match server.get_mut(&roomid) {
-        Some(mut room) => match room.expect(username) {
-            Accept => respond!(StatusCode::OK, "\"classic\"", json),
-            Refuse => respond!(StatusCode::CONFLICT, "", none),
-        },
-        None => respond!(StatusCode::NOT_FOUND, "", none),
+    use server::ExpectFailure::{NotFound, Refuse};
+    match server.expect(roomid, username) {
+        Ok(accepted) => respond!(StatusCode::OK, accepted.into_url(), text),
+        Err(Refuse) => respond!(StatusCode::CONFLICT, String::new(), none),
+        Err(NotFound) => respond!(StatusCode::NOT_FOUND, String::new(), none),
     }
 }
 
@@ -164,17 +151,12 @@ fn handle_report(report: body::FullBody) -> Result<impl Reply, Rejection> {
 }
 
 fn accept_conn(
-    roomid: RoomId,
-    name: api::Name,
+    id: server::ConnId,
     ws: Ws2,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    let url = format!("/ws/{}/{}", roomid, name);
-    // room exists
-    let mut room = server.get_mut(&roomid).ok_or_else(|| {
-        warn!("Rejected connection to {}", url);
+    server.connect(id, ws).map_err(|err| {
+        warn!("Connection to {:?} failed with: {}", id, err);
         warp::reject::not_found()
-    })?;
-    // name is expected to join & accept connection
-    Ok(room.accept(name, ws))
+    })
 }

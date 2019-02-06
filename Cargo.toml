@@ -12,6 +12,7 @@ name = "friendsketch"
 [dependencies]
 base64 = "0.10"
 bytes = "0.4"
+bincode = "1.0.1"
 tokio-timer = "0.2.8"
 quick-error = "1.2.2"
 lazy_static = { version = "1.2.0", features = ["nightly"] }
@@ -19,7 +20,7 @@ arraydeque = "0.4"
 bart = "0.1.4"
 bart_derive = "0.1.4"
 fxhash = "0.2.1"
-slotmap = { version = "0.3", features = ["unstable"] }
+slotmap = { version = "0.3", features = ["unstable", "serde"] }
 rand = "0.6"
 chashmap = "2.2"
 warp = "0.1"

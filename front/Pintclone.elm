@@ -70,21 +70,21 @@ main =
 
 
 
-new : Result (String, Api.RoomID, Api.Name) (Api.RoomID, Api.Name, Int)
+new : Result (String, Api.RoomID, Api.Name) (Api.ConnId, Api.RoomID, Api.Name, Int)
    -> ( Pintclone, Cmd Msg )
 new flags =
     case flags of
-        Ok (roomid, username, openGameRetries) ->
+        Ok (connid, roomid, username, openGameRetries) ->
             ( { state = Uninit
               , roomid = roomid
               , username = username
-              , wslisten = Api.wsListen roomid username
-              , wssend = Api.wsSend roomid username
+              , wslisten = Api.wsListen connid
+              , wssend = Api.wsSend connid
               , isUnsync = False
               , openGameRetries = openGameRetries
               }
             , Cmd.batch
-                [ Api.wsSend roomid username Api.ReqSync
+                [ Api.wsSend connid Api.ReqSync
                 , delay (3 * second) LongInit
                 ]
             )
