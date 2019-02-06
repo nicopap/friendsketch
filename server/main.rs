@@ -20,7 +20,7 @@ use warp::{
 
 use self::{
     api::{Name, RoomId},
-    games::{GameRoom, ManagerResponse},
+    games::GameRoom,
 };
 
 type ServerState = CHashMap<RoomId, GameRoom>;
@@ -143,35 +143,18 @@ fn handle_create(
     respond!(StatusCode::CREATED, sanitized_room_name, json)
 }
 
-enum Handle {
-    NoRoom,
-    Refuse,
-    Accept,
-}
 fn handle_join(
     api::JoinReq { roomid, username }: api::JoinReq,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    let err_code = {
-        let logmsg = format!("User {} is now expected to join", &username);
-        let handle = match server.get_mut(&roomid) {
-            Some(mut room) => match room.expect(username) {
-                ManagerResponse::Accept => Handle::Accept,
-                ManagerResponse::Refuse => Handle::Refuse,
-            },
-            None => Handle::NoRoom,
-        };
-        match handle {
-            Handle::NoRoom => StatusCode::NOT_FOUND,
-            Handle::Accept => {
-                info!("{}", logmsg);
-                return respond!(StatusCode::OK, "\"classic\"", json);
-            }
-            Handle::Refuse => StatusCode::CONFLICT,
-        }
-    };
-    warn!("Join failed with status code: {}", err_code);
-    respond!(err_code, "", none)
+    use games::ManagerResponse::{Accept, Refuse};
+    match server.get_mut(&roomid) {
+        Some(mut room) => match room.expect(username) {
+            Accept => respond!(StatusCode::OK, "\"classic\"", json),
+            Refuse => respond!(StatusCode::CONFLICT, "", none),
+        },
+        None => respond!(StatusCode::NOT_FOUND, "", none),
+    }
 }
 
 fn handle_report(report: body::FullBody) -> Result<impl Reply, Rejection> {
