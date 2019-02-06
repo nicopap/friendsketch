@@ -1,25 +1,18 @@
-function sendJoinRequest(roomToJoin) {
+function sendCreateRequest() {
 	var xmlHttp = new XMLHttpRequest();
 	var inputUsername = document.getElementById("username").value;
 	var params = JSON.stringify({
-		roomid: roomToJoin,
+		game: "classic",
 		username: inputUsername
 	});
 
-	xmlHttp.open('POST', "/friendk/rooms/join", true);
+	xmlHttp.open('POST', "/friendk/rooms/create", true);
 	xmlHttp.onreadystatechange = function() {
 		if (xmlHttp.readyState === 4) {
 			switch (xmlHttp.status) {
-			case 200 :
-				stashAndOpen([[
-					[ "roomid", roomToJoin ],
-					[ "username", inputUsername ],
-					[ "retries", 0 ],
-				], "/friendk/games/classic/index.html"]);
-				break;
-			case 409 :
-				document.getElementById("username").classList.add("taken");
-				document.getElementById("request").classList.add("taken");
+			case 201 :
+				var roomToJoin = JSON.parse(xmlHttp.response);
+                sendJoinRequest(roomToJoin);
 				break;
 			case 400 :
 				document.getElementById("username").classList.add("invalid");

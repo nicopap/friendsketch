@@ -1,25 +1,33 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
-    <title>Join a friendsketch game</title>
-    <link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
-    <link rel="shortcut icon" type="image/png" href="/favicon.png">
+	<meta charset="utf-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
+	<title>Join a friendsketch game</title>
+	<link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
+	<link rel="shortcut icon" type="image/png" href="/favicon.png">
 	<script src="/friendk/ports.js"></script>
 	<script src="/friendk/script-join.js"></script>
-    <script>var roomToJoin = "{{.0}}"</script>
+	<script>
+	window.addEventListener("load", function() {
+		var form = document.getElementById("request");
+		form.addEventListener("submit", function(event) {
+			event.preventDefault();
+			sendJoinRequest("{{.0}}");
+		})
+	})
+	</script>
 </head>
 <body>
-    <div id="error-display" style="display:none;">
-        <h1>The requested room doesn't exist anymore</h1>
-        <p>Maybe the game is over, or you want to create a new game room. You can create a new game room at the following page:</p>
-        <a href="../../lobby/"><input type="button" value="Create a new game room"></a>
-    </div>
-    <form id="request-join">
-        <label for="username">Display name:</label>
-        <input id="username" name="username" autocomplete="off" value="">
-        <input type="submit" value="Join game">
-    </form>
+<div id="error-display" style="display:none;">
+	<h1>The requested room doesn't exist anymore</h1>
+	<p>Maybe the game is over, or you want to create a new game room. You can create a new game room at the following page:</p>
+	<a href="../../lobby/"><input type="button" value="Create a new game room"></a>
+</div>
+<form id="request">
+	<label for="username">Display name:</label>
+	<input id="username" name="username" autocomplete="off" value="">
+	<input type="submit" value="Join game">
+</form>
 </body>
 </html>

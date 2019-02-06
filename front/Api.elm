@@ -9,8 +9,6 @@ module Api
         , Name
         , validName
         , showName
-        , roomsCreateRequest
-        , roomsJoinRequest
         , reportError
         , RoundState
         , Scoreboard
@@ -155,45 +153,6 @@ showRoomLink (RoomID_ roomid) =
 validRoomID : String -> Maybe RoomID
 validRoomID =
     Maybe.map RoomID_ << regexValidate "^[A-Z][a-z]+-[A-Z][a-z]*[A-Z]?[a-z]+$"
-
-
-roomsCreate : String
-roomsCreate =
-    "/friendk/rooms/create"
-
-
-roomsCreateRequest : Game -> Name -> Http.Request RoomID
-roomsCreateRequest game (Name_ name) =
-    let
-        body =
-            Http.jsonBody <|
-                Enc.object
-                    [ ( "game", Enc.string <| showGame game )
-                    , ( "username", Enc.string name )
-                    ]
-
-        responseDecoder =
-            decodeMaybe "Invalid room id!" <| validRoomID <*| Dec.string
-    in
-        Http.post roomsCreate body responseDecoder
-
-
-roomsJoin : String
-roomsJoin =
-    "/friendk/rooms/join"
-
-
-roomsJoinRequest : RoomID -> Name -> Http.Request Game
-roomsJoinRequest (RoomID_ roomid) (Name_ username) =
-    let
-        body =
-            Http.jsonBody <|
-                Enc.object
-                    [ ( "roomid", Enc.string roomid )
-                    , ( "username", Enc.string username )
-                    ]
-    in
-        Http.post roomsJoin body decoderGame
 
 
 showGame : Game -> String

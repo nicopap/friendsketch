@@ -23,10 +23,8 @@ RUST_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/classic/code.js : front/Pintclone.elm $(ELM_SOURCE)
 	elm-make $(ELM_FLAGS) $< --output $@
-$(BUILD_DIR)/lobby/code.js : front/Lobby.elm $(ELM_SOURCE)
-	elm-make $(ELM_FLAGS) $< --output $@
 # List of target files to build
-JS_TARGETS = $(BUILD_DIR)/lobby/code.js $(BUILD_DIR)/games/classic/code.js
+JS_TARGETS = $(BUILD_DIR)/games/classic/code.js
 
 # copy assets into the server filesystem
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
