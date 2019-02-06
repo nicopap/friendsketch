@@ -19,7 +19,7 @@ use warp::{
 };
 
 use self::{
-    api::{Name, RoomId},
+    api::{pages, Name, RoomId},
     games::GameRoom,
 };
 
@@ -51,14 +51,14 @@ fn main() {
                 .and_then($handler)
         )
     }
-    let join_room = path!("friendk" / "join" / "*" / Uid)
+    let join_form = path!("friendk" / "join" / "*" / Uid)
         .and(join_manager_ref.clone())
-        .and_then(handle_join_room);
+        .and_then(handle_join_form);
 
-    let join_form = url! {
+    let join_redirect = url! {
         ("friendk" / "join" / RoomId),
         join_manager_ref.clone(),
-        handle_join_forms,
+        handle_join_redirect,
     };
 
     let join = url! {("friendk"/"rooms"/"join"), b!(json), handle_join};
@@ -72,8 +72,8 @@ fn main() {
         .or(join)
         .or(create)
         .or(report)
-        .or(join_form)
-        .or(join_room);
+        .or(join_redirect)
+        .or(join_form);
 
     warp::serve(routes).run(([127, 0, 0, 1], 8073));
 }
@@ -92,19 +92,19 @@ macro_rules! respond {
     (@ $val:ident Location($loc:expr)) => ($val.header("Location",$loc));
 }
 
-fn handle_join_room(
+fn handle_join_form(
     join_id: join::Uid,
     manager: Arc<JoinManager>,
 ) -> Result<impl Reply, Rejection> {
     let (ok, not_found) = (StatusCode::OK, StatusCode::NOT_FOUND);
     if let Some(roomid) = manager.remove(&join_id) {
-        respond!(ok, api::pages::JoinRoomBody(roomid).to_string(), html)
+        respond!(ok, pages::JoinFormBody(roomid).to_string(), html)
     } else {
-        respond!(not_found, api::pages::JoinRoomErr.to_string(), html)
+        respond!(not_found, pages::JoinFormErr.to_string(), html)
     }
 }
 
-fn handle_join_forms(
+fn handle_join_redirect(
     roomid: api::RoomId,
     manager: Arc<JoinManager>,
     server: Server,
@@ -119,7 +119,7 @@ fn handle_join_forms(
         manager.insert(new_uid, roomid);
         respond!(StatusCode::SEE_OTHER, "", Location(uid_location))
     } else {
-        respond!(StatusCode::NOT_FOUND, api::pages::JoinFormErr.into(), html)
+        respond!(StatusCode::NOT_FOUND, pages::JoinRedirectErr.into(), html)
     }
 }
 
