@@ -3,7 +3,6 @@ mod roomids;
 mod autode;
 pub mod pages;
 
-use percent_encoding::percent_decode;
 use quick_error::quick_error;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -80,11 +79,11 @@ impl FromStr for Name {
     type Err = NameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let decoded = percent_decode(s.as_bytes()).decode_utf8()?;
-        if decoded.len() > 30 {
+        if s.len() > 30 {
             Err(NameError::TooLong)
         } else {
-            Ok(Name(String::from(decoded)))
+            // TODO: validate No padding spaces
+            Ok(Name(String::from(s)))
         }
     }
 }
@@ -108,9 +107,8 @@ impl FromStr for RoomId {
     type Err = RoomIdError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let decoded = percent_decode(s.as_bytes()).decode_utf8()?;
-        let validated = roomids::RoomId::try_from(&decoded)
-            .ok_or(RoomIdError::InvalidRoomId)?;
+        let validated =
+            roomids::RoomId::try_from(&s).ok_or(RoomIdError::InvalidRoomId)?;
         Ok(RoomId(validated))
     }
 }

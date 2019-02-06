@@ -24,6 +24,7 @@ Created Tuesday 26 September 2017
 	* The manager attempts to send that message to the disconnected player, and it fails.
 	* Hard to solve. (potentially: integrate ''hangup'' manager in the game
 * What happens when one attempts to connect using a connid that has been disconnected from game?
+* Migrate join page generation to ''server'' to enable use of optimized IdStores
 
 ===== Game Event Log =====
 

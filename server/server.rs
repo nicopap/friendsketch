@@ -26,14 +26,11 @@ quick_error! {
             description("The id led to a room, but that room doesn't exist")
         }
         NotTracked {
-            description("The given connection id doesn't correspond to an existing room")
+            description("The given connection id doesn't correspond to an \
+                         existing room")
         }
-        BadBase64(err: base64::DecodeError) {
-            from()
-        }
-        BadBincode(err: bincode::Error) {
-            from()
-        }
+        BadBase64(err: base64::DecodeError) { from() }
+        BadBincode(err: bincode::Error) { from() }
     }
 }
 
