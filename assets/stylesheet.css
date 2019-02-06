@@ -1,11 +1,14 @@
 html {
 	background-color: white;
 	color: #282c34;
+    font-family: "Nimbus Sans", sans-serif;
+    font-size: 16px;
 }
 
 body {
     max-width: 520px;
     margin: auto;
+    margin-top: 20px;
 }
 
 input.badinput:focus { box-shadow: 0 0 10px red; }
@@ -21,15 +24,14 @@ form.invalid::after {content: "Invalid display name, more than 30 characters is 
 form.taken::after {content: "Display name already taken, use a different one."}
 input.goodinput:focus { box-shadow: 0 0 10px green; }
 input.goodinput { box-shadow: 0 0 5px green; }
-input:focus { box-shadow: 0 0 5px blue; }
+input:focus { border-color:#b7eaf8; }
 input:disabled { color: #767b87; }
 
-input[type="text"] {
+input {
     padding: 5px 0;
-	margin: 0 5px;
+	margin: 10px 5px;
     border-radius: 3px;
-    border: 0;
-    box-shadow: 0 0 5px #767b87;
+    border: solid #cdcdcd 1px;
 }
 
 
