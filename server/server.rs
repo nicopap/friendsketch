@@ -5,7 +5,7 @@ use crate::{
     games::{GameRoom, Id, ManagerResponse},
 };
 use chashmap::CHashMap;
-use log::info;
+use log::{debug, info};
 use quick_error::quick_error;
 use slotmap::{new_key_type, Key, SlotMap};
 use std::{

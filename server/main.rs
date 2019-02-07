@@ -6,7 +6,7 @@ mod server;
 use bytes::buf::Buf;
 use std::sync::Arc;
 
-use log::warn;
+use log::{info, warn};
 use pretty_env_logger;
 use warp::{
     self, body,

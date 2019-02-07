@@ -18,12 +18,9 @@ Created Tuesday 26 September 2017
 
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
- ''game.rs:262 FIXME'' : Very likely that we end up with inconsistent server state when multiple people leave at the same time
-	* What is happening: multiple people leave at the same time, they get "disconnected" from the server, but we give them a grace preiod to reconnect.
-	* When the game is notified of a specific persone leaving (after the grace period ended), the game tells manager to send message to a specific player (which is not connected)
-	* The manager attempts to send that message to the disconnected player, and it fails.
-	* Hard to solve. (potentially: integrate ''hangup'' manager in the game
-* What happens when one attempts to connect using a connid that has been disconnected from game?
+* Merge ''game::Request'' and ''ManagerRequest'' in ''games.rs'' as they share a lot in common
+* Concider error handling instead of panics in ''games.rs'' (because you can aboart the game instead of panicking!)
+* Move announcement of people leaving/joining in ''expect'' rather than ''join'' so as to avoid spamming the chat when reconnections happen
 
 ===== Game Event Log =====
 

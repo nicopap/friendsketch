@@ -6,7 +6,7 @@ use log::{debug, error, info, warn};
 use quick_error::quick_error;
 use serde::de::Error;
 use serde_json::{de::from_str, ser::to_string};
-use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use slotmap::SecondaryMap;
 use std::{sync, time::Duration};
 use tokio_timer::sleep;
 use warp::{
@@ -17,8 +17,8 @@ use warp::{
 use crate::{
     api::{self, Name},
     games::{
-        game::{Broadcast, Cmd, Game, JoinResponse, LeaveResponse},
-        tugofsketch::Feedback,
+        game::{Broadcast, Cmd, ExpectResponse, Game, Request},
+        tugofsketch::{Feedback, GameErr},
     },
 };
 pub use tugofsketch::Id;
@@ -29,8 +29,13 @@ quick_error! {
     #[derive(Debug)]
     enum GameInteruption {
         EverybodyLeft {}
-        GameError(err: ()) {
+        GameError(err: GameErr) {
             from()
+            display("Game: {}", err)
+        }
+        ReceiveChannelError(err: ()) {
+            from()
+            description("The oversee function's input was interrupted abruptly")
         }
         ManagerChannelError(err: mpsc::SendError<ManagerRequest<Feedback>>) {
             from()
@@ -38,35 +43,19 @@ quick_error! {
     }
 }
 
-new_key_type! { struct Challenge; }
-
 /// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
 enum ManagerRequest<Msg> {
     /// A message sent through a connected player
     Msg(Id, api::GameReq),
-    /// Order the game to drop the given player `Id`
-    Terminate(Id),
     /// A connection with given player `Name` has been established
     Join(Id, WebSocket),
     /// A player `Name` is joining, with an imminent connection
     Expects(Name),
-    /// A player was expected to connect a while ago, tell the game
-    /// to drop them if they didn't connect.
-    GiveUp(GiveUp),
     /// Player `Id` disconnected.
-    Disconnect(Id),
+    Leaves(Id),
     /// Return a value to the game, as it requested it
     Return(Msg),
-}
-
-/// player `to_drop` was expected to connect a while ago, tell the game
-/// to drop them if they didn't connect. `challenge` identifies the exact
-/// connection to give up.
-#[derive(Debug)]
-struct GiveUp {
-    to_drop:   Id,
-    challenge: Challenge,
 }
 
 /// The result of an attempt to add an user to a game room.
@@ -78,108 +67,11 @@ pub enum ManagerResponse {
     Refuse,
 }
 
-/// Specialized structure to manage how the server reacts to people leaving
-/// temporarily and announcing their future connection.
-///
-/// A `HangupChallenger` adapts `ManagerRequest`s relating to client
-/// connectivity in a `ManagerChannel`. It sends delayed messages to implement
-/// timeouts and such.
-struct HangupChallenger {
-    newcomings:   SecondaryMap<Id, Challenge>,
-    remaining:    SecondaryMap<Id, ()>,
-    challenges:   SlotMap<Challenge, ()>,
-    manager_sink: ManagerChannel,
-}
-
-impl HangupChallenger {
-    /// Create a new `HangupChallenger` with an empty list of
-    /// `manager_sink`: where to send `ManagerRequest` back.
-    fn new(manager_sink: ManagerChannel) -> Self {
-        HangupChallenger {
-            newcomings: SecondaryMap::with_capacity(16),
-            remaining: SecondaryMap::with_capacity(16),
-            challenges: SlotMap::with_capacity_and_key(4),
-            manager_sink,
-        }
-    }
-
-    /// Accept given `id` temporarily. `id` will be "Given up" in 30
-    /// seconds if they do not properly connect (join) by then.
-    fn accept(&mut self, id: Id) {
-        self.drop_in(30, id);
-    }
-
-    /// Process a `GiveUp` message: send a `Terminate` if the concerned player
-    /// didn't yet properly join the game. If the player has already joined
-    /// this does nothing.
-    fn challenge(
-        &mut self,
-        GiveUp { to_drop, challenge }: GiveUp,
-    ) -> Result<(), GameInteruption> {
-        use self::ManagerRequest::Terminate;
-        debug!("Challenging giveup {:?}", to_drop);
-        if let Some(challenged) = self.newcomings.remove(to_drop) {
-            if challenge == challenged {
-                self.challenges.remove(challenged);
-                self.manager_sink.start_send(Terminate(to_drop))?;
-                self.manager_sink.poll_complete()?;
-            } else {
-                self.newcomings.insert(to_drop, challenged);
-            }
-        }
-        Ok(())
-    }
-
-    /// Schedule for the termination of given `id`'s connection in `delay`
-    /// seconds.
-    fn drop_in(&mut self, delay: u64, to_drop: Id) {
-        let challenge = self.challenges.insert(());
-        self.newcomings.insert(to_drop, challenge);
-        let request = ManagerRequest::GiveUp(GiveUp { challenge, to_drop });
-        let sink_clone = self.manager_sink.clone();
-        warp::spawn(
-            sleep(Duration::new(delay, 0))
-                .then(move |_| sink_clone.send(request))
-                .map(|_| ())
-                .map_err(|_| ()),
-        );
-    }
-
-    /// Confirm connection of `joins`. They will not be "Given up" on, unless
-    /// they disconnect afterward and do not reconnect in time.
-    fn join(&mut self, joins: Id) -> bool {
-        self.newcomings
-            .remove(joins)
-            .map(|challenge| {
-                self.remaining.insert(joins, ());
-                self.challenges.remove(challenge);
-            })
-            .is_some()
-    }
-
-    /// `id` has disconnected. Provide a small windows of time in which they
-    /// can reconnect without issue. If they do not reconnect by then, they
-    /// will be "Given up".
-    /// Returns `true` if `id` was in the room, otherwise `false`
-    fn disconnect(&mut self, id: Id) -> bool {
-        self.remaining
-            .remove(id)
-            .map(|()| self.drop_in(5, id))
-            .is_some()
-    }
-
-    /// Player `id` was forecefully removed from the game.
-    fn remove(&mut self, id: Id) {
-        self.remaining.remove(id);
-    }
-}
-
 struct ConnectionManager<G> {
     room_name:    String,
     connections:  SecondaryMap<Id, Connection>,
     manager_sink: ManagerChannel,
     respond:      sync::mpsc::SyncSender<ManagerResponse>,
-    hangups:      HangupChallenger,
     game:         G,
 }
 
@@ -187,14 +79,16 @@ struct Connection(mpsc::UnboundedSender<Message>);
 
 fn loop_feedback<G>(
     manager: &mut ConnectionManager<G>,
-    mut cmd: Cmd<Feedback>,
-) -> Result<(), ()>
+    mut request: game::Request<Id, G::Request, Feedback>,
+) -> Result<(), GameErr>
 where
     G::Request: From<api::GameReq>,
-    G: Game<Id, Error = (), Response = api::GameMsg, Feedback = Feedback>,
+    G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
     loop {
-        let msg = match cmd {
+        let (response, commands) = manager.game.tells(request)?;
+        manager.broadcast(response);
+        let msg = match commands {
             Cmd::In(feedbacks) => {
                 for (delay, feedback) in feedbacks {
                     manager.queue(delay, feedback);
@@ -204,9 +98,7 @@ where
             Cmd::Immediately(msg) => msg,
             Cmd::None => return Ok(()),
         };
-        let (response, commands) = manager.game.feedback(msg)?;
-        cmd = commands;
-        manager.broadcast(response);
+        request = Request::Feedback(msg);
     }
 }
 
@@ -216,90 +108,67 @@ fn oversee<G>(
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
     G::Request: From<api::GameReq>,
-    G: Game<Id, Error = (), Response = api::GameMsg, Feedback = Feedback>,
+    G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
-    use self::api::GameMsg::VisibleEvent;
     match msg {
         ManagerRequest::Join(user, ws) => {
-            if manager.hangups.join(user) {
-                info!("Connection with {:?} established", user);
+            let (has_joined, resp, cmds) = manager.game.joins(user)?;
+            if has_joined {
+                manager.broadcast(resp);
+                match cmds {
+                    Cmd::In(feedbacks) => {
+                        for (delay, feedback) in feedbacks {
+                            manager.queue(delay, feedback);
+                        }
+                    }
+                    Cmd::Immediately(msg) => {
+                        loop_feedback(&mut manager, Request::Feedback(msg))?
+                    }
+                    Cmd::None => {}
+                };
+                manager.join(user, ws);
             } else {
-                warn!("{:?} was not expected", user);
+                warn!("User joined room but wasn't expected");
             }
-            manager.join(user, ws);
         }
-        ManagerRequest::Msg(id, msg_val) => {
-            let (response, commands) =
-                manager.game.tells(id, msg_val.into())?;
-            manager.broadcast(response);
-            loop_feedback(&mut manager, commands)?;
+        ManagerRequest::Msg(id, msg) => {
+            loop_feedback(&mut manager, Request::Message(id, msg.into()))?
         }
         ManagerRequest::Return(msg) => {
-            loop_feedback(&mut manager, Cmd::Immediately(msg))?
+            loop_feedback(&mut manager, Request::Feedback(msg))?
         }
-        ManagerRequest::Disconnect(id) => {
+        ManagerRequest::Leaves(id) => {
             let room = &manager.room_name;
             if !manager.connections.remove(id).is_some() {
                 error!("disconnect non-conn {:?}: {}", id, room);
             } else {
                 debug!("disconnected {:?}", id);
             }
-            if manager.hangups.disconnect(id) {
-                info!("{:?} in {} temporarily dropped", id, manager.room_name);
-            }
+            loop_feedback(&mut manager, Request::Leaves(id))?
         }
-        ManagerRequest::Terminate(id) => {
-            manager.hangups.remove(id);
-            let removed = manager.connections.remove(id).is_some();
-            match manager.game.leaves(id) {
-                LeaveResponse::Successfully(name, broadcast, commands) => {
-                    debug!(
-                        "successful leave: {}, {:?}, {:?}",
-                        name, broadcast, commands
-                    );
-                    let room = &manager.room_name;
-                    if removed {
-                        warn!("{} kicked without disconnect in {}", name, room)
-                    } else {
-                        info!("confirming {} exits of {}", name, room)
+        ManagerRequest::Expects(name) => {
+            match manager.game.expect(name.clone()) {
+                ExpectResponse::Accept(id, cmd) => {
+                    info!("Adding {} to {}", name, manager.room_name);
+                    match cmd {
+                        Cmd::In(feedbacks) => {
+                            for (delay, feedback) in feedbacks {
+                                manager.queue(delay, feedback);
+                            }
+                        }
+                        Cmd::Immediately(msg) => {
+                            loop_feedback(&mut manager, Request::Feedback(msg))?
+                        }
+                        Cmd::None => {}
                     };
-                    let msg = VisibleEvent(api::VisibleEvent::Left(name));
-                    manager.broadcast(Broadcast::ToAll(msg));
-                    // FIXME:`invalid SecondaryMap key used`
-                    manager.broadcast(broadcast);
-                    loop_feedback(&mut manager, commands)?;
+                    manager.respond.send(ManagerResponse::Accept(id));
                 }
-                LeaveResponse::Empty(name) => {
-                    info!("{} leaves {} empty", name, manager.room_name);
-                    return Err(GameInteruption::EverybodyLeft);
-                }
-                LeaveResponse::Failed(()) => {
-                    let room = &manager.room_name;
-                    if removed {
-                        warn!("remove an non-track {:?}: {}", id, room)
-                    } else {
-                        warn!("remove non-con {:?}: {}", id, room)
-                    }
+                ExpectResponse::Refuse => {
+                    warn!("{} refused {}", manager.room_name, name);
+                    manager.respond.send(ManagerResponse::Refuse);
                 }
             }
         }
-        ManagerRequest::GiveUp(give_up) => {
-            manager.hangups.challenge(give_up)?;
-        }
-        ManagerRequest::Expects(name) => match manager.game.joins(name.clone())
-        {
-            JoinResponse::Accept(id) => {
-                info!("Adding {} to {}", name, manager.room_name);
-                let msg = VisibleEvent(api::VisibleEvent::Joined(name.clone()));
-                manager.broadcast(Broadcast::ToAll(msg));
-                manager.hangups.accept(id);
-                manager.respond.send(ManagerResponse::Accept(id));
-            }
-            JoinResponse::Refuse => {
-                warn!("{} refused {}", manager.room_name, name);
-                manager.respond.send(ManagerResponse::Refuse);
-            }
-        },
     };
     Ok(manager)
 }
@@ -324,7 +193,6 @@ impl GameRoom {
             respond,
             connections: SecondaryMap::with_capacity(16),
             manager_sink: manager_sink.clone(),
-            hangups: HangupChallenger::new(manager_sink.clone()),
             game: tugofsketch::Game::new(),
         };
         warp::spawn(
@@ -333,12 +201,15 @@ impl GameRoom {
                 .fold(manager, oversee)
                 .then(move |conclusion| {
                     on_empty();
-                    if let Err(reason) = conclusion {
-                        info!("Closing {} because: {}", room_name, reason);
-                        Ok(())
-                    } else {
-                        error!("Unreachable path games.rs:{}", line!());
-                        Err(())
+                    match conclusion {
+                        Err(reason) => {
+                            info!("Closing {} because: {}", room_name, reason);
+                            Ok(())
+                        }
+                        Ok(_) => {
+                            error!("Unreachable path at games.rs:{}", line!());
+                            Err(())
+                        }
                     }
                 }),
         );
@@ -410,7 +281,7 @@ where
             buffer_stream
                 .inspect(|resp| debug!("ws send: {:?}", resp))
                 .map_err(|()| -> warp::Error {
-                    panic!("unreachable at games.rs:{}", line!());
+                    panic!("unreachable at games.rs:{}", line!())
                 })
                 .forward(socket_sink)
                 .map(|_| ())
@@ -426,7 +297,7 @@ where
                     .map(|v| ManagerRequest::Msg(id, v))
                     .unwrap_or_else(|err| {
                         error!("validation: {}/ `{:?}`", err, msg.to_str());
-                        ManagerRequest::Terminate(id)
+                        ManagerRequest::Leaves(id)
                     })
             });
         let sink_to_manager = self.manager_sink.clone();
@@ -434,15 +305,15 @@ where
             client_stream
                 .or_else(move |err| {
                     error!("ws recieve {:?}:{}", id, err);
-                    Ok(ManagerRequest::Terminate(id))
+                    Ok(ManagerRequest::Leaves(id))
                 })
                 .take_while(move |msg| {
                     Ok(match msg {
-                        ManagerRequest::Terminate(id_) => &id != id_,
+                        ManagerRequest::Leaves(id_) => &id != id_,
                         _ => true,
                     })
                 })
-                .chain(stream::once(Ok(ManagerRequest::Disconnect(id))))
+                .chain(stream::once(Ok(ManagerRequest::Leaves(id))))
                 .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),
         );
