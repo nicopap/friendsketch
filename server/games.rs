@@ -27,6 +27,15 @@ type ManagerChannel = mpsc::Sender<ManagerRequest<Feedback>>;
 
 quick_error! {
     #[derive(Debug)]
+    enum CommError {
+        CommError(loc: u32, err: mpsc::SendError<Message>) {
+            display("games.rs:{}: {}", loc, err)
+        }
+    }
+}
+
+quick_error! {
+    #[derive(Debug)]
     enum GameInteruption {
         EverybodyLeft {}
         GameError(err: GameErr) {
@@ -39,6 +48,10 @@ quick_error! {
         }
         ManagerChannelError(err: mpsc::SendError<ManagerRequest<Feedback>>) {
             from()
+        }
+        CommunicationError(err: CommError) {
+            from()
+            display("Communication error: {}", err)
         }
     }
 }
@@ -114,7 +127,7 @@ where
         ManagerRequest::Join(user, ws) => {
             let (has_joined, resp, cmds) = manager.game.joins(user)?;
             if has_joined {
-                manager.broadcast(resp);
+                manager.broadcast(resp)?;
                 match cmds {
                     Cmd::In(feedbacks) => {
                         for (delay, feedback) in feedbacks {
@@ -246,13 +259,16 @@ impl GameRoom {
     }
 }
 
-macro_rules! send {
-    ($connection:expr, $message:expr) => {
-        let msg = Message::text($message.as_str());
-        $connection.start_send(msg).unwrap_or_else(|e| {
-            panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-        });
+macro_rules! comm_err {
+    ($to_try:expr) => {
+        ($to_try).map_err(|e| CommError::CommError(line!(), e))
     };
+}
+macro_rules! send {
+    ($connection:expr, $message:expr) => {{
+        let msg = Message::text($message.as_str());
+        comm_err!($connection.start_send(msg))
+    }};
 }
 
 impl<G> ConnectionManager<G>
@@ -319,28 +335,30 @@ where
         );
     }
 
-    fn broadcast(&mut self, targets: Broadcast<Id, api::GameMsg>) {
+    fn broadcast(
+        &mut self,
+        targets: Broadcast<Id, api::GameMsg>,
+    ) -> Result<(), CommError> {
         match targets {
-            Broadcast::ToAll(msg) => self.broadcast_to_all(&msg),
+            Broadcast::ToAll(msg) => self.broadcast_to_all(&msg)?,
             Broadcast::ToList(ids, message) => {
                 let message: String = to_string(&message).unwrap();
                 for id in ids.iter() {
                     let mut connection = &self.connections[*id].0;
-                    send!(connection, message);
+                    send!(connection, message)?;
                 }
                 for id in ids.iter() {
                     debug!("polling {:?}", id);
                     let mut connection = &self.connections[*id].0;
-                    connection.poll_complete().unwrap_or_else(|e| {
-                        panic!("poll fail '{:?}' at game.rs:{}", e, line!())
-                    });
+                    comm_err!(connection.poll_complete())?;
                 }
             }
             Broadcast::ToAllBut(id, to_all, to_other) => {
-                self.broadcast_to_all_but(id, &to_all, &to_other)
+                self.broadcast_to_all_but(id, &to_all, &to_other)?;
             }
             Broadcast::ToNone => {}
-        }
+        };
+        Ok(())
     }
 
     fn broadcast_to_all_but(
@@ -348,36 +366,37 @@ where
         except: Id,
         message: &api::GameMsg,
         other: &Option<api::GameMsg>,
-    ) {
+    ) -> Result<(), CommError> {
         let message = to_string(message).unwrap();
         for (id, connection) in self.connections.iter_mut() {
             if id == except {
                 if let Some(other) = other {
                     let message = to_string(other).unwrap();
-                    send!(connection.0, message);
+                    send!(connection.0, message)?;
                 }
             } else {
-                send!(connection.0, message);
+                send!(connection.0, message)?;
             }
         }
         debug!("polling all");
         for connection in self.connections.values_mut() {
-            connection.0.poll_complete().unwrap_or_else(|e| {
-                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-            });
+            comm_err!(connection.0.poll_complete())?;
         }
+        Ok(())
     }
 
-    fn broadcast_to_all(&mut self, message: &api::GameMsg) {
+    fn broadcast_to_all(
+        &mut self,
+        message: &api::GameMsg,
+    ) -> Result<(), CommError> {
         let message = to_string(message).unwrap();
         for connection in self.connections.values_mut() {
-            send!(connection.0, message);
+            send!(connection.0, message)?;
         }
         debug!("polling all");
         for connection in self.connections.values_mut() {
-            connection.0.poll_complete().unwrap_or_else(|e| {
-                panic!("game channel failure '{:?}' at game.rs:{}", e, line!())
-            });
+            comm_err!(connection.0.poll_complete())?;
         }
+        Ok(())
     }
 }
