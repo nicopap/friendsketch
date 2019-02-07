@@ -7,18 +7,23 @@ use crate::{
 use chashmap::CHashMap;
 use log::info;
 use quick_error::quick_error;
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, Key, SlotMap};
 use std::{
     str::FromStr,
     sync::{Arc, RwLock},
 };
 use warp::{filters::ws::Ws2, reply::Reply};
 
-type Slab<T> = SlotMap<ConnId, T>;
-new_key_type! {
-    pub struct ConnId;
-}
+new_key_type! { pub struct JoinId; }
+new_key_type! { pub struct ConnId; }
 
+quick_error! {
+    #[derive(Debug)]
+    pub enum JoinError {
+        BadBase64(err: base64::DecodeError) { from() }
+        BadBincode(err: bincode::Error) { from() }
+    }
+}
 quick_error! {
     #[derive(Debug)]
     pub enum ConnError {
@@ -41,31 +46,50 @@ fn jamble_bytes(bytes: &mut [u8]) {
         .enumerate()
         .for_each(|(i, x)| *x ^= jambler[i % 8]);
 }
-impl ConnId {
-    pub fn into_url(self) -> String {
-        let mut byte_buff = bincode::serialize(&self).unwrap();
-        jamble_bytes(&mut byte_buff);
-        base64::encode_config(&byte_buff, base64::URL_SAFE_NO_PAD)
-    }
-}
-impl FromStr for ConnId {
-    type Err = ConnError;
-
-    fn from_str(s: &str) -> Result<ConnId, ConnError> {
-        let mut byte_buff = base64::decode_config(s, base64::URL_SAFE_NO_PAD)?;
-        jamble_bytes(&mut byte_buff);
-        bincode::deserialize(&byte_buff).map_err(Into::into)
-    }
+pub trait UrlId: Sized {
+    type Error: std::error::Error + Sized;
+    fn into_url(&self) -> String;
+    fn from_url(s: &str) -> Result<Self, Self::Error>;
 }
 
-struct ConnIdStore<T>(RwLock<Slab<T>>);
-impl<T: Clone> ConnIdStore<T> {
-    fn new() -> ConnIdStore<T> {
-        ConnIdStore(RwLock::new(Slab::with_key()))
+macro_rules! implUrlId {
+    ($what:ty, $err:ty) => {
+        impl UrlId for $what {
+            type Error = $err;
+
+            fn into_url(&self) -> String {
+                let mut byte_buff = bincode::serialize(&self).unwrap();
+                jamble_bytes(&mut byte_buff);
+                base64::encode_config(&byte_buff, base64::URL_SAFE_NO_PAD)
+            }
+
+            fn from_url(s: &str) -> Result<$what, $err> {
+                let mut byte_buff =
+                    base64::decode_config(s, base64::URL_SAFE_NO_PAD)?;
+                jamble_bytes(&mut byte_buff);
+                bincode::deserialize(&byte_buff).map_err(Into::into)
+            }
+        }
+        impl FromStr for $what {
+            type Err = $err;
+
+            fn from_str(s: &str) -> Result<$what, $err> {
+                <$what>::from_url(s)
+            }
+        }
+    };
+}
+implUrlId!(JoinId, JoinError);
+implUrlId!(ConnId, ConnError);
+
+struct IdStore<K: Key, T>(RwLock<SlotMap<K, T>>);
+impl<K: Key, T: Clone> IdStore<K, T> {
+    fn new() -> IdStore<K, T> {
+        IdStore(RwLock::new(SlotMap::with_key()))
     }
 
-    /// Create a new ConnId that links to the item
-    fn create_link(&self, item: T) -> ConnId {
+    /// Create a new K that links to the item
+    fn insert(&self, item: T) -> K {
         self.0.write().unwrap().insert(item)
     }
 
@@ -74,14 +98,20 @@ impl<T: Clone> ConnIdStore<T> {
         self.0.write().unwrap().retain(|_, item| !predicate(item))
     }
 
-    fn follow(&self, conn_id: ConnId) -> Option<T> {
-        self.0.read().unwrap().get(conn_id).map(Clone::clone)
+    fn get(&self, id: K) -> Option<T> {
+        self.0.read().unwrap().get(id).map(Clone::clone)
+    }
+
+    /// Get associated item and remove it from the store
+    fn take(&self, id: K) -> Option<T> {
+        self.0.write().unwrap().remove(id)
     }
 }
 
 pub struct ServerState {
     rooms:      CHashMap<RoomId, GameRoom>,
-    conn_links: ConnIdStore<(Id, RoomId)>,
+    conn_links: IdStore<ConnId, (Id, RoomId)>,
+    join_links: IdStore<JoinId, RoomId>,
 }
 
 pub enum ExpectFailure {
@@ -93,7 +123,8 @@ impl ServerState {
     pub fn new() -> ServerState {
         ServerState {
             rooms:      CHashMap::new(),
-            conn_links: ConnIdStore::new(),
+            conn_links: IdStore::new(),
+            join_links: IdStore::new(),
         }
     }
 
@@ -139,7 +170,7 @@ impl ServerState {
             .get_mut(&roomid)
             .map(move |mut room| room.expect(username));
         match game_response {
-            Some(Accept(id)) => Ok(self.conn_links.create_link((id, roomid))),
+            Some(Accept(id)) => Ok(self.conn_links.insert((id, roomid))),
             Some(Refuse) => Err(ExpectFailure::Refuse),
             None => Err(ExpectFailure::NotFound),
         }
@@ -151,14 +182,22 @@ impl ServerState {
         ws: Ws2,
     ) -> Result<impl Reply, ConnError> {
         let (player, roomid) =
-            self.conn_links.follow(conn).ok_or(ConnError::NotTracked)?;
+            self.conn_links.get(conn).ok_or(ConnError::NotTracked)?;
         let mut room =
             self.rooms.get_mut(&roomid).ok_or(ConnError::NotFound)?;
         Ok(room.accept(player, ws))
     }
 
-    pub fn is_active(&self, roomid: &RoomId) -> bool {
-        self.rooms.contains_key(roomid)
+    pub fn generate(&self, roomid: RoomId) -> Option<JoinId> {
+        if self.rooms.contains_key(&roomid) {
+            Some(self.join_links.insert(roomid))
+        } else {
+            None
+        }
+    }
+
+    pub fn consume(&self, joinid: JoinId) -> Option<RoomId> {
+        self.join_links.take(joinid)
     }
 }
 
@@ -167,45 +206,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_connids() {
-        let store = ConnIdStore::new();
+    fn test_ids() {
+        let store: IdStore<ConnId, usize> = IdStore::new();
 
-        let conn_id1 = store.create_link(1111);
-        assert_eq!(store.follow(conn_id1), Some(1111));
+        let id1 = store.insert(1111);
+        assert_eq!(store.get(id1), Some(1111));
 
-        let conn_id2 = store.create_link(2222);
-        assert_eq!(store.follow(conn_id2), Some(2222));
+        let id2 = store.insert(2222);
+        assert_eq!(store.get(id2), Some(2222));
 
-        let conn_id3 = store.create_link(3333);
-        assert_eq!(store.follow(conn_id3), Some(3333));
+        let id3 = store.insert(3333);
+        assert_eq!(store.get(id3), Some(3333));
 
-        assert_eq!(store.follow(conn_id2), Some(2222));
+        assert_eq!(store.get(id2), Some(2222));
 
         store.remove_associated(|&x| x < 3000);
-        assert_eq!(store.follow(conn_id1), None);
-        assert_eq!(store.follow(conn_id2), None);
-        assert_eq!(store.follow(conn_id3), Some(3333));
+        assert_eq!(store.get(id1), None);
+        assert_eq!(store.get(id2), None);
+        assert_eq!(store.get(id3), Some(3333));
 
-        let conn_id4 = store.create_link(1111);
-        assert_eq!(store.follow(conn_id4), Some(1111));
-        assert_eq!(store.follow(conn_id1), None);
+        let id4 = store.insert(1111);
+        assert_eq!(store.get(id4), Some(1111));
+        assert_eq!(store.get(id1), None);
     }
 
     #[test]
-    fn test_serlialize_connids() {
-        let store = ConnIdStore::new();
-        let conn_id1 = store.create_link(1111);
+    fn test_serlialize_ids() {
+        let store: IdStore<ConnId, usize> = IdStore::new();
+        let id1 = store.insert(1111);
 
-        let conn_id1_round_trip =
-            ConnId::from_str(&conn_id1.into_url()).unwrap();
+        let id1_round_trip = ConnId::from_str(&id1.into_url()).unwrap();
 
-        assert_eq!(store.follow(conn_id1_round_trip), Some(1111));
-        let conn_id2 = store.create_link(2222);
+        assert_eq!(store.get(id1_round_trip), Some(1111));
+        let id2 = store.insert(2222);
 
-        let conn_id2_round_trip =
-            ConnId::from_str(&conn_id2.into_url()).unwrap();
+        let id2_round_trip = ConnId::from_str(&id2.into_url()).unwrap();
 
-        assert_eq!(store.follow(conn_id2_round_trip), Some(2222));
-        assert_eq!(store.follow(conn_id1_round_trip), Some(1111));
+        assert_eq!(store.get(id2_round_trip), Some(2222));
+        assert_eq!(store.get(id1_round_trip), Some(1111));
     }
 }

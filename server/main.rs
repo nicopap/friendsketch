@@ -1,13 +1,11 @@
 #![feature(uniform_paths)]
 mod api;
 mod games;
-mod join;
 mod server;
 
 use bytes::buf::Buf;
 use std::sync::Arc;
 
-use chashmap::CHashMap;
 use log::warn;
 use pretty_env_logger;
 use warp::{
@@ -21,10 +19,8 @@ use warp::{
 
 use self::{
     api::{pages, RoomId},
-    server::ServerState,
+    server::{ServerState, UrlId},
 };
-
-type JoinManager = CHashMap<join::Uid, RoomId>;
 
 type Server = Arc<ServerState>;
 
@@ -35,35 +31,26 @@ macro_rules! b {
 }
 
 fn main() {
-    use self::{join::Uid, server::ConnId};
+    use self::server::{ConnId, JoinId};
     pretty_env_logger::init();
 
-    let join_manager = Arc::new(JoinManager::new());
-    let join_manager_ref = warp::any().map(move || join_manager.clone());
     let server = Arc::new(ServerState::new());
     let server_ref = warp::any().map(move || server.clone());
 
     macro_rules! url {
-        {($($path:tt)*), $body:expr, $handler:expr $(,)?} => (
+        {($($path:tt)*), $handler:ident $(, $body:expr)?} => (
             path!($($path)*)
-                .and($body)
+                $(.and($body))?
                 .and(server_ref.clone())
                 .and_then($handler)
         )
     }
-    let join_form = path!("friendk" / "join" / "*" / Uid)
-        .and(join_manager_ref.clone())
-        .and_then(handle_join_form);
+    let join_form = url! {("friendk"/"join"/"*"/JoinId), handle_join_form};
+    let join_redirect = url! {("friendk"/"join"/RoomId), handle_join_redirect};
 
-    let join_redirect = url! {
-        ("friendk" / "join" / RoomId),
-        join_manager_ref.clone(),
-        handle_join_redirect,
-    };
-
-    let join = url! {("friendk"/"rooms"/"join"), b!(json), handle_join};
-    let create = url! {("friendk"/"rooms"/"create"), b!(json), handle_create};
-    let ws_url = url! {("friendk"/"ws"/ConnId), warp::ws2(), accept_conn};
+    let join = url! {("friendk"/"rooms"/"join"), handle_join, b!(json)};
+    let create = url! {("friendk"/"rooms"/"create"), handle_create, b!(json)};
+    let ws_url = url! {("friendk"/"ws"/ConnId), accept_conn, warp::ws2()};
     let report = path!("friendk" / "report")
         .and(b!(concat))
         .and_then(handle_report);
@@ -94,11 +81,11 @@ macro_rules! respond {
 }
 
 fn handle_join_form(
-    join_id: join::Uid,
-    manager: Arc<JoinManager>,
+    join_id: server::JoinId,
+    server: Server,
 ) -> Result<impl Reply, Rejection> {
     let (ok, not_found) = (StatusCode::OK, StatusCode::NOT_FOUND);
-    if let Some(roomid) = manager.remove(&join_id) {
+    if let Some(roomid) = server.consume(join_id) {
         respond!(ok, pages::JoinFormBody(roomid).to_string(), html)
     } else {
         respond!(not_found, pages::JoinFormErr.to_string(), html)
@@ -107,17 +94,14 @@ fn handle_join_form(
 
 fn handle_join_redirect(
     roomid: api::RoomId,
-    manager: Arc<JoinManager>,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    if server.is_active(&roomid) {
-        let new_uid = join::Uid::new(&mut rand::thread_rng());
+    if let Some(new_uid) = server.generate(roomid) {
         let uid_location = {
             let mut stem = String::from("*/");
-            stem.push_str(Into::<String>::into(&new_uid).as_str());
+            stem.push_str(&new_uid.into_url());
             stem
         };
-        manager.insert(new_uid, roomid);
         respond!(StatusCode::SEE_OTHER, "", Location(uid_location))
     } else {
         respond!(StatusCode::NOT_FOUND, pages::JoinRedirectErr.into(), html)
@@ -125,11 +109,10 @@ fn handle_join_redirect(
 }
 
 fn handle_create(
-    api::CreateReq { .. }: api::CreateReq,
+    _: api::CreateReq,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    let roomid = format!("{}", server.create_room());
-    respond!(StatusCode::CREATED, roomid, text)
+    respond!(StatusCode::CREATED, server.create_room().to_string(), text)
 }
 
 fn handle_join(
