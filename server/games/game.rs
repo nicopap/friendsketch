@@ -29,6 +29,7 @@ pub enum Cmd<Msg> {
     None,
 }
 
+#[derive(Debug)]
 pub enum Request<Id, Msg, Feedback> {
     /// The existing player identified by `Id` has decided to leave the `Game`.
     Leaves(Id),

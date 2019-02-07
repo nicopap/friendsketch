@@ -23,7 +23,7 @@ use crate::{
 };
 pub use tugofsketch::Id;
 
-type ManagerChannel = mpsc::Sender<ManagerRequest<Feedback>>;
+type ManagerChannel = mpsc::Sender<ManagerRequest<api::GameReq>>;
 
 quick_error! {
     #[derive(Debug)]
@@ -46,7 +46,7 @@ quick_error! {
             from()
             description("The oversee function's input was interrupted abruptly")
         }
-        ManagerChannelError(err: mpsc::SendError<ManagerRequest<Feedback>>) {
+        ManagerChannelError(err: mpsc::SendError<ManagerRequest<api::GameReq>>) {
             from()
         }
         CommunicationError(err: CommError) {
@@ -58,17 +58,13 @@ quick_error! {
 
 /// A message sent to a `ConnectionManager`.
 #[derive(Debug)]
-enum ManagerRequest<Msg> {
-    /// A message sent through a connected player
-    Msg(Id, api::GameReq),
+enum ManagerRequest<Req> {
+    /// A message to be directly processed by the game
+    Game(game::Request<Id, Req, Feedback>),
     /// A connection with given player `Name` has been established
     Join(Id, WebSocket),
     /// A player `Name` is joining, with an imminent connection
     Expects(Name),
-    /// Player `Id` disconnected.
-    Leaves(Id),
-    /// Return a value to the game, as it requested it
-    Return(Msg),
 }
 
 /// The result of an attempt to add an user to a game room.
@@ -90,90 +86,72 @@ struct ConnectionManager<G> {
 
 struct Connection(mpsc::UnboundedSender<Message>);
 
+macro_rules! handle_cmd {
+    ($manager:expr, $cmd:expr) => {
+        match $cmd {
+            Cmd::In(feedbacks) => {
+                for (delay, feedback) in feedbacks {
+                    $manager.queue(delay, feedback);
+                }
+                Ok(())
+            }
+            Cmd::Immediately(msg) => {
+                loop_feedback($manager, Request::Feedback(msg))
+            }
+            Cmd::None => Ok(()),
+        }
+    };
+}
+
 fn loop_feedback<G>(
     manager: &mut ConnectionManager<G>,
-    mut request: game::Request<Id, G::Request, Feedback>,
-) -> Result<(), GameErr>
+    request: game::Request<Id, G::Request, Feedback>,
+) -> Result<(), GameInteruption>
 where
     G::Request: From<api::GameReq>,
     G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
-    loop {
-        let (response, commands) = manager.game.tells(request)?;
-        manager.broadcast(response);
-        let msg = match commands {
-            Cmd::In(feedbacks) => {
-                for (delay, feedback) in feedbacks {
-                    manager.queue(delay, feedback);
-                }
-                return Ok(());
-            }
-            Cmd::Immediately(msg) => msg,
-            Cmd::None => return Ok(()),
-        };
-        request = Request::Feedback(msg);
-    }
+    let (response, commands) = manager.game.tells(request)?;
+    manager.broadcast(response)?;
+    handle_cmd!(manager, commands)
 }
 
 fn oversee<G>(
     mut manager: ConnectionManager<G>,
-    msg: ManagerRequest<Feedback>,
+    msg: ManagerRequest<G::Request>,
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
     G::Request: From<api::GameReq>,
     G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
+    use game::Request::*;
     match msg {
         ManagerRequest::Join(user, ws) => {
             let (has_joined, resp, cmds) = manager.game.joins(user)?;
             if has_joined {
                 manager.broadcast(resp)?;
-                match cmds {
-                    Cmd::In(feedbacks) => {
-                        for (delay, feedback) in feedbacks {
-                            manager.queue(delay, feedback);
-                        }
-                    }
-                    Cmd::Immediately(msg) => {
-                        loop_feedback(&mut manager, Request::Feedback(msg))?
-                    }
-                    Cmd::None => {}
-                };
+                handle_cmd!(&mut manager, cmds)?;
                 manager.join(user, ws);
             } else {
                 warn!("User joined room but wasn't expected");
             }
         }
-        ManagerRequest::Msg(id, msg) => {
-            loop_feedback(&mut manager, Request::Message(id, msg.into()))?
-        }
-        ManagerRequest::Return(msg) => {
-            loop_feedback(&mut manager, Request::Feedback(msg))?
-        }
-        ManagerRequest::Leaves(id) => {
-            let room = &manager.room_name;
-            if !manager.connections.remove(id).is_some() {
-                error!("disconnect non-conn {:?}: {}", id, room);
-            } else {
-                debug!("disconnected {:?}", id);
-            }
-            loop_feedback(&mut manager, Request::Leaves(id))?
+        ManagerRequest::Game(msg) => {
+            if let Leaves(id) = msg {
+                let room = &manager.room_name;
+                if !manager.connections.remove(id).is_some() {
+                    error!("disconnect non-conn {:?}: {}", id, room);
+                } else {
+                    debug!("disconnected {:?}", id);
+                }
+            };
+            loop_feedback(&mut manager, msg)?
         }
         ManagerRequest::Expects(name) => {
             match manager.game.expect(name.clone()) {
                 ExpectResponse::Accept(id, cmd) => {
                     info!("Adding {} to {}", name, manager.room_name);
-                    match cmd {
-                        Cmd::In(feedbacks) => {
-                            for (delay, feedback) in feedbacks {
-                                manager.queue(delay, feedback);
-                            }
-                        }
-                        Cmd::Immediately(msg) => {
-                            loop_feedback(&mut manager, Request::Feedback(msg))?
-                        }
-                        Cmd::None => {}
-                    };
+                    handle_cmd!(&mut manager, cmd)?;
                     manager.respond.send(ManagerResponse::Accept(id));
                 }
                 ExpectResponse::Refuse => {
@@ -276,8 +254,11 @@ where
     G: Game<Id>,
 {
     fn queue(&mut self, delay: Duration, feedback: Feedback) {
+        use self::ManagerRequest::Game;
+        use game::Request::Feedback;
+
         let sink_to_manager = self.manager_sink.clone();
-        let request = ManagerRequest::Return(feedback);
+        let request = Game(Feedback(feedback));
         warp::spawn(
             sleep(delay)
                 .then(move |_| sink_to_manager.send(request))
@@ -287,6 +268,8 @@ where
     }
 
     fn join(&mut self, id: Id, ws: WebSocket) {
+        use self::ManagerRequest::Game;
+        use game::Request::{Leaves, Message};
         // Split the socket into a sender and receive of messages.
         let (socket_sink, socket_stream) = ws.split();
 
@@ -310,10 +293,10 @@ where
                 msg.to_str()
                     .map_err(|()| Error::custom("invalid string"))
                     .and_then(from_str)
-                    .map(|v| ManagerRequest::Msg(id, v))
+                    .map(|v| Game(Message(id, v)))
                     .unwrap_or_else(|err| {
                         error!("validation: {}/ `{:?}`", err, msg.to_str());
-                        ManagerRequest::Leaves(id)
+                        Game(Leaves(id))
                     })
             });
         let sink_to_manager = self.manager_sink.clone();
@@ -321,15 +304,15 @@ where
             client_stream
                 .or_else(move |err| {
                     error!("ws recieve {:?}:{}", id, err);
-                    Ok(ManagerRequest::Leaves(id))
+                    Ok(Game(Leaves(id)))
                 })
                 .take_while(move |msg| {
                     Ok(match msg {
-                        ManagerRequest::Leaves(id_) => &id != id_,
+                        Game(Leaves(id_)) => &id != id_,
                         _ => true,
                     })
                 })
-                .chain(stream::once(Ok(ManagerRequest::Leaves(id))))
+                .chain(stream::once(Ok(Game(Leaves(id)))))
                 .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),
         );

@@ -18,7 +18,6 @@ Created Tuesday 26 September 2017
 
 * Create special structure to hold names to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters, 
-* Merge ''game::Request'' and ''ManagerRequest'' in ''games.rs'' as they share a lot in common
 
 * Move announcement of people leaving/joining in ''expect'' rather than ''join'' so as to avoid spamming the chat when reconnections happen
 
