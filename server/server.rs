@@ -141,7 +141,7 @@ impl ServerState {
         };
         let self_ref = self.clone();
         let on_empty = move || {
-            info!("Removing {} from server", &roomid_copy);
+            debug!("Removing {} from server", &roomid_copy);
             self_ref.remove(&roomid_copy);
         };
         info!("Creating {} on server", &roomid);

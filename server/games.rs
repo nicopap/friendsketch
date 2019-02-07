@@ -290,7 +290,6 @@ where
         {
             JoinResponse::Accept(id) => {
                 info!("Adding {} to {}", name, manager.room_name);
-                debug!("with id: {:?}", id);
                 let msg = VisibleEvent(api::VisibleEvent::Joined(name.clone()));
                 manager.broadcast(Broadcast::ToAll(msg));
                 manager.hangups.accept(id);

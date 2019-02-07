@@ -88,6 +88,7 @@ fn handle_join_form(
     if let Some(roomid) = server.consume(join_id) {
         respond!(ok, pages::JoinFormBody(roomid).to_string(), html)
     } else {
+        warn!("Attempt to access outdated room link");
         respond!(not_found, pages::JoinFormErr.to_string(), html)
     }
 }
@@ -102,8 +103,10 @@ fn handle_join_redirect(
             stem.push_str(&new_uid.into_url());
             stem
         };
+        info!("Successfully redirect to {}", uid_location);
         respond!(StatusCode::SEE_OTHER, "", Location(uid_location))
     } else {
+        info!("Attempt to access innexistant room");
         respond!(StatusCode::NOT_FOUND, pages::JoinRedirectErr.into(), html)
     }
 }
