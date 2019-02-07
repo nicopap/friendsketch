@@ -20,6 +20,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Joining a game]]
 
+[[+Backend leave handling]]
+
 [[+Devlog]]
 
 > Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)

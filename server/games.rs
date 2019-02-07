@@ -15,21 +15,25 @@ use warp::{
 };
 
 use crate::{
-    api::{self, Name},
+    api::{self, GameReq, Name},
     games::{
-        game::{Broadcast, Cmd, ExpectResponse, Game, Request},
+        game::{Broadcast, Cmd, Game, Request},
         tugofsketch::{Feedback, GameErr},
     },
 };
 pub use tugofsketch::Id;
 
-type ManagerChannel = mpsc::Sender<ManagerRequest<api::GameReq>>;
+type ManagerChannel = mpsc::Sender<ManagerRequest<GameReq>>;
 
 quick_error! {
     #[derive(Debug)]
     enum CommError {
         CommError(loc: u32, err: mpsc::SendError<Message>) {
             display("games.rs:{}: {}", loc, err)
+        }
+        Disconnected(id: Id, msg: String) {
+            display("attempted to send {} to {:?} but was already \
+                    disconnected", msg, id)
         }
     }
 }
@@ -46,7 +50,10 @@ quick_error! {
             from()
             description("The oversee function's input was interrupted abruptly")
         }
-        ManagerChannelError(err: mpsc::SendError<ManagerRequest<api::GameReq>>) {
+        ResponseChannelErroor(err: sync::mpsc::SendError<ManagerResponse>) {
+            from()
+        }
+        ManagerChannelError(err: mpsc::SendError<ManagerRequest<GameReq>>) {
             from()
         }
         CommunicationError(err: CommError) {
@@ -108,7 +115,7 @@ fn loop_feedback<G>(
     request: game::Request<Id, G::Request, Feedback>,
 ) -> Result<(), GameInteruption>
 where
-    G::Request: From<api::GameReq>,
+    G::Request: From<GameReq>,
     G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
     let (response, commands) = manager.game.tells(request)?;
@@ -121,16 +128,16 @@ fn oversee<G>(
     msg: ManagerRequest<G::Request>,
 ) -> Result<ConnectionManager<G>, GameInteruption>
 where
-    G::Request: From<api::GameReq>,
+    G::Request: From<GameReq>,
     G: Game<Id, Error = GameErr, Response = api::GameMsg, Feedback = Feedback>,
 {
     use game::Request::*;
     match msg {
         ManagerRequest::Join(user, ws) => {
             let (has_joined, resp, cmds) = manager.game.joins(user)?;
+            manager.broadcast(resp)?;
+            handle_cmd!(&mut manager, cmds)?;
             if has_joined {
-                manager.broadcast(resp)?;
-                handle_cmd!(&mut manager, cmds)?;
                 manager.join(user, ws);
             } else {
                 warn!("User joined room but wasn't expected");
@@ -148,17 +155,15 @@ where
             loop_feedback(&mut manager, msg)?
         }
         ManagerRequest::Expects(name) => {
-            match manager.game.expect(name.clone()) {
-                ExpectResponse::Accept(id, cmd) => {
-                    info!("Adding {} to {}", name, manager.room_name);
-                    handle_cmd!(&mut manager, cmd)?;
-                    manager.respond.send(ManagerResponse::Accept(id));
-                }
-                ExpectResponse::Refuse => {
-                    warn!("{} refused {}", manager.room_name, name);
-                    manager.respond.send(ManagerResponse::Refuse);
-                }
-            }
+            info!("Attempt to add {} to {}", name, manager.room_name);
+            let (expects, resp, cmd) = manager.game.expect(name)?;
+            manager.broadcast(resp)?;
+            handle_cmd!(&mut manager, cmd)?;
+            let response = match expects {
+                Some(id) => ManagerResponse::Accept(id),
+                None => ManagerResponse::Refuse,
+            };
+            manager.respond.send(response)?;
         }
     };
     Ok(manager)
@@ -312,6 +317,7 @@ where
                         _ => true,
                     })
                 })
+                // TODO: make sure the `Leaves` event is only sent once
                 .chain(stream::once(Ok(Game(Leaves(id)))))
                 .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),
@@ -327,8 +333,12 @@ where
             Broadcast::ToList(ids, message) => {
                 let message: String = to_string(&message).unwrap();
                 for id in ids.iter() {
-                    let mut connection = &self.connections[*id].0;
-                    send!(connection, message)?;
+                    self.connections
+                        .get_mut(*id)
+                        .ok_or_else(|| {
+                            CommError::Disconnected(*id, message.clone())
+                        })
+                        .and_then(|Connection(conn)| send!(conn, message))?;
                 }
                 for id in ids.iter() {
                     debug!("polling {:?}", id);
@@ -344,6 +354,9 @@ where
         Ok(())
     }
 
+    /// Broadcast `message` to all players but the one specified with `except`.
+    /// `other`, if `Some` will be sent to `except` unless `except` is simply
+    /// not connected.
     fn broadcast_to_all_but(
         &mut self,
         except: Id,

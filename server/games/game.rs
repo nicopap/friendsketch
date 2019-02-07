@@ -1,14 +1,6 @@
 use crate::api;
 use std::time::Duration;
 
-/// How a game responds to a player attempting to join it
-pub enum ExpectResponse<Id, Msg> {
-    /// The player has been refused from entering the game
-    Refuse,
-    /// The player was accepted, and will be refered as `Id` in the future.
-    Accept(Id, Cmd<Msg>),
-}
-
 #[derive(Debug)]
 pub enum Broadcast<Id, Msg> {
     ToAll(Msg),
@@ -58,14 +50,20 @@ pub trait Game<Id: slotmap::Key> {
     fn new() -> Self;
 
     /// A new player is expected to join the game room. The `Game` may choose
-    /// to either `ExpectResponse::Refuse` the new player or
-    /// `ExpectResponse::Accept(id)`, where `id` will be the identifier of the
-    /// player for the rest of the game (it's an arbitrary value chosen by the
-    /// `Game`).
+    /// to either refuse the player and return `None` or accept the player and
+    /// return `Some(id)` where `id` will be the identifier of the player for
+    /// the rest of the game (it's an arbitrary value chosen by the `Game`).
     fn expect(
         &mut self,
         new_player: api::Name,
-    ) -> ExpectResponse<Id, Self::Feedback>;
+    ) -> Result<
+        (
+            Option<Id>,
+            Broadcast<Id, Self::Response>,
+            Cmd<Self::Feedback>,
+        ),
+        Self::Error,
+    >;
 
     /// A new player attempts to join the game. Returns whether the game
     /// accepted the player or not.

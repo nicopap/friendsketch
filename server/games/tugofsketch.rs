@@ -1,4 +1,4 @@
-use super::game::{self, ExpectResponse};
+use super::game;
 use crate::api::{self, ChatMsg, GameMsg, Name, Stroke, VisibleEvent};
 use arraydeque::{ArrayDeque, Wrapping};
 use log::{debug, error, info, warn};
@@ -130,8 +130,17 @@ const TICK_UPDATE: Duration = Duration::from_secs(10);
 const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
 const TALLY_LENGTH: Duration = Duration::from_secs(6);
 const DROP_DELAY: Duration = Duration::from_secs(4);
+const JOIN_DELAY: Duration = Duration::from_secs(30);
 
 impl Game {
+    /// Returns a connected player, if there is indeed one remaining
+    fn next_player(&self) -> Option<Id> {
+        self.players
+            .iter()
+            .find(|p| p.1.drop_id.is_none())
+            .map(|x| x.0)
+    }
+
     fn api_scores(&self) -> api::Scoreboard {
         self.players.iter().map(|(_, x)| x.clone().into()).collect()
     }
@@ -234,13 +243,12 @@ impl Game {
                 start_round!(leader)
             }
             Game_::RoundResults { artist } => {
-                let next_artist: Id = self
+                let next_artist = self
                     .players
                     .iter()
-                    .map(|tuple| tuple.0)
-                    .skip_while(|id| *id != artist)
-                    .nth(1)
-                    .or_else(|| self.players.iter().map(|t| t.0).nth(0))
+                    .find(|p| p.1.drop_id.is_none() && p.0 > artist)
+                    .or_else(|| self.players.iter().next())
+                    .map(|x| x.0)
                     .unwrap_or_else(|| {
                         error!("Couldn't find an artist for the next round");
                         artist
@@ -336,7 +344,7 @@ impl Game {
             Some(Player { name, .. }) => {
                 let left = GameMsg::VisibleEvent(Left(name.clone()));
                 self.game_log.push_front(Left(name));
-                if let Some((id, _)) = self.players.iter().next() {
+                if let Some(id) = self.next_player() {
                     if self.players.len() == 1 {
                         self.round_no = 0;
                         self.players[id].score = Vec::new();
@@ -370,15 +378,15 @@ impl Game {
         }
     }
 
-    fn try_drop(
+    fn try_terminate(
         &mut self,
         id: Id,
         challenge: Challenge,
     ) -> Result<(Broadcast, Cmd), GameErr> {
         if Some(challenge) == self.players.get(id).and_then(|x| x.drop_id) {
+            info!("{:?} was too late, removing them...", id);
             self.leaves(id)
         } else {
-            info!("challenged {:?} to no avail", id);
             Ok((broadcast!(nothing), game::Cmd::None))
         }
     }
@@ -496,7 +504,7 @@ impl Game {
         };
         let cr = self.round_no;
         match (&mut self.state, msg) {
-            (_, TooLate(id, challenge)) => self.try_drop(id, challenge),
+            (_, TooLate(id, challenge)) => self.try_terminate(id, challenge),
             (Lobby { ref mut leader }, MakeMaster(id)) => {
                 *leader = id;
                 let msg = HiddenEvent(Mastery);
@@ -544,12 +552,16 @@ impl Game {
                 };
                 Ok((broadcast!(to_all, classic_reply), cmd))
             }
-            (RoundResults { .. }, TickTimeout(_))
-            | (RoundResults { .. }, RevealLetter(_)) => {
-                Ok((broadcast!(nothing), game::Cmd::None))
-            }
             (RoundResults { .. }, NextRound(r)) if r == cr => {
                 Ok(self.start_round(None).unwrap())
+            }
+            (RoundResults { .. }, TickTimeout(_))
+            | (Playing { .. }, TickTimeout(_))
+            | (RoundResults { .. }, EndRound(_))
+            | (Playing { .. }, EndRound(_))
+            | (RoundResults { .. }, RevealLetter(_))
+            | (Playing { .. }, RevealLetter(_)) => {
+                Ok((broadcast!(nothing), game::Cmd::None))
             }
             (_state, feedback) => {
                 warn!("invalid feedback: {:?} for game state", feedback);
@@ -574,31 +586,33 @@ impl game::Game<Id> for Game {
         }
     }
 
-    fn expect(&mut self, name: Name) -> ExpectResponse<Id, Feedback> {
+    fn expect(
+        &mut self,
+        name: Name,
+    ) -> Result<(Option<Id>, Broadcast, Cmd), GameErr> {
         use self::{Game_::*, RoundScore::Absent};
+        use api::VisibleEvent::Joined;
         if self
             .players
             .values()
             .any(|Player { name: n, .. }| n == &name)
         {
-            ExpectResponse::Refuse
+            Ok((None, broadcast!(nothing), game::Cmd::None))
         } else {
             let rounds_elapsed = match self.state {
                 RoundResults { .. } => self.round_no as usize + 1,
                 Playing { .. } | Empty | Lobby { .. } => self.round_no as usize,
             };
-            let score = repeat(Absent).take(rounds_elapsed).collect();
-            let drop_id_ = rand::random();
-            let drop_id = Some(drop_id_);
+            let drop_id = rand::random();
             let id = self.players.insert(Player {
-                name,
-                score,
-                drop_id,
+                name:    name.clone(),
+                score:   repeat(Absent).take(rounds_elapsed).collect(),
+                drop_id: Some(drop_id),
             });
             let cmd = game::Cmd::In(vec![(
-                DROP_DELAY,
+                JOIN_DELAY,
                 Feedback {
-                    msg: Feedback_::TooLate(id, drop_id_),
+                    msg: Feedback_::TooLate(id, drop_id),
                 },
             )]);
             match self.state {
@@ -610,19 +624,20 @@ impl game::Game<Id> for Game {
                 }
                 Lobby { .. } | RoundResults { .. } => {}
             };
-            ExpectResponse::Accept(id, cmd)
+            self.game_log.push_front(Joined(name.clone()));
+            let msg = GameMsg::VisibleEvent(Joined(name));
+            Ok((Some(id), broadcast!(to_all, msg), cmd))
         }
     }
 
     fn joins(&mut self, player: Id) -> Result<(bool, Broadcast, Cmd), GameErr> {
-        use api::VisibleEvent::Joined;
-        if let Some(name) = self.players.get_mut(player).map(|x| {
-            x.drop_id = None;
-            x.name.clone()
-        }) {
-            self.game_log.push_front(Joined(name.clone()));
-            let msg = GameMsg::VisibleEvent(Joined(name));
-            Ok((true, broadcast!(to_all, msg), game::Cmd::None))
+        if self
+            .players
+            .get_mut(player)
+            .map(|x| x.drop_id = None)
+            .is_some()
+        {
+            Ok((true, broadcast!(nothing), game::Cmd::None))
         } else {
             Ok((false, broadcast!(nothing), game::Cmd::None))
         }
@@ -633,7 +648,17 @@ impl game::Game<Id> for Game {
         request: game::Request<Id, api::GameReq, Feedback>,
     ) -> Result<(Broadcast, Cmd), GameErr> {
         match request {
-            game::Request::Leaves(id) => self.leaves(id),
+            game::Request::Leaves(id) => {
+                let drop_id = rand::random();
+                self.players[id].drop_id = Some(drop_id);
+                let cmd = game::Cmd::In(vec![(
+                    DROP_DELAY,
+                    Feedback {
+                        msg: Feedback_::TooLate(id, drop_id),
+                    },
+                )]);
+                Ok((broadcast!(nothing), cmd))
+            }
             game::Request::Feedback(feedback) => self.feedback(feedback),
             game::Request::Message(id, msg) => self.respond(id, msg),
         }

@@ -1,0 +1,11 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2019-02-07T19:01:32+01:00
+
+====== Backend leave handling ======
+Created Thursday 07 February 2019
+
+* There is a **single source of Leaves messages** and it's the closures in ''ConnectionManager::join'' that adapt the websocket incoming messages
+* ''oversee'' must make sure to react to those messages and remove the concerned sockets from the connections list.
+* ''oversee'' must also notify the game of it
+* The game must not send requests to communicate with a dropped connection, because it is interpreted as a **inconsistency** and force termination of the game.
