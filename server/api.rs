@@ -7,37 +7,26 @@ use quick_error::quick_error;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
     fmt,
-    str::{from_utf8_unchecked, FromStr, Utf8Error},
+    str::{from_utf8, from_utf8_unchecked, FromStr, Utf8Error},
 };
 
 quick_error! {
     #[derive(Debug)]
-    pub enum NameError {
-        InvalidName {}
+    pub enum RequestError {
+        InvalidRoomId {
+            display("not a room id")
+        }
+        Empty {
+            display("required")
+        }
+        InvalidName {
+            display("blank characters at beginning or end")
+        }
         TooLong {
-            display("names should be smaller than 30 bytes")
+            display("too long")
         }
         InvalidFormat(err: Utf8Error) {
-            from()
-        }
-    }
-}
-
-quick_error! {
-    #[derive(Debug)]
-    pub enum ChatMsgError {
-        TooLong {
-            display("Chat messages should be smaller than 300 bytes")
-        }
-    }
-}
-
-quick_error! {
-    #[derive(Debug)]
-    pub enum RoomIdError {
-        InvalidRoomId {}
-        InvalidFormat(err: Utf8Error) {
-            from()
+            display("broken encoding")
         }
     }
 }
@@ -55,10 +44,15 @@ impl<'de> Deserialize<'de> for ChatContent {
         D: Deserializer<'de>,
     {
         let d: Vec<u8> = serde_bytes::deserialize(deserialize)?;
-        if d.len() < 300 {
+        if d.is_empty() {
+            Err(de::Error::custom(RequestError::Empty))
+        } else if d.len() < 300 {
+            let _ = from_utf8(&d)
+                .map_err(RequestError::InvalidFormat)
+                .map_err(de::Error::custom)?;
             Ok(ChatContent(d))
         } else {
-            Err(de::Error::custom(ChatMsgError::TooLong))
+            Err(de::Error::custom(RequestError::TooLong))
         }
     }
 }
@@ -72,26 +66,49 @@ impl Serialize for ChatContent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Hash)]
-pub struct Name(String);
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct Name(Vec<u8>);
 
-impl FromStr for Name {
-    type Err = NameError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.len() > 30 {
-            Err(NameError::TooLong)
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserialize: D) -> Result<Name, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let d: Vec<u8> = serde_bytes::deserialize(deserialize)?;
+        if d.is_empty() {
+            Err(de::Error::custom(RequestError::Empty))
+        } else if d.len() < 30 {
+            let encoded = from_utf8(&d)
+                .map_err(RequestError::InvalidFormat)
+                .map_err(de::Error::custom)?;
+            let maybe_whitespace =
+                |x: Option<_>| x.map(char::is_whitespace).unwrap_or(false);
+            let starts_space = maybe_whitespace(encoded.chars().next());
+            let ends_space = maybe_whitespace(encoded.chars().next_back());
+            if starts_space || ends_space {
+                Err(de::Error::custom(RequestError::InvalidName))
+            } else {
+                Ok(Name(d))
+            }
         } else {
-            // TODO: validate No padding spaces
-            Ok(Name(String::from(s)))
+            Err(de::Error::custom(RequestError::TooLong))
         }
     }
 }
-impl_deserialize_with_from_str!(Name);
+impl Serialize for Name {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let unchecked_str = unsafe { from_utf8_unchecked(&self.0) };
+        serializer.serialize_str(unchecked_str)
+    }
+}
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        let text = unsafe { from_utf8_unchecked(&self.0) };
+        write!(f, "{}", text)
     }
 }
 
@@ -104,11 +121,11 @@ impl RoomId {
     }
 }
 impl FromStr for RoomId {
-    type Err = RoomIdError;
+    type Err = RequestError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let validated =
-            roomids::RoomId::try_from(&s).ok_or(RoomIdError::InvalidRoomId)?;
+            roomids::RoomId::try_from(&s).ok_or(RequestError::InvalidRoomId)?;
         Ok(RoomId(validated))
     }
 }
