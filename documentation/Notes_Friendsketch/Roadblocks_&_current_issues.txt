@@ -17,20 +17,18 @@ Created Tuesday 26 September 2017
 ==== Server ====
 
 * Create special structure to hold names to guess, implement management of words lists etc
-	* related to: take random character from UTF string, display non-letter characters, 
-* Borrow problem with names (same as with the chat messages)
-
+	* related to: take random character from UTF string, display non-letter characters,
 
 ===== Game Event Log =====
 
 * A lot of string copies? What to do?
 	* Provide to ''game'' a way to convert ''api::GameMsg'' into serialized form and keep track of it:
-	* Have a ''struct SerializedVisibleEvent(Vec<u8>)'' that can only be constructed by serializing a ''VisibleEvent'' 
+	* Have a ''struct SerializedVisibleEvent(Vec<u8>)'' that can only be constructed by serializing a ''VisibleEvent''
 	* Have a ''Into<SerializedVisibleEvent>'' trait and implement it for ''VisibleEvent'', then espect ''Game'' to return ''Into<SerializedVisibleEvent>'' . Have ''Game::serializeMsg(api::VisibleEvent) -> SerializedVisibleEvent bb'' that is callable by the ''Game'' to serialize game messages and return them later for consuption
 
 ===== Custom color picker =====
 I can't seem to get it to work :/
-{{{code: lang="css" linenumbers="True"
+'''
 .empty.colorbox::before {
 	position: relative;
 	content: "+";
@@ -44,7 +42,7 @@ I can't seem to get it to work :/
 	z-index: 4;
 	left: -8px;
 }
-}}}
+'''
 
 
 ===== API =====

@@ -24,14 +24,11 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
-> Examine how to manage malformed request messages in warp (better handling of Conversion from body to API values)
-
 > Possible optimisation: serialize ''GameEvent'' when adding them to game log
 
 > Give feedback (like ''ghost'' in chat) when drawing.
 
 ===== Current roadmap =====
-* Improve how the backend handles stuff
 * Add tests
 * Better random words
 

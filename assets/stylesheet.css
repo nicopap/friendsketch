@@ -10,22 +10,16 @@ body {
     margin: auto;
     margin-top: 20px;
 }
-
-input.badinput:focus { box-shadow: 0 0 10px red; }
-input.badinput, input.taken, input.invalid { box-shadow: 0 0 2px #f9f1a5; border: solid #f9f1a5 2px;}
-form.taken::after, form.invalid::after {
+input.invalid { box-shadow: 0 0 2px #be5046; border: solid #be5046 1px;}
+.invalid::after {
     position: relative;
-    top: -12px;
-    margin-left:10px;
     font-size:12px;
-    color:#be5046
+    color:#be5046;
 }
-form.invalid::after {content: "Invalid display name, more than 30 characters is too much."}
-form.taken::after {content: "Display name already taken, use a different one."}
-input.goodinput:focus { box-shadow: 0 0 10px green; }
-input.goodinput { box-shadow: 0 0 5px green; }
-input:focus { border-color:#b7eaf8; }
-input:disabled { color: #767b87; }
+#name-field.invalid::after {content: attr(data-errmsg)}
+input:focus {border-color:#b7eaf8}
+input.invalid:focus {border-color:#d19a66}
+input:disabled {color:#767b87}
 
 input {
     padding: 5px 0;
@@ -46,17 +40,4 @@ button, input[type="button"], input[type="submit"] {
     border-radius: 3px;
     border: 0;
     padding: 5px 10%;
-}
-
-div.info {
-    border-radius: 20px;
-    padding: 20px 20px 20px 20px;
-    background-color: #b6cee9;
-    width: 30em;
-}
-
-div.info.info-warning {
-    background-image: url('/friendk/icons/stripbg.svg');
-    background-size: 64px;
-    background-color: #e9b7b8;
 }
