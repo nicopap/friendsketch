@@ -16,6 +16,7 @@ type Message
     | Over String
     | Guessed String
     | Correct String
+    | Complete
 
 
 type alias Chat =
@@ -59,6 +60,7 @@ into event =
         Api.EvOver word       -> Over word
         Api.EvStart artist    -> Start <| Api.showName artist
         Api.EvGuessed guesser -> Guessed <| Api.showName guesser
+        Api.EvComplete -> Complete
 
 
 messageView : String -> Message -> Html msg
@@ -92,6 +94,9 @@ messageView self message =
 
             Over word ->
                 genericMessage "over" ("round over, the word was " ++ word)
+
+            Complete ->
+                genericMessage "complete" "The game is over!"
 
 
 new : Api.Name -> List Api.VisibleEvent -> Chat

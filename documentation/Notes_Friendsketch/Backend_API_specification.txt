@@ -182,6 +182,7 @@ VisibleGameEvent
 	| { message: ChatMsg }
 	| { syncstart: Name }
 	| { syncover: String }
+	| { synccomplete: () }
 
 HiddenGameEvent
 	= { correct: String }
@@ -191,6 +192,7 @@ HiddenGameEvent
 	| { over: (String, [ (Name, RoundScore) ]) }
 	| { start: RoundStart }
 	| { reveal: (Int, Char) }
+	| { complete: Scoreboard }
 
 GameMsg
 	= { canvas: CanvasMsg }

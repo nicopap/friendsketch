@@ -33,6 +33,7 @@ type GamePart
     | Round Guess
     | BetweenRound Guess
     | BetweenRoundFrameOne Guess
+    | Summary
 
 
 type alias Game_ =
@@ -211,6 +212,7 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Ok ((Api.EvMessage _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvStart   _) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvOver    _) as message), _) -> simpleChatMsg message
+        (Ok ((Api.EvComplete ) as message), _) -> simpleChatMsg message
         (Ok ((Api.EvGuessed player) as msg), _) ->
             simpleChatMsg msg
                 |> mapFirst
@@ -278,8 +280,21 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
             in
                 (newGame, chatCmd)
 
+        (Err (Api.EhComplete scores), _) ->
+            let (newChat, chatCmd) = chatEvent Api.EvComplete chat
+                newRoom = Room.joinScores (Room.myName room) scores
+                newCanvas = Canvas.new Canvas.Demo
+                newGame = Game
+                    { room = newRoom
+                    , canvas = newCanvas
+                    , gamePart = Summary
+                    , chat = newChat
+                    }
+            in
+                (newGame, chatCmd)
+
         (anyElse, _) ->
-            Debug.log "inconsistency" anyElse |> (\_ -> (Game game, doNothing))
+            Debug.log "inconsistency" anyElse |> (always (Game game, doNothing))
 
 
 subs : Game -> Sub Msg
@@ -342,7 +357,7 @@ view roomid (Game { room, gamePart, chat, canvas }) =
                     topBar =
                         if Room.isMaster room then
                             masterDialog (Room.canStart room) hideId roomid
-                          else
+                        else
                             p [id "top-bar"] [ text flavorText]
                 in
                     gameView topBar
@@ -354,4 +369,6 @@ view roomid (Game { room, gamePart, chat, canvas }) =
             BetweenRound guess ->
                 let tally = Room.viewRoundTally room
                 in  gameView (div [ id "tally-box" ] [Guess.view guess, tally])
+
+            Summary -> gameView (Room.viewBoard room)
 

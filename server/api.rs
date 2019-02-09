@@ -151,6 +151,16 @@ pub enum RoundScore {
     Failed,
     Absent,
 }
+pub fn score_total(scores: &[RoundScore]) -> Score {
+    use self::RoundScore::*;
+    scores
+        .iter()
+        .map(|x| match x {
+            Artist(x) | Guessed(x) => *x,
+            Failed | Absent => 0,
+        })
+        .sum()
+}
 
 pub type Scoreboard = Vec<(Name, Vec<RoundScore>)>;
 
@@ -240,6 +250,7 @@ pub enum VisibleEvent {
     Message(ChatMsg),
     SyncStart(Name),
     SyncOver(String),
+    SyncComplete,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -256,4 +267,5 @@ pub enum HiddenEvent {
     Over(String, Vec<(Name, RoundScore)>),
     Start(RoundStart),
     Reveal(usize, char),
+    Complete(Scoreboard),
 }

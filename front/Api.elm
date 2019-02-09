@@ -451,6 +451,7 @@ type VisibleEvent
     | EvMessage ChatMsg
     | EvStart Name
     | EvOver String
+    | EvComplete
 
 
 type HiddenEvent
@@ -461,6 +462,7 @@ type HiddenEvent
     | EhOver String (List (Name, RoundScore))
     | EhStart RoundStart
     | EhReveal Int Char
+    | EhComplete Scoreboard
 
 
 decoderVisibleEvent : Decoder VisibleEvent
@@ -472,6 +474,7 @@ decoderVisibleEvent =
         , "message" := EvMessage <*| decoderChatMsg
         , "syncstart" := EvStart <*| decoderName
         , "syncover" := EvOver <*| Dec.string
+        , "synccomplete" :- EvComplete
         ]
 
 decoderHiddenEvent : Decoder HiddenEvent
@@ -494,4 +497,5 @@ decoderHiddenEvent =
             , "reveal" := EhReveal
                 <*| 0 :^ Dec.int
                 |*| 1 :^ (Dec.andThen decoderChar Dec.string)
+            , "complete" := EhComplete <*| decoderScoreboard
             ]

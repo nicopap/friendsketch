@@ -3,6 +3,7 @@ module Game.Room
         ( newInLobby
         , joinBreak
         , joinRound
+        , joinScores
         , joins
         , leaves
         , becomeMaster
@@ -16,6 +17,7 @@ module Game.Room
         , myName
         , viewRoundTally
         , viewPreviousTally
+        , viewBoard
         , correct
         , guessed
         , Room
@@ -33,7 +35,7 @@ import Maybe exposing (withDefault)
 import Array
 import Dict exposing (Dict, fromList, get, remove, insert, empty, isEmpty, singleton, update, toList)
 
-import Html as H exposing (Html, text, ul, li, a, div, p)
+import Html as H exposing (Html, text, ul, li, a, div, p, h2, td, th, tr)
 import Html.Attributes exposing (id, classList, class, style)
 
 import Api
@@ -60,6 +62,7 @@ type State
     | PlayingWith String Players
     | ArtistWith Players
     | BreakWith Players
+    | EndWith Players
     | Alone
 
 
@@ -108,6 +111,10 @@ newInLobby master myName scoreboard =
 joinBreak : Api.Name -> Api.Scoreboard -> Room
 joinBreak me scoreboard = newFromList scoreboard me BreakWith
 
+{-| Join the game during the final score display
+-}
+joinScores : Api.Name -> Api.Scoreboard -> Room
+joinScores me scoreboard = newFromList scoreboard me EndWith
 
 {-| Create a room in "round" state.
 -}
@@ -137,6 +144,7 @@ leaves leaving_ { me, state } =
         case state of
             Alone -> { me = me, state = Alone }
             BreakWith  others -> pop others BreakWith
+            EndWith  others -> pop others EndWith
             LobbyWith  others -> pop others LobbyWith
             MasterOf   others -> pop others MasterOf
             ArtistWith others -> pop others ArtistWith
@@ -159,6 +167,7 @@ joins joining_ { me, state } =
         case state of
             Alone -> push empty MasterOf
             BreakWith  others -> push others BreakWith
+            EndWith  others -> push others EndWith
             LobbyWith  others -> push others LobbyWith
             MasterOf   others -> push others MasterOf
             ArtistWith others -> push others ArtistWith
@@ -192,6 +201,7 @@ setArtist newArtist_ { me, state } =
         case state of
             Alone -> { me = me, state = Alone }
             BreakWith  others -> withArtist others
+            EndWith  others -> withArtist others
             LobbyWith  others -> withArtist others
             ArtistWith others -> withArtist others
             MasterOf   others -> withArtist others
@@ -271,6 +281,7 @@ syncScores roundScores_ { me, state } =
         case state of
             Alone -> { me = me, state = Alone }
             BreakWith  others -> updateAll others BreakWith
+            EndWith  others -> updateAll others EndWith
             LobbyWith  others -> updateAll others LobbyWith
             ArtistWith others -> updateAll others ArtistWith
             MasterOf   others -> updateAll others MasterOf
@@ -297,6 +308,7 @@ guessed guesser { state, me } =
     in case state of
             Alone -> { me = me, state = Alone }
             BreakWith  others -> withGuess others BreakWith
+            EndWith  others -> withGuess others EndWith
             LobbyWith  others -> withGuess others LobbyWith
             ArtistWith others -> withGuess others ArtistWith
             MasterOf   others -> withGuess others MasterOf
@@ -403,6 +415,7 @@ roomAsList { me, state } =
         case state of
             Alone -> [ mapFirst Api.showName me ]
             BreakWith  ps -> fullList ps
+            EndWith  ps -> fullList ps
             LobbyWith  ps -> fullList ps
             MasterOf   ps -> fullList ps
             ArtistWith ps -> fullList ps
@@ -449,9 +462,66 @@ view { me, state } =
         case state of
             Alone -> render Nothing [ showMe ]
             BreakWith  others -> render Nothing (showMe :: toList others)
+            EndWith  others -> render Nothing (showMe :: toList others)
             LobbyWith  others -> render Nothing (showMe :: toList others)
             MasterOf   others -> render Nothing (showMe :: toList others)
             ArtistWith others -> render (Just (first showMe)) (showMe :: toList others)
             PlayingWith artistName others ->
                 render (Just artistName) (showMe :: toList others)
+
+
+endBoard : List { name : String, total : Int, score : Score} -> Html msg
+endBoard scores =
+    let
+        sortedScores = List.sortBy (negate << .total) scores
+
+        winners =
+            let best =
+                    List.head sortedScores
+                        |> Maybe.map .total
+                        |> withDefault 0
+            in
+                List.filter ((==) best << .total) sortedScores
+                    |> List.map .name
+
+        winnerDisplay =
+            case winners of
+                [] -> "No winners?? (pls get in touch, this is a bug)"
+                [ single ] -> single ++ " wins!"
+                h::t -> String.join ", " t ++ " and " ++ h ++ " win!"
+
+        toCell : Api.RoundScore -> Html msg
+        toCell score =
+            case score of
+                Api.WasArtist s -> td [ class "artist" ] [ text (toString s) ]
+                Api.HasGuessed s -> td [] [ text (toString s) ]
+                Api.HasFailed -> td [] [ text "0" ]
+                Api.WasAbsent -> td [] [ text "–" ]
+
+        toRow { name, total, score } =
+            tr []
+                (  th [ class "name" ] [ text name ]
+                :: th [ class "total" ] [ text (toString total) ]
+                :: td [ class "colon" ] [ text ":" ]
+                :: List.map toCell score
+                )
+    in
+        div [ id "finalscores" ]
+            [ h2 [] [ text winnerDisplay ]
+            , H.table [] [ H.tbody [] (List.map toRow sortedScores) ]
+            ]
+
+
+viewBoard : Room -> Html msg
+viewBoard room =
+    let
+        adaptEntry (name, { score }) =
+            { name = name
+            , total = scoreAsInt score
+            , score = score
+            }
+    in
+        roomAsList room
+            |> List.map adaptEntry
+            |> endBoard
 

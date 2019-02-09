@@ -149,6 +149,10 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 
 
 
+#finalscores + #artcontainer {
+	display: none;
+}
+
 #canvas {
 	width: 600px;
 	border-top: 3px solid #ededf0;
@@ -213,6 +217,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 .over.message, .start.message { background: #cce9b6 }
 .ghost.message { filter: opacity(30%) }
 .guessed { background: #f9f1a5 }
+.complete.message { font-weight: bold; text-align: center;font-size:17px}
 
 
 
@@ -382,3 +387,39 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 }
 .tally-diff::before { content: "+"; color:#cce9b6 }
 .tally-diff { color:#cce9b6 }
+
+
+
+
+/*** *** ------- Final Score Tally ------- *** ***/
+
+
+
+
+#finalscores {
+	width: 600px;
+	font-size:22px;
+	box-sizing:border-box;
+}
+#finalscores h2 {text-align: center; margin:10px 0;}
+#finalscores table {
+	table-layout: fixed;
+	margin:auto;
+}
+th, td {
+	vertical-align: bottom;
+	line-height: 1;
+	padding-top:20px;
+	text-align: left;
+	max-width:200px;
+	word-break: break-all;
+}
+th.name {text-align:right}
+tr:first-child th.total {font-size:45px}
+th.total {
+	font-size: 30px;
+	padding:0 0 0 10px;
+}
+td {text-align: left; width: 40px}
+td.colon{width:5px;padding-right:10px}
+td.artist {color: #619140}
