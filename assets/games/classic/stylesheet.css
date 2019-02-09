@@ -25,19 +25,23 @@ body { font-family: sans-serif; color: #282c34 }
 	padding: 0;
 	width: 150px;
 	font-size: 14px;
+    font-family: "Noto Sans", sans-serif;
+    font-weight: bold;
 	margin: 0 10px auto 10px;
 	height: auto;
 }
 .user {
-	padding: 4px 0;
+	padding: 4px;
 	border: 2px solid #0002;
 	border-bottom: 0;
 	transition: color 0.1s;
 	display:flex;
 	justify-content: space-between;
+	word-break:break-all;
 }
 .user:last-child { border-bottom: 2px solid #0002 }
 .user.me :first-child { text-decoration: underline }
+.user :first-child { max-width: 85%;}
 .user.artist { background: #cce9b6 }
 .user.leader::before { content: "♚" }
 /*.user.guessed: cf .message.guessed*/
@@ -196,7 +200,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 	overflow-y: scroll;
 }
 .message {
-	padding: 5px 0 7px 0;
+	padding: 5px 4px 7px 4px;
 	line-height: 1;
 	border-top: 1px solid #0001;
 	word-break: break-all;
@@ -218,7 +222,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 
 
 
-#top-bar, .complete {
+#top-bar, #guess-word .complete {
 	height:25px;
 	margin:0;
 	text-align: center;
@@ -260,7 +264,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 .guess-letter {
 	width: 20px;
 	text-align: center;
-	
+
 }
 .guess-hidden {
 	width:12px;
