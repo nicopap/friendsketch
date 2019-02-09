@@ -60,7 +60,6 @@ type State
     = LobbyWith Players
     | MasterOf Players
     | PlayingWith String Players
-    | ArtistWith Players
     | BreakWith Players
     | EndWith Players
     | Alone
@@ -90,7 +89,7 @@ newFromList scoreboard myName =
 
 {-| newInLobby, returns an initialized Room
 
-    Room.newInLobby user userList
+    Room.newInLobby master user userList
 
 Is the room state during the "lobby" period of the game where the current
 user is `user` and the other users are `userList`. The empty list case is
@@ -100,10 +99,8 @@ In order to initialize the room during a "round", see `joinRound`.
 -}
 newInLobby : Api.Name -> Api.Name -> Api.Scoreboard -> Room
 newInLobby master myName scoreboard =
-    let notAlone =
-            if master == myName then MasterOf else LobbyWith
-    in
-        newFromList scoreboard myName notAlone
+    let notAlone = if master == myName then MasterOf else LobbyWith
+    in  newFromList scoreboard myName notAlone
 
 
 {-| Create a room for player joining while the scores are shown
@@ -120,12 +117,32 @@ joinScores me scoreboard = newFromList scoreboard me EndWith
 -}
 joinRound : Api.Name -> Api.Name -> Api.Scoreboard -> Room
 joinRound artistName myName scoreboard =
+    newFromList scoreboard myName (PlayingWith <| Api.showName artistName)
+
+forPlayers : (Players -> a) -> State -> a
+forPlayers f = andThenState (always f) (always f)
+
+andThenState :
+   ((Players -> State) -> Players -> a)
+   -> (String -> Players -> a)
+   -> State -> a
+andThenState bind mapArtist state =
+    case state of
+        Alone -> bind MasterOf Dict.empty
+        EndWith s -> bind EndWith s
+        BreakWith  s -> bind BreakWith s
+        LobbyWith  s -> bind LobbyWith s
+        MasterOf   s -> bind MasterOf s
+        PlayingWith a s -> mapArtist a s
+
+mapState : (Players -> Players) -> State -> State
+mapState trans =
     let
-        artistName_ = Api.showName artistName
-        notAlone =
-            if artistName == myName then ArtistWith else PlayingWith artistName_
+        mapper toState players =
+            let newPlayers = trans players
+            in  if Dict.isEmpty newPlayers then Alone else toState newPlayers
     in
-        newFromList scoreboard myName notAlone
+        andThenState mapper (mapper << PlayingWith)
 
 
 {-| The given room where an opponent left.
@@ -134,44 +151,28 @@ leaves : Api.Name -> Room -> Room
 leaves leaving_ { me, state } =
     let
         leaving = Api.showName leaving_
-        pop scores notAlone =
-            let removed = remove leaving scores
-            in  if isEmpty removed then
-                    { me = me, state = Alone }
-                else
-                    Room me <| notAlone <| removed
+
+        popState toState s =
+            let removed = remove leaving s
+            in  if Dict.isEmpty removed then Alone else toState removed
+
+        popArtist artist =
+            if artist == leaving then
+                popState BreakWith
+            else
+                popState (PlayingWith artist)
     in
-        case state of
-            Alone -> { me = me, state = Alone }
-            BreakWith  others -> pop others BreakWith
-            EndWith  others -> pop others EndWith
-            LobbyWith  others -> pop others LobbyWith
-            MasterOf   others -> pop others MasterOf
-            ArtistWith others -> pop others ArtistWith
-            PlayingWith artistName others ->
-                if artistName == leaving then
-                    pop others BreakWith
-                else
-                    pop others (PlayingWith artistName)
+        Room me <| andThenState popState popArtist state
 
 
 {-| The given room where someone new joined.
 -}
 joins : Api.Name -> Room -> Room
-joins joining_ { me, state } =
+joins joining { me, state } =
     let
-        joining = Api.showName joining_
-        push scores notAlone =
-            Room me <| notAlone <| insert joining (Player False []) scores
+        push = insert (Api.showName joining) (Player False [])
     in
-        case state of
-            Alone -> push empty MasterOf
-            BreakWith  others -> push others BreakWith
-            EndWith  others -> push others EndWith
-            LobbyWith  others -> push others LobbyWith
-            MasterOf   others -> push others MasterOf
-            ArtistWith others -> push others ArtistWith
-            PlayingWith a others -> push others (PlayingWith a)
+        Room me <| mapState push state
 
 
 {-| Turn the user into the game master (that means he has the role of
@@ -189,23 +190,14 @@ becomeMaster room =
 
 
 setArtist : Api.Name -> Room -> Room
-setArtist newArtist_ { me, state } =
+setArtist newArtist { me, state } =
     let
-        newArtist = Api.showName newArtist_
         withArtist others =
-            if newArtist == Api.showName (first me) then
-                { me = me, state = ArtistWith others }
-            else
-                { me = me, state = PlayingWith newArtist others }
+            if Dict.isEmpty others
+            then Alone
+            else PlayingWith (Api.showName newArtist) others
     in
-        case state of
-            Alone -> { me = me, state = Alone }
-            BreakWith  others -> withArtist others
-            EndWith  others -> withArtist others
-            LobbyWith  others -> withArtist others
-            ArtistWith others -> withArtist others
-            MasterOf   others -> withArtist others
-            PlayingWith _ others -> withArtist others
+        Room me <| forPlayers withArtist state
 
 
 {-| Whether the player is master of the room or not.
@@ -221,10 +213,10 @@ isMaster { state } =
 {-| Whether the player is the artist
 -}
 amArtist : Room -> Bool
-amArtist room =
-    case room.state of
-        ArtistWith _ -> True
-        anyelse      -> False
+amArtist { me, state } =
+    case state of
+        PlayingWith artistName _ -> artistName == Api.showName (first me)
+        _ -> False
 
 {-| Whether the player is left alone in the game
 -}
@@ -241,7 +233,7 @@ canStart : Room -> Bool
 canStart room =
     case room.state of
         MasterOf ps -> Dict.size ps > 1
-        anyelse -> False
+        _ -> False
 
 
 {-| Update scores to make sure they are as the server sees them
@@ -273,19 +265,8 @@ syncScores roundScores_ { me, state } =
                 |> List.head
                 |> Maybe.map (\(_,s) -> Player False (s :: mePlay.score))
                 |> withDefault (Player False [])
-
-        updateAll others notAlone =
-            Room (myName_, myNewScore)
-                <| notAlone (updateOthers others)
     in
-        case state of
-            Alone -> { me = me, state = Alone }
-            BreakWith  others -> updateAll others BreakWith
-            EndWith  others -> updateAll others EndWith
-            LobbyWith  others -> updateAll others LobbyWith
-            ArtistWith others -> updateAll others ArtistWith
-            MasterOf   others -> updateAll others MasterOf
-            PlayingWith a others -> updateAll others (PlayingWith a)
+        Room (myName_, myNewScore) <| mapState updateOthers state
 
 
 myName : Room -> Api.Name
@@ -303,16 +284,9 @@ guessed : Api.Name -> Room -> Room
 guessed guesser { state, me } =
     let
         setSuccess = Maybe.map (\player -> { player | succeeded = True })
-        withGuess s notA =
-            Room me <| notA <| update (Api.showName guesser) setSuccess s
-    in case state of
-            Alone -> { me = me, state = Alone }
-            BreakWith  others -> withGuess others BreakWith
-            EndWith  others -> withGuess others EndWith
-            LobbyWith  others -> withGuess others LobbyWith
-            ArtistWith others -> withGuess others ArtistWith
-            MasterOf   others -> withGuess others MasterOf
-            PlayingWith a others -> withGuess others (PlayingWith a)
+        withGuess = update (Api.showName guesser) setSuccess
+    in
+        Room me <| mapState withGuess state
 
 {-| Displays the score for a player. If first argument is true, will also
 display the differences in points from last round and offset the element to
@@ -321,12 +295,9 @@ reorder the list according to the given offsets.
 playerTally : Bool -> Int -> String -> Player -> Html msg
 playerTally showDiff offset name { score } =
     let
-        scoreDiff = case score of
-            h :: _ ->
-                if showDiff
-                then roundAsInt h
-                else 0
-            []    -> 0
+        scoreDiff = case (score, showDiff) of
+            (h::_, True) -> roundAsInt h
+            _ -> 0
 
         styleOffset = style [("top", toString (offset * 30) ++ "px")]
 
@@ -379,7 +350,7 @@ viewRoundTally room =
         previousRankings =
             roomAsList room
                 |> List.sortBy (\(_, {score}) ->
-                    -(scoreAsInt (List.drop 1 score))
+                    negate (scoreAsInt (List.drop 1 score))
                 )
 
         offsets =
@@ -399,7 +370,7 @@ viewPreviousTally room =
         roomList =
             roomAsList room
                 |> List.map (\(x, p) -> (x, { p | score = List.drop 1 p.score}))
-                |> List.sortBy (\(_, {score}) -> -(scoreAsInt score))
+                |> List.sortBy (\(_, {score}) -> negate (scoreAsInt score))
     in
         div [ id "tally-round-board" ]
             (List.map (uncurry (playerTally False 0)) roomList)
@@ -409,17 +380,7 @@ viewPreviousTally room =
 -}
 roomAsList : Room -> List (String, Player)
 roomAsList { me, state } =
-    let
-        fullList ps = (mapFirst Api.showName me :: toList ps)
-    in
-        case state of
-            Alone -> [ mapFirst Api.showName me ]
-            BreakWith  ps -> fullList ps
-            EndWith  ps -> fullList ps
-            LobbyWith  ps -> fullList ps
-            MasterOf   ps -> fullList ps
-            ArtistWith ps -> fullList ps
-            PlayingWith _ ps -> fullList ps
+    forPlayers ((::) (mapFirst Api.showName me) << toList) state
 
 
 roundAsInt : Api.RoundScore -> Int
@@ -438,13 +399,12 @@ scoreAsInt =
 view : Room -> Html msg
 view { me, state } =
     let
-        showMe = mapFirst Api.showName me
         userRow : Maybe String -> ( String, Player ) -> Html msg
         userRow artistName ( name, { score, succeeded } ) =
             li
                 [ classList
                     [ ( "user", True )
-                    , ( "me", name == first showMe )
+                    , ( "me", name == Api.showName (first me) )
                     , ( "artist", Just name == artistName )
                     , ( "guessed", succeeded )
                     ]
@@ -453,42 +413,38 @@ view { me, state } =
                 , a [] [ text <| toString <| scoreAsInt score ]
                 ]
 
+        render : Maybe String -> Players -> Html msg
         render maybeartist others =
             others
+                |> toList
+                |> (::) (mapFirst Api.showName me)
                 |> List.sortBy first
                 |> List.map (userRow maybeartist)
                 |> ul [ id "userlist" ]
     in
-        case state of
-            Alone -> render Nothing [ showMe ]
-            BreakWith  others -> render Nothing (showMe :: toList others)
-            EndWith  others -> render Nothing (showMe :: toList others)
-            LobbyWith  others -> render Nothing (showMe :: toList others)
-            MasterOf   others -> render Nothing (showMe :: toList others)
-            ArtistWith others -> render (Just (first showMe)) (showMe :: toList others)
-            PlayingWith artistName others ->
-                render (Just artistName) (showMe :: toList others)
+        andThenState (always <| render Nothing) (render << Just) state
 
 
-endBoard : List { name : String, total : Int, score : Score} -> Html msg
+endBoard : List { name : String, total : Int, score : Score } -> Html msg
 endBoard scores =
     let
         sortedScores = List.sortBy (negate << .total) scores
 
-        winners =
-            let best =
-                    List.head sortedScores
-                        |> Maybe.map .total
-                        |> withDefault 0
-            in
-                List.filter ((==) best << .total) sortedScores
-                    |> List.map .name
-
-        winnerDisplay =
-            case winners of
-                [] -> "No winners?? (pls get in touch, this is a bug)"
+        displayWinners w =
+            case w of
+                [] -> "No winners?? (please get in touch, this is a bug)"
                 [ single ] -> single ++ " wins!"
                 h::t -> String.join ", " t ++ " and " ++ h ++ " win!"
+
+        bestScore =
+            List.head sortedScores
+                |> Maybe.map .total
+                |> withDefault 0
+
+        winners =
+            List.filter ((==) bestScore << .total) sortedScores
+                |> List.map .name
+                |> displayWinners
 
         toCell : Api.RoundScore -> Html msg
         toCell score =
@@ -507,7 +463,7 @@ endBoard scores =
                 )
     in
         div [ id "finalscores" ]
-            [ h2 [] [ text winnerDisplay ]
+            [ h2 [] [ text winners ]
             , H.table [] [ H.tbody [] (List.map toRow sortedScores) ]
             ]
 
@@ -524,4 +480,3 @@ viewBoard room =
         roomAsList room
             |> List.map adaptEntry
             |> endBoard
-
