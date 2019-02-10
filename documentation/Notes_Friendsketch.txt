@@ -28,6 +28,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Give feedback (like ''ghost'' in chat) when drawing.
 
+> Make sure n°round % n°players = 0
+
 ===== Current roadmap =====
 * Add tests
 * Better random words

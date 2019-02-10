@@ -24,6 +24,9 @@ quick_error! {
         ImpossibleLeave {
             description("Attempted to kick absent player")
         }
+        BadEnd {
+            description("Couldn't end the round (because it's not a round)")
+        }
         BadStart {
             description("Couldn't start a new round")
         }
@@ -327,8 +330,11 @@ impl Game {
     /// Set game state to "Round summary" and indicate that all players who
     /// haven't guessed yet have failed.
     /// Returns the scores for the round that is being terminated.
-    fn end_round(&mut self) -> Vec<(Name, api::RoundScore)> {
+    fn end_round(&mut self, word: String) -> Result<(Broadcast, Cmd), GameErr> {
         use self::RoundScore::Failed;
+        use api::{
+            GameMsg::HiddenEvent, HiddenEvent::Over, VisibleEvent::SyncOver,
+        };
         info!("Ending round {}", self.round_no);
         if let Game_::Playing {
             artist,
@@ -336,7 +342,7 @@ impl Game {
             ..
         } = self.state
         {
-            let ret = self
+            let round_scores = self
                 .players
                 .iter_mut()
                 .map(|(id, player)| {
@@ -346,10 +352,14 @@ impl Game {
                 })
                 .collect();
             self.state = Game_::RoundResults { artist };
-            ret
+            self.game_log.push_front(SyncOver(word.clone()));
+            let send = Over(word.to_string(), round_scores);
+            let msg = Feedback_::NextRound(self.round_no);
+            let cmd = game::Cmd::In(vec![(TALLY_LENGTH, Feedback { msg })]);
+            Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
         } else {
             error!("Ending a round that is not happening");
-            Vec::new()
+            Err(GameErr::BadEnd)
         }
     }
 
@@ -512,8 +522,7 @@ impl Game {
         use self::{
             api::{
                 GameMsg::HiddenEvent,
-                HiddenEvent::{Mastery, Over, Reveal, TimeoutSync},
-                VisibleEvent::SyncOver,
+                HiddenEvent::{Mastery, Reveal, TimeoutSync},
             },
             Feedback_::*,
             Game_::*,
@@ -539,35 +548,22 @@ impl Game {
                     game::Cmd::In(vec![(REVEAL_INTERVAL, cmd)]),
                 ))
             }
-            // TODO: Migrate redudant code here into the `end_round` function
             (Playing { word, .. }, EndRound(r)) if r == cr => {
                 let word = word.to_string();
-                let scores = self.end_round();
-                self.game_log.push_front(SyncOver(word.clone()));
-                let send = Over(word, scores);
-                let msg = Feedback_::NextRound(self.round_no);
-                let cmd = game::Cmd::In(vec![(TALLY_LENGTH, Feedback { msg })]);
-                Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
+                self.end_round(word)
             }
             (Playing { lap, word, .. }, TickTimeout(r)) if r == cr => {
                 let timeout = ROUND_LENGTH - lap.elapsed().as_secs() as i16;
-                let (classic_reply, cmd) = if timeout <= 0 {
-                    self.game_log.push_front(SyncOver(word.to_string()));
-                    let word_s = word.to_string();
-                    let scores = self.end_round();
-                    let send = Over(word_s, scores);
-                    let msg = Feedback_::NextRound(self.round_no);
-                    let cmd =
-                        game::Cmd::In(vec![(TALLY_LENGTH, Feedback { msg })]);
-                    (HiddenEvent(send), cmd)
+                if timeout <= 0 {
+                    let word = word.to_string();
+                    self.end_round(word)
                 } else {
                     let send = TimeoutSync(timeout);
                     let msg = Feedback_::TickTimeout(self.round_no);
                     let cmd =
                         game::Cmd::In(vec![(TICK_UPDATE, Feedback { msg })]);
-                    (HiddenEvent(send), cmd)
-                };
-                Ok((broadcast!(to_all, classic_reply), cmd))
+                    Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
+                }
             }
             (RoundResults { .. }, NextRound(r)) if r == cr => {
                 if cr >= self.round_count {
