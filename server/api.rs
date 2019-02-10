@@ -117,7 +117,7 @@ impl Serialize for Name {
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text = unsafe { from_utf8_unchecked(&self.0) };
-        write!(f, "{}", text)
+        f.pad(text)
     }
 }
 
@@ -125,6 +125,11 @@ impl fmt::Debug for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(N#{})", self)
     }
+}
+
+#[cfg(test)]
+pub fn name_from_string(name: String) -> Name {
+    Name(name.into_bytes())
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -157,7 +162,7 @@ impl<'de> Deserialize<'de> for RoomId {
 impl fmt::Display for RoomId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text_rep: String = (&self.0).into();
-        write!(f, "{}", text_rep)
+        f.pad(&text_rep)
     }
 }
 
@@ -174,6 +179,7 @@ pub enum RoundScore {
     Failed,
     Absent,
 }
+
 pub fn score_total(scores: &[RoundScore]) -> Score {
     use self::RoundScore::*;
     scores

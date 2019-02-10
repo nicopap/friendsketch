@@ -33,6 +33,7 @@ The game is based on the structure of a room.
 	* The spectators have to guess the word being drawn. Points are distributed to the spectators based on the alacrity with which the spectator guessed the correct word.
 	* The artist earns at the end of the round points based on how many people guessed the word correctly.
 * Each player gets to draw during a set.
+	* If a player joins mid-set, they get to draw at the end of it
 
 ===== Design =====
 

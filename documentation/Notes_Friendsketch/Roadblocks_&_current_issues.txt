@@ -14,16 +14,16 @@ Created Tuesday 26 September 2017
 
 * Use unified font, for better cross browser aspect
 * Highlight leading score players
-* Display current round and total round somewhere
+* Display current round and total round somewhere (starting to draw message + round result)
 * Think about restart button and timeout on Game Summary screen
 * Investigate what happens when a player joins during Game Summary (it's broken)
 * Fix the scores not resetting on frontend when restarting
+* Properly handle short disconnections (ie: artist should know they are the artist, and guessers should still be able to guess)
 
 ==== Server ====
 
 * Create special structure to hold words to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters,
-* ''RoundResults {artist}'' → Probably possible to remove ''artist'' field: think about it.
 
 ===== Game Event Log =====
 

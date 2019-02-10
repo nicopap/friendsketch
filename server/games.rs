@@ -1,4 +1,6 @@
 mod game;
+mod party;
+mod scores;
 mod tugofsketch;
 
 use futures::{stream, sync::mpsc, Future, Sink, Stream};
@@ -287,7 +289,6 @@ where
         let (buffer_sink, buffer_stream) = mpsc::unbounded();
         warp::spawn(
             buffer_stream
-                .inspect(|resp| debug!("ws send: {:?}", resp))
                 .map_err(|()| -> warp::Error {
                     panic!("unreachable at games.rs:{}", line!())
                 })
@@ -296,18 +297,16 @@ where
                 .map_err(|ws_err| error!("ws send: {}", ws_err)),
         );
         self.connections.insert(id, Connection(buffer_sink));
-        let client_stream = socket_stream
-            .inspect(|req| debug!("ws receive: {:?}", req))
-            .map(move |msg| {
-                msg.to_str()
-                    .map_err(|()| Error::custom("invalid string"))
-                    .and_then(from_str)
-                    .map(|v| Game(Message(id, v)))
-                    .unwrap_or_else(|err| {
-                        error!("validation: {}/ `{:?}`", err, msg.to_str());
-                        Game(Leaves(id))
-                    })
-            });
+        let client_stream = socket_stream.map(move |msg| {
+            msg.to_str()
+                .map_err(|()| Error::custom("invalid string"))
+                .and_then(from_str)
+                .map(|v| Game(Message(id, v)))
+                .unwrap_or_else(|err| {
+                    error!("validation: {}/ `{:?}`", err, msg.to_str());
+                    Game(Leaves(id))
+                })
+        });
         let sink_to_manager = self.manager_sink.clone();
         warp::spawn(
             client_stream
@@ -345,7 +344,6 @@ where
                         .and_then(|Connection(conn)| send!(conn, message))?;
                 }
                 for id in ids.iter() {
-                    debug!("polling {:?}", id);
                     let mut connection = &self.connections[*id].0;
                     comm_err!(connection.poll_complete())?;
                 }
@@ -378,7 +376,6 @@ where
                 send!(connection.0, message)?;
             }
         }
-        debug!("polling all");
         for connection in self.connections.values_mut() {
             comm_err!(connection.0.poll_complete())?;
         }
@@ -393,7 +390,6 @@ where
         for connection in self.connections.values_mut() {
             send!(connection.0, message)?;
         }
-        debug!("polling all");
         for connection in self.connections.values_mut() {
             comm_err!(connection.0.poll_complete())?;
         }

@@ -1,0 +1,18 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2019-02-10T16:32:06+01:00
+
+====== Game testing ======
+Created Sunday 10 February 2019
+
+* Guessing:
+	* Artist leaves → End round
+	* Someone leaves but all others have guessed → End round
+	* Someone who guessed leaves → Never ends the round
+	* Someone joins midgame, afterward all (but the new player) guessed → Ends round
+
+* Scores:
+	* After restart, all scores are at 0
+	* After a round, the scores increse accordingly
+
+* A player always gets to draw within N rounds (where N = n°players)

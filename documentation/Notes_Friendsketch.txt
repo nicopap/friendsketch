@@ -22,13 +22,18 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Backend leave handling]]
 
+[[+Game testing]]
+
 [[+Devlog]]
 
 > Possible optimisation: serialize ''GameEvent'' when adding them to game log
 
 > Give feedback (like ''ghost'' in chat) when drawing.
 
-> Make sure n°round % n°players = 0
+> Give an estimated game length based on settings used in creation page
+
+> Make sure n°round % n°players = 0 ⇒ Use ''Set'' system as implemented in ''Party'' 
+
 
 ===== Current roadmap =====
 * Add tests
