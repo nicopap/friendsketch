@@ -1,7 +1,5 @@
-mod roomids;
-#[macro_use]
-mod autode;
 pub mod pages;
+mod roomids;
 
 use quick_error::quick_error;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
@@ -31,7 +29,7 @@ quick_error! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ChatContent(Vec<u8>);
 impl ChatContent {
     pub fn as_bytes(&self) -> &[u8] {
@@ -66,7 +64,18 @@ impl Serialize for ChatContent {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+impl fmt::Debug for ChatContent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.0.len() > 30 {
+            write!(f, "\"{} bytes message\"", self.0.len())
+        } else {
+            let text = unsafe { from_utf8_unchecked(&self.0) };
+            write!(f, "{}", text)
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Hash)]
 pub struct Name(Vec<u8>);
 
 impl<'de> Deserialize<'de> for Name {
@@ -112,6 +121,12 @@ impl fmt::Display for Name {
     }
 }
 
+impl fmt::Debug for Name {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(N#{})", self)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct RoomId(roomids::RoomId);
 
@@ -129,7 +144,15 @@ impl FromStr for RoomId {
         Ok(RoomId(validated))
     }
 }
-impl_deserialize_with_from_str!(RoomId);
+impl<'de> Deserialize<'de> for RoomId {
+    fn deserialize<D>(deserialize: D) -> Result<RoomId, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let d = <&str>::deserialize(deserialize)?;
+        <RoomId>::from_str(d).map_err(de::Error::custom)
+    }
+}
 
 impl fmt::Display for RoomId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
