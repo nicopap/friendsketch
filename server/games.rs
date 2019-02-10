@@ -96,7 +96,11 @@ struct Connection(mpsc::UnboundedSender<Message>);
 macro_rules! handle_cmd {
     ($manager:expr, $cmd:expr) => {
         match $cmd {
-            Cmd::In(feedbacks) => {
+            Cmd::In(delay, feedback) => {
+                $manager.queue(delay, feedback);
+                Ok(())
+            }
+            Cmd::InMultiple(feedbacks) => {
                 for (delay, feedback) in feedbacks {
                     $manager.queue(delay, feedback);
                 }

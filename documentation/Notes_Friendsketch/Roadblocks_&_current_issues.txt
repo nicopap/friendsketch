@@ -23,7 +23,6 @@ Created Tuesday 26 September 2017
 
 * Create special structure to hold words to guess, implement management of words lists etc
 	* related to: take random character from UTF string, display non-letter characters,
-* ''Feedback {msg}'' into ''Feedback(msg)'' → removes a lot of boilerplate
 * ''RoundResults {artist}'' → Probably possible to remove ''artist'' field: think about it.
 
 ===== Game Event Log =====

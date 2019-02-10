@@ -14,7 +14,9 @@ pub enum Broadcast<Id, Msg> {
 #[derive(Debug)]
 pub enum Cmd<Msg> {
     /// Send back to `Game` given `Msg` in `Duration`
-    In(Vec<(Duration, Msg)>),
+    In(Duration, Msg),
+    /// Send back to `Game` given `Msg` in `Duration` (multiple times)
+    InMultiple(Vec<(Duration, Msg)>),
     /// update `Game` immediately with given `Msg`
     Immediately(Msg),
     /// Do nothing effectfull

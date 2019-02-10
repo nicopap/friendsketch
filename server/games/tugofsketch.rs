@@ -55,10 +55,7 @@ enum Game_ {
 
 /// Something that `Game` recieves back from the manager
 #[derive(Debug)]
-pub struct Feedback {
-    /// The message itself
-    msg: Feedback_,
-}
+pub struct Feedback(Feedback_);
 
 #[derive(Debug)]
 enum Feedback_ {
@@ -234,13 +231,12 @@ impl Game {
                 let artist_msg = make_msg(Artist(word.to_string()));
 
                 let rc = self.round_no;
-                let feedback = |msg| Feedback { msg };
-                let revealback = feedback(RevealLetter(rc));
-                let tickback = feedback(TickTimeout(rc));
-                let overback = feedback(EndRound(rc));
+                let revealback = Feedback(RevealLetter(rc));
+                let tickback = Feedback(TickTimeout(rc));
+                let overback = Feedback(EndRound(rc));
                 Some((
                     broadcast!(to_all_but, $next_artist, msg, Some(artist_msg)),
-                    game::Cmd::In(vec![
+                    game::Cmd::InMultiple(vec![
                         (TICK_UPDATE, tickback),
                         (REVEAL_INTERVAL, revealback),
                         (Duration::from_secs(ROUND_LENGTH as u64), overback),
@@ -355,7 +351,7 @@ impl Game {
             self.game_log.push_front(SyncOver(word.clone()));
             let send = Over(word.to_string(), round_scores);
             let msg = Feedback_::NextRound(self.round_no);
-            let cmd = game::Cmd::In(vec![(TALLY_LENGTH, Feedback { msg })]);
+            let cmd = game::Cmd::In(TALLY_LENGTH, Feedback(msg));
             Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
         } else {
             error!("Ending a round that is not happening");
@@ -365,7 +361,7 @@ impl Game {
 
     fn leaves(&mut self, player: Id) -> Result<(Broadcast, Cmd), GameErr> {
         use api::VisibleEvent::Left;
-        let immediately = |msg| game::Cmd::Immediately(Feedback { msg });
+        let immediately = |msg| game::Cmd::Immediately(Feedback(msg));
         match self.players.remove(player) {
             Some(Player { name, .. }) => {
                 let left = GameMsg::VisibleEvent(Left(name.clone()));
@@ -458,7 +454,7 @@ impl Game {
             },
             GameReq::Chat(msg) => match self.state {
                 Game_::Playing { word, .. } => {
-                    use self::game::Cmd;
+                    use self::{game::Cmd, Feedback_::EndRound};
                     use api::{
                         GameMsg::{HiddenEvent, VisibleEvent},
                         HiddenEvent::Correct,
@@ -470,9 +466,7 @@ impl Game {
                         let msg = VisibleEvent(Guessed(guesser));
                         let correct = HiddenEvent(Correct(word.to_string()));
                         let cmd = if complete {
-                            let end_round = Feedback {
-                                msg: Feedback_::EndRound(self.round_no),
-                            };
+                            let end_round = Feedback(EndRound(self.round_no));
                             Cmd::Immediately(end_round)
                         } else {
                             Cmd::None
@@ -517,7 +511,7 @@ impl Game {
 
     fn feedback(
         &mut self,
-        Feedback { msg }: Feedback,
+        Feedback(msg): Feedback,
     ) -> Result<(Broadcast, Cmd), GameErr> {
         use self::{
             api::{
@@ -540,12 +534,10 @@ impl Game {
                 let (index, letter) =
                     word.chars().enumerate().choose(&mut rng).unwrap();
                 let msg = HiddenEvent(Reveal(index, letter));
-                let cmd = Feedback {
-                    msg: Feedback_::RevealLetter(self.round_no),
-                };
+                let cmd = Feedback(RevealLetter(self.round_no));
                 Ok((
                     broadcast!(to_all_but, *artist, msg, None),
-                    game::Cmd::In(vec![(REVEAL_INTERVAL, cmd)]),
+                    game::Cmd::In(REVEAL_INTERVAL, cmd),
                 ))
             }
             (Playing { word, .. }, EndRound(r)) if r == cr => {
@@ -559,9 +551,8 @@ impl Game {
                     self.end_round(word)
                 } else {
                     let send = TimeoutSync(timeout);
-                    let msg = Feedback_::TickTimeout(self.round_no);
-                    let cmd =
-                        game::Cmd::In(vec![(TICK_UPDATE, Feedback { msg })]);
+                    let msg = TickTimeout(self.round_no);
+                    let cmd = game::Cmd::In(TICK_UPDATE, Feedback(msg));
                     Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
                 }
             }
@@ -591,6 +582,7 @@ impl Game {
     }
 
     fn game_over(&mut self) -> Result<(Broadcast, Cmd), GameErr> {
+        use self::Feedback_::Restart;
         let mut scores = self.api_scores();
         scores.sort_unstable_by_key(|(_, s)| api::score_total(s));
 
@@ -600,12 +592,7 @@ impl Game {
         let msg = GameMsg::HiddenEvent(api::HiddenEvent::Complete(scores));
         Ok((
             broadcast!(to_all, msg),
-            game::Cmd::In(vec![(
-                RESTART_INTERVAL,
-                Feedback {
-                    msg: Feedback_::Restart(self.round_no),
-                },
-            )]),
+            game::Cmd::In(RESTART_INTERVAL, Feedback(Restart(self.round_no))),
         ))
     }
 }
@@ -629,7 +616,7 @@ impl game::Game<Id> for Game {
         &mut self,
         name: Name,
     ) -> Result<(Option<Id>, Broadcast, Cmd), GameErr> {
-        use self::{Game_::*, RoundScore::Absent};
+        use self::{Feedback_::TooLate, Game_::*, RoundScore::Absent};
         use api::VisibleEvent::Joined;
         if self
             .players
@@ -652,12 +639,7 @@ impl game::Game<Id> for Game {
                 score:   repeat(Absent).take(rounds_elapsed).collect(),
                 drop_id: Some(drop_id),
             });
-            let cmd = game::Cmd::In(vec![(
-                JOIN_DELAY,
-                Feedback {
-                    msg: Feedback_::TooLate(id, drop_id),
-                },
-            )]);
+            let cmd = game::Cmd::In(JOIN_DELAY, Feedback(TooLate(id, drop_id)));
             match self.state {
                 Empty => {
                     self.state = Lobby { leader: id };
@@ -694,12 +676,10 @@ impl game::Game<Id> for Game {
             game::Request::Leaves(id) => {
                 let drop_id = rand::random();
                 self.players[id].drop_id = Some(drop_id);
-                let cmd = game::Cmd::In(vec![(
+                let cmd = game::Cmd::In(
                     DROP_DELAY,
-                    Feedback {
-                        msg: Feedback_::TooLate(id, drop_id),
-                    },
-                )]);
+                    Feedback(Feedback_::TooLate(id, drop_id)),
+                );
                 Ok((broadcast!(nothing), cmd))
             }
             game::Request::Feedback(feedback) => self.feedback(feedback),
