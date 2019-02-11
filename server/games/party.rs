@@ -212,8 +212,9 @@ impl Party {
         self.rounds_elapsed += 1;
         self.score_keeper = ScoreKeeper::new(self.players.len() as u16);
         match self.game_results {
-            GameResults::Starting | GameResults::Complete(_) =>
-                self.game_results = GameResults::Running,
+            GameResults::Starting | GameResults::Complete(_) => {
+                self.game_results = GameResults::Running
+            }
             GameResults::Running => {
                 for (id, player) in self.players.iter_mut() {
                     let score = self.round_scores.remove(id).unwrap_or(Failed);
@@ -247,7 +248,9 @@ impl Party {
             None => {
                 self.current_set += 1;
                 info!("Entering set {}", self.current_set);
-                self.players.iter_mut().for_each(|(_, p)| p.set_drawn = false);
+                self.players
+                    .iter_mut()
+                    .for_each(|(_, p)| p.set_drawn = false);
 
                 if self.current_set > self.set_count {
                     let scoreboard = self.game_reset();
@@ -341,6 +344,25 @@ impl Party {
         self.current_set = 1;
         self.rounds_elapsed = 0;
         ret
+    }
+
+    /// Returns the scores up to now, including current round
+    pub fn full_standings_copy(&self) -> api::Scoreboard {
+        self.players
+            .iter()
+            .map(|(id, player)| {
+                let mut score: Vec<api::RoundScore> =
+                    player.score.iter().map(|x| x.clone().into()).collect();
+                score.push(
+                    self.round_scores
+                        .get(id)
+                        .map(|x| x.clone().into())
+                        .unwrap_or(api::RoundScore::Failed),
+                );
+                let name = player.name.clone();
+                (name, score)
+            })
+            .collect()
     }
 
     /// Returns the scores for the current round

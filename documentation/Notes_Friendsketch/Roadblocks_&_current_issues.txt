@@ -16,7 +16,6 @@ Created Tuesday 26 September 2017
 * Highlight leading score players
 * Display current round and total round somewhere (starting to draw message + round result)
 * Think about restart button and timeout on Game Summary screen
-* When a player joins during RoundSummary, they get outdated scores
 * Properly handle short disconnections (ie: artist should know they are the artist, and guessers should still be able to guess)
 
 ==== Server ====

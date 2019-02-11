@@ -114,7 +114,11 @@ impl Game {
             GameMsg::HiddenEvent,
             GameScreen::{EndSummary, Lobby, Round, Scores},
         };
-        let scores = self.players.scoreboard_copy();
+        let scores = if let Game_::RoundResults = self.state {
+            self.players.full_standings_copy()
+        } else {
+            self.players.scoreboard_copy()
+        };
         let history = self.game_log.iter().map(Clone::clone).collect();
         let screen = match self.state {
             Game_::Empty => {
