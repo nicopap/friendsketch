@@ -28,7 +28,7 @@ mod consts {
     use std::time::Duration;
     pub(super) const TICK_UPDATE: Duration = Duration::from_secs(25);
     pub(super) const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
-    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(6);
+    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(3);
     pub(super) const DROP_DELAY: Duration = Duration::from_secs(4);
     pub(super) const JOIN_DELAY: Duration = Duration::from_secs(30);
     pub(super) const RESTART_INTERVAL: Duration = Duration::from_secs(20);

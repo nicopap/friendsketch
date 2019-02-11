@@ -305,7 +305,7 @@ pub struct Setting {
 #[cfg(all(debug_assertions, not(test)))]
 #[rustfmt::skip]
 mod defaults {
-    pub(super) const fn set_count() -> u8 { 2 }
+    pub(super) const fn set_count() -> u8 { 1 }
     pub(super) const fn round_duration() -> i16 { 17 }
 }
 

@@ -51,8 +51,10 @@ sync : Api.GameState -> Api.Name -> Game
 sync { screen, history, scores } username =
     let (gamePart, makeRoom, canvasInit) = case screen of
         Api.Summary ->
-            Debug.crash "final game summary not supported yet"
-
+            ( Summary
+            , Room.joinBreak
+            , Canvas.Demo
+            )
         Api.RoundScores ->
             ( BetweenRound <| Guess.new Nothing 0
             , Room.joinBreak

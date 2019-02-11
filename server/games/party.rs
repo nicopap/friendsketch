@@ -118,6 +118,13 @@ impl Into<(Name, Vec<api::RoundScore>)> for Player {
     }
 }
 
+#[derive(Clone, Debug)]
+enum GameResults {
+    Starting,
+    Complete(api::Scoreboard),
+    Running,
+}
+
 #[derive(Debug)]
 pub struct Party {
     players:        SlotMap<Id, Player>,
@@ -125,7 +132,7 @@ pub struct Party {
     rounds_elapsed: u16,
     round_scores:   SecondaryMap<Id, RoundScore>,
     score_keeper:   ScoreKeeper,
-    game_started:   bool,
+    game_results:   GameResults,
     set_count:      u8,
 }
 
@@ -137,7 +144,11 @@ impl fmt::Display for Party {
             self.rounds_elapsed, self.current_set
         )?;
         for (id, player) in self.players.iter() {
-            write!(f, "{:>20}: ", player.name)?;
+            if player.drop_id.is_none() {
+                write!(f, "{:>20}: ", player.name)?;
+            } else {
+                write!(f, "{:>19}#: ", player.name)?;
+            }
             for score in player.score.iter() {
                 write!(f, "{:<6}", score)?;
             }
@@ -162,7 +173,7 @@ impl Party {
             rounds_elapsed: 0,
             round_scores: SecondaryMap::with_capacity(capacity),
             score_keeper: ScoreKeeper::new(capacity as u16),
-            game_started: false,
+            game_results: GameResults::Starting,
             set_count,
         }
     }
@@ -200,14 +211,15 @@ impl Party {
         use self::RoundScore::Failed;
         self.rounds_elapsed += 1;
         self.score_keeper = ScoreKeeper::new(self.players.len() as u16);
-        if self.game_started {
-            for (id, player) in self.players.iter_mut() {
-                // TODO: think about what to do of drop_id.is_none()
-                let score = self.round_scores.remove(id).unwrap_or(Failed);
-                player.score.push(score);
+        match self.game_results {
+            GameResults::Starting | GameResults::Complete(_) =>
+                self.game_results = GameResults::Running,
+            GameResults::Running => {
+                for (id, player) in self.players.iter_mut() {
+                    let score = self.round_scores.remove(id).unwrap_or(Failed);
+                    player.score.push(score);
+                }
             }
-        } else {
-            self.game_started = true;
         }
         if let Some(single) = self.one_remaining() {
             self.game_reset();
@@ -216,14 +228,11 @@ impl Party {
         self.round_scores.clear();
         info!("Entering round {}", self.rounds_elapsed);
         debug!("{}", self);
-        let set_count = self.set_count;
-        let players = &mut self.players;
-        let round_scores = &mut self.round_scores;
-        let current_set = &mut self.current_set;
 
+        let round_scores = &mut self.round_scores;
         macro_rules! create_artist {
             () => {
-                players.iter_mut().find_map(|(id, player)| {
+                self.players.iter_mut().find_map(|(id, player)| {
                     if !player.set_drawn && player.drop_id.is_none() {
                         player.set_drawn = true;
                         round_scores.insert(id, RoundScore::Artist(0));
@@ -236,11 +245,11 @@ impl Party {
         };
         match create_artist!() {
             None => {
-                *current_set += 1;
-                info!("Entering set {}", current_set);
-                players.iter_mut().for_each(|(_, p)| p.set_drawn = false);
+                self.current_set += 1;
+                info!("Entering set {}", self.current_set);
+                self.players.iter_mut().for_each(|(_, p)| p.set_drawn = false);
 
-                if *current_set > set_count {
+                if self.current_set > self.set_count {
                     let scoreboard = self.game_reset();
                     Err(GameEnding::Complete(scoreboard))
                 } else {
@@ -327,7 +336,7 @@ impl Party {
             ret.push((player.name.clone(), score));
             player.set_drawn = false;
         });
-        self.game_started = false;
+        self.game_results = GameResults::Complete(ret.clone());
         self.round_scores.clear();
         self.current_set = 1;
         self.rounds_elapsed = 0;
@@ -388,7 +397,11 @@ impl Party {
     }
 
     pub fn scoreboard_copy(&self) -> api::Scoreboard {
-        self.players.values().map(|x| x.clone().into()).collect()
+        if let GameResults::Complete(ret) = &self.game_results {
+            ret.clone()
+        } else {
+            self.players.values().map(|x| x.clone().into()).collect()
+        }
     }
 }
 
