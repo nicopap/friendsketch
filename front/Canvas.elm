@@ -58,7 +58,7 @@ The canvas knows whether to send and allow drawing with its state:
 -}
 type Kind
     = Receiver (List Stroke)
-    | Sender
+    | Sender (List Stroke)
     | Demo
 
 
@@ -87,7 +87,7 @@ new kind =
     let (strokes, state) =
             case kind of
                 Receiver strokes -> (strokes, Spectator)
-                Sender -> ([], Artist)
+                Sender strokes -> (strokes, Artist)
                 Demo -> ([], Pregame)
     in  { strokes = strokes
         , state = state

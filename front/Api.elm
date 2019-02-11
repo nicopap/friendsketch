@@ -235,6 +235,7 @@ type alias RoundState =
     { drawing : List Stroke
     , artist : Name
     , timeout : Int
+    , word : Maybe Guess
     }
 
 
@@ -244,6 +245,7 @@ decoderRoundState =
         <*| "drawing" :* decoderDrawing
         |*| "artist" :* decoderName
         |*| "timeout" :* Dec.int
+        |*| "word" :* Dec.nullable decoderGuess
 
 
 

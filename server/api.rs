@@ -206,6 +206,7 @@ pub enum GameScreen {
         drawing: Vec<Stroke>,
         artist:  Name,
         timeout: i16,
+        word:    Option<Guess>,
     },
     Lobby {
         master: Name,
@@ -255,7 +256,7 @@ pub enum GameMsg {
 #[serde(rename_all = "lowercase")]
 pub enum Guess {
     Artist(String),
-    Guess(usize),
+    Guess(u16),
 }
 
 #[derive(Debug, Serialize, Clone)]

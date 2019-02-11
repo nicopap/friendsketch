@@ -60,11 +60,15 @@ sync { screen, history, scores } username =
             , Room.joinBreak
             , Canvas.Demo
             )
-        Api.Round { drawing, artist, timeout } ->
-            ( Round <| Guess.new Nothing timeout
-            , Room.joinRound artist
-            , Canvas.Receiver drawing
-            )
+        Api.Round { drawing, artist, timeout, word } ->
+            let canvas = case word of
+                    Just (Api.ForArtist _) -> Canvas.Sender drawing
+                    _ -> Canvas.Receiver drawing
+            in
+                ( Round <| Guess.new word timeout
+                , Room.joinRound artist
+                , canvas
+                )
         Api.Lobby master ->
             ( LobbyState { hideId = True }
             , Room.newInLobby master
@@ -198,7 +202,7 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
                 newRoom = roomMod room
                 newCanvas =
                     if Room.amArtist newRoom then
-                        Canvas.new Canvas.Sender
+                        Canvas.new <| Canvas.Sender []
                     else
                         Canvas.new <| Canvas.Receiver []
                 newGame = Game

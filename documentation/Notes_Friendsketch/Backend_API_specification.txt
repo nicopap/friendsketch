@@ -142,6 +142,7 @@ RoundState =
 	{ drawing: Drawing
 	, artist: Name
 	, timeout: Int
+	, word: WordGuess | nil
 	}
 
 Scoreboard = [ (Name, [RoundScore]) ]

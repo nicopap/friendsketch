@@ -110,7 +110,7 @@ macro_rules! broadcast {
 
 impl Game {
     /// Make a `GameMsg::Sync` based on the game's state
-    fn sync_msg_copy(&self) -> GameMsg {
+    fn msg_copy(&self, to: Option<Id>) -> GameMsg {
         use api::{
             GameMsg::HiddenEvent,
             GameScreen::{EndSummary, Lobby, Round, Scores},
@@ -134,12 +134,27 @@ impl Game {
                 ref drawing,
                 artist,
                 lap,
-                ..
-            } => Round {
-                timeout: self.round_duration - lap.elapsed().as_secs() as i16,
-                drawing: drawing.clone(),
-                artist:  self.players.name_of(artist),
-            },
+                word,
+            } => {
+                let word = if let Some(player) = to {
+                    if player == artist {
+                        Some(api::Guess::Artist(word.to_string()))
+                    } else if self.players.can_guess(player) {
+                        Some(api::Guess::Guess(word.len() as u16))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                Round {
+                    timeout: self.round_duration
+                        - lap.elapsed().as_secs() as i16,
+                    drawing: drawing.clone(),
+                    artist: self.players.name_of(artist),
+                    word,
+                }
+            }
             Game_::EndResults => EndSummary,
         };
         HiddenEvent(api::HiddenEvent::Sync {
@@ -198,7 +213,11 @@ impl Game {
                         self.players.name_of(player),
                     );
                     return Ok((
-                        broadcast!(to_unique, player, self.sync_msg_copy()),
+                        broadcast!(
+                            to_unique,
+                            player,
+                            self.msg_copy(Some(player))
+                        ),
                         game::Cmd::None,
                     ));
                 }
@@ -214,7 +233,7 @@ impl Game {
             Err(GameEnding::OneRemaining(leader)) => {
                 self.state = Game_::Lobby { leader };
                 return Ok((
-                    broadcast!(to_all, self.sync_msg_copy()),
+                    broadcast!(to_all, self.msg_copy(None)),
                     game::Cmd::None,
                 ));
             }
@@ -237,7 +256,7 @@ impl Game {
                 word,
             }))
         };
-        let msg = make_msg(Guess(word.chars().count()));
+        let msg = make_msg(Guess(word.len() as u16));
         let artist_msg = make_msg(Artist(word.to_string()));
 
         let cr = self.players.rounds_elapsed();
@@ -349,7 +368,7 @@ impl Game {
         use self::api::GameReq;
         match request {
             GameReq::Sync => Ok((
-                broadcast!(to_unique, player, self.sync_msg_copy()),
+                broadcast!(to_unique, player, self.msg_copy(Some(player))),
                 game::Cmd::None,
             )),
             GameReq::Start => self.next_round(Some(player)),
@@ -378,7 +397,7 @@ impl Game {
                     ))
                 }
                 _ => Ok((
-                    broadcast!(to_unique, player, self.sync_msg_copy()),
+                    broadcast!(to_unique, player, self.msg_copy(Some(player))),
                     game::Cmd::None,
                 )),
             },

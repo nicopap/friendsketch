@@ -205,8 +205,9 @@ impl Party {
     /// return the first artist for this set.
     /// Finally, if despite getting to a new set, we can't find an appropriate
     /// player to be the artist, returns `Err(NoArtistLeft)`.
-    /// If the maximum set count has been reached, returns `Err(Complete)`
-    /// If there is only one player left anyway, returns `Err(OneRemaining)`
+    /// If the maximum set count has been reached, completes the game and
+    /// returns `Err(Complete)`
+    /// If there is only one player left, `Err(OneRemaining)`
     pub fn new_round(&mut self) -> Result<Id, GameEnding> {
         use self::RoundScore::Failed;
         self.rounds_elapsed += 1;
@@ -223,7 +224,7 @@ impl Party {
             }
         }
         if let Some(single) = self.one_remaining() {
-            self.game_reset();
+            self.complete();
             return Err(GameEnding::OneRemaining(single));
         }
         self.round_scores.clear();
@@ -253,7 +254,7 @@ impl Party {
                     .for_each(|(_, p)| p.set_drawn = false);
 
                 if self.current_set > self.set_count {
-                    let scoreboard = self.game_reset();
+                    let scoreboard = self.complete();
                     Err(GameEnding::Complete(scoreboard))
                 } else {
                     create_artist!().ok_or(GameEnding::NoArtistLeft)
@@ -317,7 +318,7 @@ impl Party {
             if self.players.is_empty() {
                 EmptyParty
             } else if let Some(single) = self.one_remaining() {
-                self.game_reset();
+                self.complete();
                 OneRemaining(left, single)
             } else if let Some(Artist(_)) = self.round_scores.get(id) {
                 WasArtist(left)
@@ -331,8 +332,8 @@ impl Party {
         }
     }
 
-    /// Resets the game to an initial state without any score
-    fn game_reset(&mut self) -> api::Scoreboard {
+    /// Sets the game as "Complete"
+    fn complete(&mut self) -> api::Scoreboard {
         let mut ret = Vec::with_capacity(self.players.len());
         self.players.iter_mut().for_each(|(_, player)| {
             let score = player.score.drain(..).map(Into::into).collect();
@@ -365,6 +366,11 @@ impl Party {
             .collect()
     }
 
+    /// Returns whether given player can still guess this round
+    pub fn can_guess(&self, id: Id) -> bool {
+        !self.round_scores.contains_key(id)
+    }
+
     /// Returns the scores for the current round
     pub fn current_standings(&self) -> Vec<(Name, api::RoundScore)> {
         self.players
@@ -384,7 +390,7 @@ impl Party {
     /// Updates score such as given player guessed correctly
     pub fn correct(&mut self, artist: Id, player: Id) -> Guess {
         use self::RoundScore::{Artist, Guessed};
-        if !self.round_scores.contains_key(player) {
+        if self.can_guess(player) {
             let score = self.score_keeper.next();
             self.round_scores.insert(player, Guessed(score));
 
