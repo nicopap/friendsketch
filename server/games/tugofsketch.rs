@@ -109,7 +109,8 @@ macro_rules! broadcast {
 }
 
 impl Game {
-    fn into_sync_msg(&self) -> GameMsg {
+    /// Make a `GameMsg::Sync` based on the game's state
+    fn sync_msg_copy(&self) -> GameMsg {
         use api::{
             GameMsg::HiddenEvent,
             GameScreen::{EndSummary, Lobby, Round, Scores},
@@ -197,7 +198,7 @@ impl Game {
                         self.players.name_of(player),
                     );
                     return Ok((
-                        broadcast!(to_unique, player, self.into_sync_msg()),
+                        broadcast!(to_unique, player, self.sync_msg_copy()),
                         game::Cmd::None,
                     ));
                 }
@@ -213,7 +214,7 @@ impl Game {
             Err(GameEnding::OneRemaining(leader)) => {
                 self.state = Game_::Lobby { leader };
                 return Ok((
-                    broadcast!(to_all, self.into_sync_msg()),
+                    broadcast!(to_all, self.sync_msg_copy()),
                     game::Cmd::None,
                 ));
             }
@@ -348,7 +349,7 @@ impl Game {
         use self::api::GameReq;
         match request {
             GameReq::Sync => Ok((
-                broadcast!(to_unique, player, self.into_sync_msg()),
+                broadcast!(to_unique, player, self.sync_msg_copy()),
                 game::Cmd::None,
             )),
             GameReq::Start => self.next_round(Some(player)),
@@ -377,7 +378,7 @@ impl Game {
                     ))
                 }
                 _ => Ok((
-                    broadcast!(to_unique, player, self.into_sync_msg()),
+                    broadcast!(to_unique, player, self.sync_msg_copy()),
                     game::Cmd::None,
                 )),
             },

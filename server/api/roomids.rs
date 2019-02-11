@@ -29,14 +29,14 @@ impl From<u16> for RoomId {
 }
 impl From<&RoomId> for u16 {
     fn from(&RoomId { adjective, animal }: &RoomId) -> u16 {
-        let ret = animal as u16;
-        ret | ((adjective as u16) << 8)
+        let ret = u16::from(animal);
+        ret | (u16::from(adjective) << 8)
     }
 }
 impl From<RoomId> for u16 {
     fn from(RoomId { adjective, animal }: RoomId) -> u16 {
-        let ret = animal as u16;
-        ret | ((adjective as u16) << 8)
+        let ret = u16::from(animal);
+        ret | (u16::from(adjective) << 8)
     }
 }
 impl From<&RoomId> for String {

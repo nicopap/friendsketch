@@ -30,7 +30,7 @@ type ManagerChannel = mpsc::Sender<ManagerRequest<GameReq>>;
 quick_error! {
     #[derive(Debug)]
     enum CommError {
-        CommError(loc: u32, err: mpsc::SendError<Message>) {
+        CommError(loc: u32, err: Box<mpsc::SendError<Message>>) {
             display("games.rs:{}: {}", loc, err)
         }
         Disconnected(id: Id, msg: String) {
@@ -52,10 +52,10 @@ quick_error! {
             from()
             description("The oversee function's input was interrupted abruptly")
         }
-        ResponseChannelErroor(err: sync::mpsc::SendError<ManagerResponse>) {
-            from()
+        ResponseChannelError(err: Box<sync::mpsc::SendError<ManagerResponse>>) {
+            from(e: sync::mpsc::SendError<ManagerResponse>) -> (Box::new(e))
         }
-        ManagerChannelError(err: mpsc::SendError<ManagerRequest<GameReq>>) {
+        ManagerChannelError(err: Box<mpsc::SendError<ManagerRequest<GameReq>>>) {
             from()
         }
         CommunicationError(err: CommError) {
@@ -71,7 +71,7 @@ enum ManagerRequest<Req> {
     /// A message to be directly processed by the game
     Game(game::Request<Id, Req, Feedback>),
     /// A connection with given player `Name` has been established
-    Join(Id, WebSocket),
+    Join(Id, Box<WebSocket>),
     /// A player `Name` is joining, with an imminent connection
     Expects(Name),
 }
@@ -144,7 +144,7 @@ where
             manager.broadcast(resp)?;
             handle_cmd!(&mut manager, cmds)?;
             if has_joined {
-                manager.join(user, ws);
+                manager.join(user, *ws);
             } else {
                 warn!("User joined room but wasn't expected");
             }
@@ -245,7 +245,7 @@ impl GameRoom {
         debug!("accepting {:?}", user);
         ws.on_upgrade(move |socket| {
             game_chan
-                .send(ManagerRequest::Join(user, socket))
+                .send(ManagerRequest::Join(user, Box::new(socket)))
                 .map_err(|_| ())
                 .map(|_| ())
         })
@@ -254,7 +254,7 @@ impl GameRoom {
 
 macro_rules! comm_err {
     ($to_try:expr) => {
-        ($to_try).map_err(|e| CommError::CommError(line!(), e))
+        ($to_try).map_err(|e| CommError::CommError(line!(), Box::new(e)))
     };
 }
 macro_rules! send {

@@ -33,6 +33,12 @@ pub enum Request<Id, Msg, Feedback> {
     Message(Id, Msg),
 }
 
+pub type GameJoins<Id, Resp, Feedback, Error> =
+    Result<(bool, Broadcast<Id, Resp>, Cmd<Feedback>), Error>;
+
+pub type GameExpect<Id, Resp, Feedback, Error> =
+    Result<(Option<Id>, Broadcast<Id, Resp>, Cmd<Feedback>), Error>;
+
 pub type GameResponse<Id, Resp, Feedback, Error> =
     Result<(Broadcast<Id, Resp>, Cmd<Feedback>), Error>;
 
@@ -56,24 +62,14 @@ pub trait Game<Id: slotmap::Key> {
     fn expect(
         &mut self,
         new_player: api::Name,
-    ) -> Result<
-        (
-            Option<Id>,
-            Broadcast<Id, Self::Response>,
-            Cmd<Self::Feedback>,
-        ),
-        Self::Error,
-    >;
+    ) -> GameExpect<Id, Self::Response, Self::Feedback, Self::Error>;
 
     /// A new player attempts to join the game. Returns whether the game
     /// accepted the player or not.
     fn joins(
         &mut self,
         player: Id,
-    ) -> Result<
-        (bool, Broadcast<Id, Self::Response>, Cmd<Self::Feedback>),
-        Self::Error,
-    >;
+    ) -> GameJoins<Id, Self::Response, Self::Feedback, Self::Error>;
 
     fn tells(
         &mut self,
