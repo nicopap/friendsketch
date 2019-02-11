@@ -10,6 +10,30 @@ use quick_error::quick_error;
 use rand::seq::IteratorRandom;
 use std::time::{Duration, Instant};
 
+// debug and test config
+#[cfg(debug_assertions)]
+mod consts {
+    use std::time::Duration;
+    pub(super) const TICK_UPDATE: Duration = Duration::from_secs(10);
+    pub(super) const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
+    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(6);
+    pub(super) const DROP_DELAY: Duration = Duration::from_secs(1);
+    pub(super) const JOIN_DELAY: Duration = Duration::from_secs(10);
+    pub(super) const RESTART_INTERVAL: Duration = Duration::from_secs(10);
+}
+
+// release config
+#[cfg(not(debug_assertions))]
+mod consts {
+    use std::time::Duration;
+    pub(super) const TICK_UPDATE: Duration = Duration::from_secs(25);
+    pub(super) const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
+    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(6);
+    pub(super) const DROP_DELAY: Duration = Duration::from_secs(4);
+    pub(super) const JOIN_DELAY: Duration = Duration::from_secs(30);
+    pub(super) const RESTART_INTERVAL: Duration = Duration::from_secs(20);
+}
+
 quick_error! {
     #[derive(Debug)]
     pub enum GameErr {
@@ -84,13 +108,6 @@ macro_rules! broadcast {
     };
 }
 
-const TICK_UPDATE: Duration = Duration::from_secs(10);
-const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
-const TALLY_LENGTH: Duration = Duration::from_secs(5);
-const DROP_DELAY: Duration = Duration::from_secs(1);
-const JOIN_DELAY: Duration = Duration::from_secs(30);
-const RESTART_INTERVAL: Duration = Duration::from_secs(10);
-
 impl Game {
     fn into_sync_msg(&self) -> GameMsg {
         use api::{
@@ -141,7 +158,7 @@ impl Game {
         let cr = self.players.rounds_elapsed();
         Ok((
             broadcast!(to_all, msg),
-            game::Cmd::In(RESTART_INTERVAL, Feedback(Restart(cr))),
+            game::Cmd::In(consts::RESTART_INTERVAL, Feedback(Restart(cr))),
         ))
     }
 
@@ -223,8 +240,8 @@ impl Game {
         Ok((
             broadcast!(to_all_but, artist, msg, Some(artist_msg)),
             game::Cmd::InMultiple(vec![
-                (TICK_UPDATE, Feedback(TickTimeout(cr))),
-                (REVEAL_INTERVAL, Feedback(RevealLetter(cr))),
+                (consts::TICK_UPDATE, Feedback(TickTimeout(cr))),
+                (consts::REVEAL_INTERVAL, Feedback(RevealLetter(cr))),
                 (round_length, Feedback(EndRound(cr))),
             ]),
         ))
@@ -271,7 +288,7 @@ impl Game {
             self.game_log.push_front(SyncOver(word.to_string()));
             let send = Over(word.to_string(), round_scores);
             let msg = Feedback_::NextRound(self.players.rounds_elapsed());
-            let cmd = game::Cmd::In(TALLY_LENGTH, Feedback(msg));
+            let cmd = game::Cmd::In(consts::TALLY_LENGTH, Feedback(msg));
             Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
         } else {
             error!("Ending a round that is not happening");
@@ -440,7 +457,7 @@ impl Game {
                 let cmd = Feedback(RevealLetter(cr));
                 Ok((
                     broadcast!(to_all_but, *artist, msg, None),
-                    game::Cmd::In(REVEAL_INTERVAL, cmd),
+                    game::Cmd::In(consts::REVEAL_INTERVAL, cmd),
                 ))
             }
             (Playing { .. }, EndRound(r)) if r == cr => self.end_round(),
@@ -452,7 +469,7 @@ impl Game {
                 } else {
                     let send = TimeoutSync(timeout);
                     let msg = TickTimeout(cr);
-                    let cmd = game::Cmd::In(TICK_UPDATE, Feedback(msg));
+                    let cmd = game::Cmd::In(consts::TICK_UPDATE, Feedback(msg));
                     Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
                 }
             }
@@ -495,7 +512,10 @@ impl game::Game<Id> for Game {
         use self::Feedback_::TooLate;
         use api::VisibleEvent::Joined;
         if let Some((id, drop_id)) = self.players.expect(name.clone()) {
-            let cmd = game::Cmd::In(JOIN_DELAY, Feedback(TooLate(id, drop_id)));
+            let cmd = game::Cmd::In(
+                consts::JOIN_DELAY,
+                Feedback(TooLate(id, drop_id)),
+            );
             if let Game_::Empty = self.state {
                 self.state = Game_::Lobby { leader: id };
             };
@@ -523,7 +543,7 @@ impl game::Game<Id> for Game {
             game::Request::Leaves(id) => {
                 let drop_id = self.players.drop(id);
                 let cmd = game::Cmd::In(
-                    DROP_DELAY,
+                    consts::DROP_DELAY,
                     Feedback(Feedback_::TooLate(id, drop_id)),
                 );
                 Ok((broadcast!(nothing), cmd))
