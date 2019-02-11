@@ -15,5 +15,5 @@ lazy_static! {
 }
 
 pub fn from(adjective: &str) -> Option<u8> {
-    FXHASH.get(&adjective).map(|&x| x)
+    FXHASH.get(&adjective).cloned()
 }

@@ -33,7 +33,7 @@ quick_error! {
 pub struct ChatContent(Vec<u8>);
 impl ChatContent {
     pub fn as_bytes(&self) -> &[u8] {
-        return &self.0;
+        &self.0
     }
 }
 impl<'de> Deserialize<'de> for ChatContent {

@@ -152,7 +152,7 @@ where
         ManagerRequest::Game(msg) => {
             if let Leaves(id) = msg {
                 let room = &manager.room_name;
-                if !manager.connections.remove(id).is_some() {
+                if manager.connections.remove(id).is_none() {
                     error!("disconnect non-conn {:?}: {}", id, room);
                 } else {
                     debug!("disconnected {:?}", id);
