@@ -31,6 +31,15 @@ pub enum Remove {
     EmptyParty,
     /// The player isn't in "expecting" state anymore, impossible to remove
     Failed,
+    /// The player was removed, and there is only one remaining
+    OneRemaining(Name, Id),
+}
+
+#[cfg_attr(test, derive(PartialEq, Debug))]
+pub enum GameEnding {
+    Complete(api::Scoreboard),
+    NoArtistLeft,
+    OneRemaining(Id),
 }
 
 new_key_type! { pub struct Id; }
@@ -117,6 +126,7 @@ pub struct Party {
     round_scores:   SecondaryMap<Id, RoundScore>,
     score_keeper:   ScoreKeeper,
     game_started:   bool,
+    set_count:      u8,
 }
 
 impl fmt::Display for Party {
@@ -134,7 +144,7 @@ impl fmt::Display for Party {
             if let Some(curr_score) = self.round_scores.get(id) {
                 write!(f, "+ {}", curr_score)?;
             };
-            write!(f, "\n")?;
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -144,15 +154,16 @@ impl Party {
     /// Creates a new party, with given capacity
     ///
     /// If 0 is given, will default to 8.
-    pub fn new(capacity: usize) -> Party {
+    pub fn new(capacity: usize, set_count: u8) -> Party {
         let capacity = if capacity == 0 { 8 } else { capacity };
         Party {
-            players:        SlotMap::with_capacity_and_key(capacity),
-            current_set:    1,
+            players: SlotMap::with_capacity_and_key(capacity),
+            current_set: 1,
             rounds_elapsed: 0,
-            round_scores:   SecondaryMap::with_capacity(capacity),
-            score_keeper:   ScoreKeeper::new(capacity as u16),
-            game_started:   false,
+            round_scores: SecondaryMap::with_capacity(capacity),
+            score_keeper: ScoreKeeper::new(capacity as u16),
+            game_started: false,
+            set_count,
         }
     }
 
@@ -161,7 +172,7 @@ impl Party {
     }
 
     /// Returns id of a player if they are the only one in the game currently
-    pub fn one_remaining(&self) -> Option<Id> {
+    fn one_remaining(&self) -> Option<Id> {
         if self.players.len() == 1 {
             self.players.keys().next()
         } else {
@@ -182,8 +193,10 @@ impl Party {
     /// If all players already has drawn this set, we pass to the next set and
     /// return the first artist for this set.
     /// Finally, if despite getting to a new set, we can't find an appropriate
-    /// player to be the artist, returns `None`
-    pub fn new_round(&mut self) -> Option<Id> {
+    /// player to be the artist, returns `Err(NoArtistLeft)`.
+    /// If the maximum set count has been reached, returns `Err(Complete)`
+    /// If there is only one player left anyway, returns `Err(OneRemaining)`
+    pub fn new_round(&mut self) -> Result<Id, GameEnding> {
         use self::RoundScore::Failed;
         self.rounds_elapsed += 1;
         self.score_keeper = ScoreKeeper::new(self.players.len() as u16);
@@ -196,9 +209,14 @@ impl Party {
         } else {
             self.game_started = true;
         }
+        if let Some(single) = self.one_remaining() {
+            self.game_reset();
+            return Err(GameEnding::OneRemaining(single));
+        }
         self.round_scores.clear();
         info!("Entering round {}", self.rounds_elapsed);
         debug!("{}", self);
+        let set_count = self.set_count;
         let players = &mut self.players;
         let round_scores = &mut self.round_scores;
         let current_set = &mut self.current_set;
@@ -216,12 +234,21 @@ impl Party {
                 })
             };
         };
-        create_artist!().or_else(|| {
-            *current_set += 1;
-            info!("Entering set {}", current_set);
-            players.iter_mut().for_each(|(_, p)| p.set_drawn = false);
-            create_artist!()
-        })
+        match create_artist!() {
+            None => {
+                *current_set += 1;
+                info!("Entering set {}", current_set);
+                players.iter_mut().for_each(|(_, p)| p.set_drawn = false);
+
+                if *current_set > set_count {
+                    let scoreboard = self.game_reset();
+                    Err(GameEnding::Complete(scoreboard))
+                } else {
+                    create_artist!().ok_or(GameEnding::NoArtistLeft)
+                }
+            }
+            Some(a) => Ok(a),
+        }
     }
 
     /// Sets an "expected" player as having joined
@@ -266,9 +293,10 @@ impl Party {
         self.players[player].drop()
     }
 
-    /// Remove for good a player from the game
+    /// Removes for good a player from the game
     ///
     /// Will not remove them if the challenge fails.
+    /// The game is reset if only one player is left.
     pub fn remove(&mut self, id: Id, chal: Challenge) -> Remove {
         use self::{Remove::*, RoundScore::Artist};
         if Some(chal) == self.players.get(id).and_then(|x| x.drop_id) {
@@ -276,6 +304,9 @@ impl Party {
             let left = self.players.remove(id).unwrap().name;
             if self.players.is_empty() {
                 EmptyParty
+            } else if let Some(single) = self.one_remaining() {
+                self.game_reset();
+                OneRemaining(left, single)
             } else if let Some(Artist(_)) = self.round_scores.get(id) {
                 WasArtist(left)
             } else if self.all_guessed() {
@@ -289,8 +320,7 @@ impl Party {
     }
 
     /// Resets the game to an initial state without any score
-    pub fn game_reset(&mut self) -> api::Scoreboard {
-        self.new_round();
+    fn game_reset(&mut self) -> api::Scoreboard {
         let mut ret = Vec::with_capacity(self.players.len());
         self.players.iter_mut().for_each(|(_, player)| {
             let score = player.score.drain(..).map(Into::into).collect();
@@ -353,8 +383,7 @@ impl Party {
     pub fn a_player(&self) -> Option<Id> {
         self.players
             .iter()
-            .filter(|x| x.1.drop_id.is_none())
-            .next()
+            .find(|x| x.1.drop_id.is_none())
             .map(|x| x.0)
     }
 
@@ -379,7 +408,7 @@ mod tests {
     impl TestContext {
         fn new() -> TestContext {
             TestContext {
-                party: Party::new(0),
+                party: Party::new(0,3),
                 name_ids: HashMap::new(),
                 artist:None,
             }
@@ -399,6 +428,9 @@ mod tests {
             let id = self.party.new_round().unwrap();
             self.artist = Some(id);
             self.party.name_of(id)
+        }
+        fn id_of(&mut self, name: &'static str) -> Id {
+            *self.name_ids.get(name).unwrap()
         }
         fn correct(&mut self, name: &'static str) -> Guess {
             let artist = self.artist.unwrap();
@@ -445,8 +477,9 @@ mod tests {
         assert_eq!(Remove::Ok(d_name), c.leave("d"));
         let b_name = api::name_from_string("b".to_string());
         assert_eq!(Remove::Ok(b_name), c.leave("b"));
+        let a_id = c.id_of("a");
         let c_name = api::name_from_string("c".to_string());
-        assert_eq!(Remove::AllGuessed(c_name), c.leave("c"));
+        assert_eq!(Remove::OneRemaining(c_name,a_id), c.leave("c"));
         assert_eq!(c.artist, c.party.one_remaining());
     }
     #[test]

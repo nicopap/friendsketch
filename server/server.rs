@@ -1,7 +1,7 @@
 //! Manage game rooms and dynamically generated endpoints
 
 use crate::{
-    api::{Name, RoomId},
+    api::{Name, RoomId, Setting},
     games::{GameRoom, Id, ManagerResponse},
 };
 use chashmap::CHashMap;
@@ -130,7 +130,7 @@ impl ServerState {
 
     /// Create a new game room and returns its Id.
     /// panics if there are more than usize::MAX / 2 rooms on the server
-    pub fn create_room(self: Arc<Self>) -> RoomId {
+    pub fn create_room(self: Arc<Self>, cfg: Setting) -> RoomId {
         let (roomid, roomid_copy) = loop {
             let roomid = RoomId::new_random();
             if !self.rooms.contains_key(&roomid) {
@@ -141,11 +141,11 @@ impl ServerState {
         };
         let self_ref = self.clone();
         let on_empty = move || {
-            debug!("Removing {} from server", &roomid_copy);
+            debug!("Removing {} from server", roomid_copy);
             self_ref.remove(&roomid_copy);
         };
-        info!("Creating {} on server", &roomid);
-        let game = GameRoom::new(roomid.to_string(), on_empty);
+        info!("Creating {} with settings: {:?}", roomid, cfg);
+        let game = GameRoom::new(roomid.to_string(), cfg, on_empty);
         self.rooms.insert(roomid.clone(), game);
         roomid
     }

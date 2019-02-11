@@ -16,7 +16,7 @@ Created Tuesday 26 September 2017
 * Highlight leading score players
 * Display current round and total round somewhere (starting to draw message + round result)
 * Think about restart button and timeout on Game Summary screen
-* Investigate what happens when a player joins during Game Summary (it's broken)
+* Investigate what happens when a player joins during Game Summary (???)
 * Fix the scores not resetting on frontend when restarting
 * Properly handle short disconnections (ie: artist should know they are the artist, and guessers should still be able to guess)
 
@@ -54,6 +54,3 @@ I can't seem to get it to work :/
 ===== API =====
 
 * (very long term) "bundle" strokes into lines, as to avoid sending too many small data packets
-* Think about how to setup settings such as:
-	* Round count
-	* Round length

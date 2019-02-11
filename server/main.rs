@@ -1,4 +1,3 @@
-#![feature(uniform_paths)]
 mod api;
 mod games;
 mod server;
@@ -112,10 +111,11 @@ fn handle_join_redirect(
 }
 
 fn handle_create(
-    _: api::CreateReq,
+    cfg: api::Setting,
     server: Server,
 ) -> Result<impl Reply, Rejection> {
-    respond!(StatusCode::CREATED, server.create_room().to_string(), text)
+    let server_result = server.create_room(cfg).to_string();
+    respond!(StatusCode::CREATED, server_result, text)
 }
 
 fn handle_join(

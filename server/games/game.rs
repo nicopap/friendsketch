@@ -49,8 +49,6 @@ pub trait Game<Id: slotmap::Key> {
     type Feedback;
     type Error;
 
-    fn new() -> Self;
-
     /// A new player is expected to join the game room. The `Game` may choose
     /// to either refuse the player and return `None` or accept the player and
     /// return `Some(id)` where `id` will be the identifier of the player for

@@ -172,6 +172,7 @@ pub type Color = String;
 pub type Point = (i32, i32);
 
 #[derive(Debug, Serialize, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "lowercase")]
 pub enum RoundScore {
     Artist(Score),
@@ -215,12 +216,6 @@ pub enum GameScreen {
 pub struct JoinReq {
     pub roomid:   RoomId,
     pub username: Name,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CreateReq {
-    pub username: Name,
-    pub game:     String,
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize)]
@@ -297,4 +292,33 @@ pub enum HiddenEvent {
     Start(RoundStart),
     Reveal(usize, char),
     Complete(Scoreboard),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Setting {
+    #[serde(default = "defaults::round_duration")]
+    pub round_duration: i16,
+    #[serde(default = "defaults::set_count")]
+    pub set_count: u8,
+}
+
+#[cfg(all(debug_assertions, not(test)))]
+#[rustfmt::skip]
+mod defaults {
+    pub(super) const fn set_count() -> u8 { 2 }
+    pub(super) const fn round_duration() -> i16 { 17 }
+}
+
+#[cfg(test)]
+#[rustfmt::skip]
+mod defaults {
+    pub(super) const fn set_count() -> u8 { 1 }
+    pub(super) const fn round_duration() -> i16 { 1 }
+}
+
+#[cfg(not(any(test, debug_assertions)))]
+#[rustfmt::skip]
+mod defaults {
+    pub(super) const fn set_count() -> u8 { 3 }
+    pub(super) const fn round_duration() -> i16 { 80 }
 }

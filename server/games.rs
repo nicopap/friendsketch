@@ -186,6 +186,10 @@ impl GameRoom {
     /// Create a new empty game room.
     pub fn new(
         room_name: String,
+        api::Setting {
+            round_duration,
+            set_count,
+        }: api::Setting,
         on_empty: impl FnOnce() + Send + 'static,
     ) -> Self {
         let (manager_sink, receiv_chan) = mpsc::channel(64);
@@ -195,7 +199,7 @@ impl GameRoom {
             respond,
             connections: SecondaryMap::with_capacity(16),
             manager_sink: manager_sink.clone(),
-            game: tugofsketch::Game::new(),
+            game: tugofsketch::Game::new(round_duration, set_count),
         };
         warp::spawn(
             receiv_chan

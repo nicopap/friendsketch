@@ -32,8 +32,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Give an estimated game length based on settings used in creation page
 
-> Make sure n°round % n°players = 0 ⇒ Use ''Set'' system as implemented in ''Party'' 
-
 
 ===== Current roadmap =====
 * Add tests
