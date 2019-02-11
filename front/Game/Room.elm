@@ -1,6 +1,7 @@
 module Game.Room
     exposing
         ( newInLobby
+        , newGame
         , joinBreak
         , joinRound
         , joinScores
@@ -102,6 +103,15 @@ newInLobby master myName scoreboard =
     let notAlone = if master == myName then MasterOf else LobbyWith
     in  newFromList scoreboard myName notAlone
 
+{-| Resets the scores of all players, as if the game just started
+-}
+newGame : Room -> Room
+newGame { me, state } =
+    let
+        resetPlayer = Dict.map (\_ _ -> Player False [])
+    in
+        Room (mapSecond (always (Player False [])) me)
+            <| mapState resetPlayer state
 
 {-| Create a room for player joining while the scores are shown
 -}

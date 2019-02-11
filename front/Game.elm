@@ -190,6 +190,24 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
             let guess_ = Guess.update message guess
             in  (Game { game | gamePart = Round guess_ }, doNothing)
 
+        startRound { timeout, artist, word } roomMod =
+            let (newChat, chatCmd) = chatEvent (Api.EvStart artist) chat
+                newGamePart = Round (Guess.new (Just word) timeout)
+                newRoom = roomMod room
+                newCanvas =
+                    if Room.amArtist newRoom then
+                        Canvas.new Canvas.Sender
+                    else
+                        Canvas.new <| Canvas.Receiver []
+                newGame = Game
+                    { room = newRoom
+                    , canvas = newCanvas
+                    , gamePart = newGamePart
+                    , chat = newChat
+                    }
+            in
+                (newGame, chatCmd)
+
     in case (event, gamePart) of
         (Err (Api.EhSync gameState), _) ->
             (sync gameState (Room.myName room), doNothing)
@@ -262,23 +280,17 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
             in
                 (newGame, chatCmd)
 
-        (Err (Api.EhStart { timeout, artist, word }), _) ->
-            let (newChat, chatCmd) = chatEvent (Api.EvStart artist) chat
-                newGamePart = Round (Guess.new (Just word) timeout)
-                newRoom = Room.setArtist artist room
-                newCanvas =
-                    if Room.amArtist newRoom then
-                        Canvas.new Canvas.Sender
-                    else
-                        Canvas.new <| Canvas.Receiver []
-                newGame = Game
-                    { room = newRoom
-                    , canvas = newCanvas
-                    , gamePart = newGamePart
-                    , chat = newChat
-                    }
-            in
-                (newGame, chatCmd)
+        (Err (Api.EhStart arg), LobbyState _) ->
+            startRound arg (Room.setArtist arg.artist << Room.newGame)
+
+        (Err (Api.EhStart arg), Summary) ->
+            startRound arg (Room.setArtist arg.artist << Room.newGame)
+
+        (Err (Api.EhStart arg), BetweenRoundFrameOne _) ->
+            startRound arg (Room.setArtist arg.artist)
+
+        (Err (Api.EhStart arg), BetweenRound _) ->
+            startRound arg (Room.setArtist arg.artist)
 
         (Err (Api.EhComplete scores), _) ->
             let (newChat, chatCmd) = chatEvent Api.EvComplete chat
