@@ -321,6 +321,6 @@ mod defaults {
 #[cfg(not(any(test, debug_assertions)))]
 #[rustfmt::skip]
 mod defaults {
-    pub(super) const fn set_count() -> u8 { 3 }
+    pub(super) const fn set_count() -> u8 { 2 }
     pub(super) const fn round_duration() -> i16 { 80 }
 }
