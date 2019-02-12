@@ -19,8 +19,8 @@ module Game.Room
         , viewRoundTally
         , viewPreviousTally
         , viewBoard
-        , correct
         , guessed
+        , playerCount
         , Room
         )
 
@@ -282,21 +282,18 @@ syncScores roundScores_ { me, state } =
 myName : Room -> Api.Name
 myName { me } = first me
 
-correct : Room -> Room
-correct { me, state } =
-    { me = mapSecond (\x -> { x | succeeded = True }) me, state = state }
-
 {-| Set a player as having guessed the word correctly.
-!!!! This doesn't work for the current player (me) !!!!
-Use `correct` instead.
 -}
 guessed : Api.Name -> Room -> Room
 guessed guesser { state, me } =
-    let
-        setSuccess = Maybe.map (\player -> { player | succeeded = True })
-        withGuess = update (Api.showName guesser) setSuccess
-    in
-        Room me <| mapState withGuess state
+    if guesser == first me then
+        { me = mapSecond (\x -> { x | succeeded = True }) me, state = state }
+    else
+        let
+            setSuccess = Maybe.map (\player -> { player | succeeded = True })
+            withGuess = update (Api.showName guesser) setSuccess
+        in
+            Room me <| mapState withGuess state
 
 {-| Displays the score for a player. If first argument is true, will also
 display the differences in points from last round and offset the element to
@@ -404,6 +401,9 @@ roundAsInt roundScore =
 scoreAsInt : Score -> Int
 scoreAsInt =
     List.foldl (+) 0 << List.map roundAsInt
+
+playerCount : Room -> Int
+playerCount = (+) 1 << forPlayers Dict.size << .state
 
 
 view : Room -> Html msg

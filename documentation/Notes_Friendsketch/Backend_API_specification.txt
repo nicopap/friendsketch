@@ -157,7 +157,7 @@ GameState =
 
 GameScreen
 	= { scores: () }
-	| { endsummary: () }
+	| { endsummary: (Int, [Name]) }
 	| { round: RoundState }
 	| { lobby: { master: Name } }
 
@@ -195,6 +195,7 @@ VisibleGameEvent
 	| { syncstart: Name }
 	| { syncover: String }
 	| { synccomplete: () }
+	| { voted: Name }
 
 HiddenGameEvent
 	= { correct: String }
@@ -204,7 +205,7 @@ HiddenGameEvent
 	| { over: (String, [ (Name, RoundScore) ]) }
 	| { start: RoundStart }
 	| { reveal: (Int, Char) }
-	| { complete: Scoreboard }
+	| { complete: (Int, Scoreboard) }
 
 GameMsg
 	= { canvas: CanvasMsg }

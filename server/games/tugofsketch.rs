@@ -3,11 +3,16 @@ use super::{
     game,
     party::{Challenge, GameEnding, Guess, Party, Remove},
 };
-use crate::api::{self, ChatMsg, GameMsg, Name, Stroke, VisibleEvent};
+use crate::api::{
+    self, ChatMsg,
+    GameMsg::{self, HiddenEvent, VisibleEvent},
+    Name, Stroke,
+};
 use arraydeque::{ArrayDeque, Wrapping};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use quick_error::quick_error;
 use rand::seq::IteratorRandom;
+use slotmap::SecondaryMap;
 use std::time::{Duration, Instant};
 
 // debug and test config
@@ -16,10 +21,10 @@ mod consts {
     use std::time::Duration;
     pub(super) const TICK_UPDATE: Duration = Duration::from_secs(10);
     pub(super) const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
-    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(6);
+    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(3);
     pub(super) const DROP_DELAY: Duration = Duration::from_secs(1);
     pub(super) const JOIN_DELAY: Duration = Duration::from_secs(10);
-    pub(super) const RESTART_INTERVAL: Duration = Duration::from_secs(10);
+    pub(super) const RESTART_INTERVAL: i16 = 80;
 }
 
 // release config
@@ -28,10 +33,10 @@ mod consts {
     use std::time::Duration;
     pub(super) const TICK_UPDATE: Duration = Duration::from_secs(25);
     pub(super) const REVEAL_INTERVAL: Duration = Duration::from_secs(10);
-    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(3);
+    pub(super) const TALLY_LENGTH: Duration = Duration::from_secs(7);
     pub(super) const DROP_DELAY: Duration = Duration::from_secs(4);
     pub(super) const JOIN_DELAY: Duration = Duration::from_secs(30);
-    pub(super) const RESTART_INTERVAL: Duration = Duration::from_secs(20);
+    pub(super) const RESTART_INTERVAL: i16 = 60;
 }
 
 quick_error! {
@@ -62,7 +67,7 @@ enum Game_ {
         word:    &'static str,
         lap:     Instant,
     },
-    EndResults,
+    EndResults(Instant, SecondaryMap<Id, ()>),
 }
 
 /// Something that `Game` recieves back from the manager
@@ -78,12 +83,13 @@ enum Feedback_ {
     MakeNewMaster,
     TooLate(Id, Challenge),
     Restart(u16),
+    CoutVotes,
 }
 
 pub struct Game {
     state:          Game_,
     players:        Party,
-    game_log:       ArrayDeque<[VisibleEvent; 20], Wrapping>,
+    game_log:       ArrayDeque<[api::VisibleEvent; 20], Wrapping>,
     round_duration: i16,
 }
 
@@ -108,13 +114,15 @@ macro_rules! broadcast {
     };
 }
 
+/// Returns whether there are enough votes to proceed
+fn count_votes(votes: &SecondaryMap<Id, ()>, party: &Party) -> bool {
+    votes.len() > party.len() / 2
+}
+
 impl Game {
     /// Make a `GameMsg::Sync` based on the game's state
     fn msg_copy(&self, to: Option<Id>) -> GameMsg {
-        use api::{
-            GameMsg::HiddenEvent,
-            GameScreen::{EndSummary, Lobby, Round, Scores},
-        };
+        use api::GameScreen::{EndSummary, Lobby, Round, Scores};
         let scores = if let Game_::RoundResults = self.state {
             self.players.full_standings_copy()
         } else {
@@ -155,7 +163,13 @@ impl Game {
                     word,
                 }
             }
-            Game_::EndResults => EndSummary,
+            Game_::EndResults(lap, ref votes) => {
+                let timeout =
+                    consts::RESTART_INTERVAL - lap.elapsed().as_secs() as i16;
+                let players =
+                    votes.keys().map(|id| self.players.name_of(id)).collect();
+                EndSummary(timeout, players)
+            }
         };
         HiddenEvent(api::HiddenEvent::Sync {
             screen,
@@ -172,13 +186,17 @@ impl Game {
         scores.sort_unstable_by_key(|(_, s)| api::score_total(s));
 
         self.game_log.push_front(api::VisibleEvent::SyncComplete);
-        self.state = Game_::EndResults;
+        let vote_keep = SecondaryMap::with_capacity(self.players.len());
+        let lap = Instant::now();
+        self.state = Game_::EndResults(lap, vote_keep);
 
-        let msg = GameMsg::HiddenEvent(api::HiddenEvent::Complete(scores));
+        let timeout = consts::RESTART_INTERVAL;
+        let msg = HiddenEvent(api::HiddenEvent::Complete(timeout, scores));
         let cr = self.players.rounds_elapsed();
+        let delay = Duration::from_secs(timeout as u64);
         Ok((
             broadcast!(to_all, msg),
-            game::Cmd::In(consts::RESTART_INTERVAL, Feedback(Restart(cr))),
+            game::Cmd::In(delay, Feedback(Restart(cr))),
         ))
     }
 
@@ -191,7 +209,6 @@ impl Game {
     ) -> Result<(Broadcast, Cmd), GameErr> {
         use self::{
             api::{
-                GameMsg::HiddenEvent,
                 Guess::{Artist, Guess},
                 HiddenEvent::Start,
                 RoundStart,
@@ -200,7 +217,9 @@ impl Game {
             Feedback_::*,
         };
         let maybe_artist = match self.state {
-            Game_::RoundResults | Game_::EndResults => self.players.new_round(),
+            Game_::RoundResults | Game_::EndResults(..) => {
+                self.players.new_round()
+            }
             Game_::Lobby { leader } => match instigator {
                 None => {
                     error!("Game starts itself in lobby state");
@@ -302,9 +321,7 @@ impl Game {
 
     /// End the round and broadcast the score values for that round
     fn end_round(&mut self) -> Result<(Broadcast, Cmd), GameErr> {
-        use api::{
-            GameMsg::HiddenEvent, HiddenEvent::Over, VisibleEvent::SyncOver,
-        };
+        use api::{HiddenEvent::Over, VisibleEvent::SyncOver};
         if let Game_::Playing { word, .. } = self.state {
             info!("Ending round {}", self.players.rounds_elapsed());
             let round_scores = self.players.current_standings();
@@ -330,7 +347,7 @@ impl Game {
         match self.players.remove(removed, challenge) {
             Remove::EmptyParty => Err(GameErr::NoOneLeft),
             Remove::OneRemaining(name, leader) => {
-                let left = GameMsg::VisibleEvent(Left(name.clone()));
+                let left = VisibleEvent(Left(name.clone()));
                 self.game_log.push_front(Left(name));
                 self.state = Game_::Lobby { leader };
                 Ok((broadcast!(to_all, left), game::Cmd::None))
@@ -340,18 +357,22 @@ impl Game {
                 Ok((broadcast!(nothing), game::Cmd::None))
             }
             Remove::AllGuessed(name) | Remove::WasArtist(name) => {
-                let left = GameMsg::VisibleEvent(Left(name.clone()));
+                let left = VisibleEvent(Left(name.clone()));
                 self.game_log.push_front(Left(name));
                 let cr = self.players.rounds_elapsed();
                 let cmd = immediately(Feedback_::EndRound(cr));
                 Ok((broadcast!(to_all, left), cmd))
             }
             Remove::Ok(name) => {
-                let left = GameMsg::VisibleEvent(Left(name.clone()));
+                let left = VisibleEvent(Left(name.clone()));
                 self.game_log.push_front(Left(name));
                 let command = match self.state {
                     Game_::Lobby { leader } if leader == removed => {
                         immediately(Feedback_::MakeNewMaster)
+                    }
+                    Game_::EndResults(_, ref mut votes) => {
+                        votes.remove(removed);
+                        immediately(Feedback_::CoutVotes)
                     }
                     _ => game::Cmd::None,
                 };
@@ -371,7 +392,24 @@ impl Game {
                 broadcast!(to_unique, player, self.msg_copy(Some(player))),
                 game::Cmd::None,
             )),
-            GameReq::Start => self.next_round(Some(player)),
+            GameReq::Start => match self.state {
+                Game_::Lobby { .. } => self.next_round(Some(player)),
+                Game_::EndResults(_, ref mut votes) => {
+                    votes.insert(player, ());
+                    debug!("{} voted", self.players.name_of(player));
+                    if count_votes(votes, &self.players) {
+                        self.next_round(None)
+                    } else {
+                        let name = self.players.name_of(player);
+                        let msg = VisibleEvent(api::VisibleEvent::Voted(name));
+                        Ok((broadcast!(to_all, msg), game::Cmd::None))
+                    }
+                }
+                _ => Ok((
+                    broadcast!(to_unique, player, self.msg_copy(Some(player))),
+                    game::Cmd::None,
+                )),
+            },
             GameReq::Canvas(msg) => match self.state {
                 Game_::Playing {
                     ref mut drawing,
@@ -404,11 +442,7 @@ impl Game {
             GameReq::Chat(msg) => match self.state {
                 Game_::Playing { word, .. } => {
                     use self::{game::Cmd, Feedback_::EndRound};
-                    use api::{
-                        GameMsg::{HiddenEvent, VisibleEvent},
-                        HiddenEvent::Correct,
-                        VisibleEvent::Guessed,
-                    };
+                    use api::{HiddenEvent::Correct, VisibleEvent::Guessed};
                     if let Some(complete) = self.guesses(player, msg.as_bytes())
                     {
                         let guesser = self.players.name_of(player);
@@ -444,7 +478,7 @@ impl Game {
                     });
                     self.game_log.push_front(final_msg.clone());
                     Ok((
-                        broadcast!(to_all, GameMsg::VisibleEvent(final_msg)),
+                        broadcast!(to_all, VisibleEvent(final_msg)),
                         game::Cmd::None,
                     ))
                 }
@@ -457,10 +491,7 @@ impl Game {
         Feedback(msg): Feedback,
     ) -> Result<(Broadcast, Cmd), GameErr> {
         use self::{
-            api::{
-                GameMsg::HiddenEvent,
-                HiddenEvent::{Mastery, Reveal, TimeoutSync},
-            },
+            api::HiddenEvent::{Mastery, Reveal, TimeoutSync},
             Feedback_::*,
             Game_::*,
         };
@@ -498,7 +529,14 @@ impl Game {
                 }
             }
             (RoundResults, NextRound(r)) if r == cr => self.next_round(None),
-            (EndResults, Restart(r)) if r == cr => self.next_round(None),
+            (EndResults(..), Restart(r)) if r == cr => self.next_round(None),
+            (EndResults(_, ref votes), CoutVotes) => {
+                if count_votes(votes, &self.players) {
+                    self.next_round(None)
+                } else {
+                    Ok((broadcast!(nothing), game::Cmd::None))
+                }
+            }
             (RoundResults, TickTimeout(_))
             | (Playing { .. }, TickTimeout(_))
             | (RoundResults, EndRound(_))
@@ -544,7 +582,7 @@ impl game::Game<Id> for Game {
                 self.state = Game_::Lobby { leader: id };
             };
             self.game_log.push_front(Joined(name.clone()));
-            let msg = GameMsg::VisibleEvent(Joined(name));
+            let msg = VisibleEvent(Joined(name));
             Ok((Some(id), broadcast!(to_all, msg), cmd))
         } else {
             Ok((None, broadcast!(nothing), game::Cmd::None))
@@ -552,11 +590,13 @@ impl game::Game<Id> for Game {
     }
 
     fn joins(&mut self, player: Id) -> Result<(bool, Broadcast, Cmd), GameErr> {
-        Ok((
-            self.players.joins(player),
-            broadcast!(nothing),
-            game::Cmd::None,
-        ))
+        let cmd = if let Game_::EndResults(_, ref mut votes) = self.state {
+            votes.insert(player, ());
+            game::Cmd::Immediately(Feedback(Feedback_::CoutVotes))
+        } else {
+            game::Cmd::None
+        };
+        Ok((self.players.joins(player), broadcast!(nothing), cmd))
     }
 
     fn tells(

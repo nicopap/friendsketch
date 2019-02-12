@@ -15,10 +15,11 @@ import Tuple exposing (first, mapFirst, mapSecond)
 import Time exposing (every, second)
 import Task
 import Process exposing (sleep)
+import Dict exposing (Dict)
 
-import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input)
-import Html.Attributes as HA exposing (id, class, href)
-import Html.Events as HE
+import Html as H exposing (Html, div, p, b, h1, h3, text, pre, input, button, a)
+import Html.Attributes as HA exposing (id, class, href, disabled)
+import Html.Events as HE exposing (onClick)
 
 import Api
 import Ports
@@ -33,7 +34,13 @@ type GamePart
     | Round Guess
     | BetweenRound Guess
     | BetweenRoundFrameOne Guess
-    | Summary
+    | Summary Votes
+
+type alias Votes =
+    { iVoted : Bool
+    , timeout : Int
+    , voted : Dict String ()
+    }
 
 
 type alias Game_ =
@@ -50,8 +57,8 @@ type Game = Game Game_
 sync : Api.GameState -> Api.Name -> Game
 sync { screen, history, scores } username =
     let (gamePart, makeRoom, canvasInit) = case screen of
-        Api.Summary ->
-            ( Summary
+        Api.Summary timeout votes ->
+            ( Summary <| Votes True timeout votes
             , Room.joinBreak
             , Canvas.Demo
             )
@@ -61,7 +68,8 @@ sync { screen, history, scores } username =
             , Canvas.Demo
             )
         Api.Round { drawing, artist, timeout, word } ->
-            let canvas = case word of
+            let
+                canvas = case word of
                     Just (Api.ForArtist _) -> Canvas.Sender drawing
                     _ -> Canvas.Receiver drawing
             in
@@ -94,6 +102,7 @@ type Msg
     | TickDown
     | SelectRoomid
     | UpdateTally
+    | Vote
 
 receive : Api.GameMsg -> Msg
 receive msg =
@@ -129,6 +138,8 @@ tickTimer ({ gamePart } as game) =
     case gamePart of
         Round guess ->
             Game { game | gamePart = Round (Guess.update Guess.TickDown guess) }
+        Summary v ->
+            Game { game | gamePart = Summary { v | timeout = v.timeout - 1 } }
         _ -> Game game
 
 
@@ -139,6 +150,18 @@ togglePass ({ gamePart } as game) =
             Game { game | gamePart = LobbyState { hideId = not hideId } }
         _ -> Game game
 
+voteLeave : Api.Name -> GamePart -> GamePart
+voteLeave player state =
+    let without = Dict.remove <| Api.showName player
+    in  case state of
+            Summary votes -> Summary { votes | voted = without votes.voted }
+            anyelse -> anyelse
+
+vote : GamePart -> GamePart
+vote state =
+    case state of
+        Summary votes -> Summary { votes | iVoted = True }
+        anyelse -> anyelse
 
 update : Msg -> Game -> ( Game, GameCmd )
 update msg (Game ({ canvas, chat } as game)) =
@@ -162,6 +185,10 @@ update msg (Game ({ canvas, chat } as game)) =
         StartGame -> (Game game, Send Api.ReqStart)
         TickDown -> (tickTimer game, doNothing)
         SelectRoomid -> (Game game, Execute <| Ports.selectRoomid ())
+        Vote ->
+            ( Game { game | gamePart = vote game.gamePart }
+            , Send Api.ReqStart
+            )
         UpdateTally ->
             case game.gamePart of
                 BetweenRoundFrameOne guess ->
@@ -225,7 +252,7 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Err (Api.EhTimeout t  ), Round g) -> guessMsg (Guess.SetTimeout t) g
         (Err (Api.EhCorrect word), Round guess) ->
             let guess_ = Guess.update (Guess.RevealAll word) guess
-                room_ = Room.correct room
+                room_ = Room.guessed (Room.myName room) room
                 (chat_, chatCmd) = chatMsg (Chat.correct word) doNothing chat
                 part_ = Round guess_
             in
@@ -242,22 +269,46 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
                 |> mapFirst
                     (\(Game g) -> Game { g | room = Room.guessed player room })
 
+        (Ok ((Api.EvVoted voter) as msg), Summary votes) ->
+            let name = Api.showName voter
+                withVote = { votes | voted = Dict.insert name () votes.voted }
+            in
+                simpleChatMsg msg
+                    |> mapFirst
+                        (\(Game g) -> Game { g | gamePart = Summary withVote })
+
         (Ok ((Api.EvLeft player) as chatEvent_), _) ->
             let (newChat, chatCmd) = chatEvent chatEvent_ chat
-                newRoom = Room.leaves player room
+                newRoom_ = Room.leaves player room
+                newPart_ = voteLeave player gamePart
+                myName = Room.myName room
+                (newRoom, newCanvas, newPart) =
+                    if Room.alone newRoom_ then
+                        ( Room.newInLobby myName myName []
+                        , Canvas.new Canvas.Demo
+                        , LobbyState { hideId = True }
+                        )
+                    else
+                        ( newRoom_, game.canvas, newPart_ )
             in
-                if Room.alone newRoom then
-                    (Game
-                        { chat = newChat
-                        , room = Room.newInLobby
-                            (Room.myName room) (Room.myName room) []
-                        , gamePart = LobbyState { hideId = True }
-                        , canvas = Canvas.new Canvas.Demo
-                        }
-                    , chatCmd
-                    )
-                else
-                    (Game { game | chat = newChat , room = newRoom }, chatCmd)
+                ( Game
+                    { chat = newChat
+                    , room = newRoom
+                    , gamePart = newPart
+                    , canvas = newCanvas
+                    }
+                , chatCmd
+                )
+
+        (Ok ((Api.EvJoined player) as chatEvent_), Summary votes) ->
+            let (chat_, chatCmd) = chatEvent chatEvent_ chat
+                room_ = Room.joins player room
+                n = Api.showName player
+                voted = Summary { votes | voted = Dict.insert n () votes.voted }
+            in
+                ( Game { game | chat = chat_, room = room_, gamePart = voted }
+                , chatCmd
+                )
 
         (Ok ((Api.EvJoined player) as chatEvent_), _) ->
             let (newChat, chatCmd) = chatEvent chatEvent_ chat
@@ -289,7 +340,7 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Err (Api.EhStart arg), LobbyState _) ->
             startRound arg (Room.setArtist arg.artist << Room.newGame)
 
-        (Err (Api.EhStart arg), Summary) ->
+        (Err (Api.EhStart arg), Summary _) ->
             startRound arg (Room.setArtist arg.artist << Room.newGame)
 
         (Err (Api.EhStart arg), BetweenRoundFrameOne _) ->
@@ -298,14 +349,14 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
         (Err (Api.EhStart arg), BetweenRound _) ->
             startRound arg (Room.setArtist arg.artist)
 
-        (Err (Api.EhComplete scores), _) ->
+        (Err (Api.EhComplete timeout scores), _) ->
             let (newChat, chatCmd) = chatEvent Api.EvComplete chat
                 newRoom = Room.joinScores (Room.myName room) scores
                 newCanvas = Canvas.new Canvas.Demo
                 newGame = Game
                     { room = newRoom
                     , canvas = newCanvas
-                    , gamePart = Summary
+                    , gamePart = Summary <| Votes False timeout Dict.empty
                     , chat = newChat
                     }
             in
@@ -318,7 +369,8 @@ updateByEvent event ({ room, canvas, gamePart, chat} as game) =
 subs : Game -> Sub Msg
 subs (Game { gamePart }) =
     case gamePart of
-        Round _ -> every second (always TickDown)
+        Round   _ -> every second (always TickDown)
+        Summary _ -> every second (always TickDown)
         _ -> Sub.none
 
 
@@ -361,6 +413,12 @@ masterDialog canStart hideId roomid =
 view : Api.RoomID -> Game -> Html Msg
 view roomid (Game { room, gamePart, chat, canvas }) =
     let
+        endView voteButton =
+            div [ id "masterlayout" ]
+                [ Room.view room
+                , div [] [ Room.viewBoard room, voteButton ]
+                , H.map ChatMsg <| Chat.view chat
+                ]
         gameView topBar =
             div [ id "masterlayout" ]
                 [ Room.view room
@@ -388,5 +446,23 @@ view roomid (Game { room, gamePart, chat, canvas }) =
                 let tally = Room.viewRoundTally room
                 in  gameView (div [ id "tally-box" ] [Guess.view guess, tally])
 
-            Summary -> gameView (Room.viewBoard room)
+            Summary { iVoted, voted, timeout } ->
+                let
+                    necessary = Room.playerCount room // 2 + 1
+                    counts =
+                        toString (Dict.size voted) ++ "/" ++ toString necessary
+                    timer =
+                        div [ id "vote-timer" ] [ text <| toString timeout ]
+                    buttonText =
+                        [ text (if iVoted then "You voted!" else "Vote rematch")
+                        , a [ id "vote-count" ] [ text counts ]
+                        ]
+
+                in
+                    endView <| div [ id "vote-container" ]
+                        [ button
+                            [ onClick Vote, disabled iVoted, id "vote-button" ]
+                            buttonText
+                        , timer
+                        ]
 

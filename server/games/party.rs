@@ -178,6 +178,11 @@ impl Party {
         }
     }
 
+    /// How many players are there?
+    pub fn len(&self) -> usize {
+        self.players.len()
+    }
+
     pub fn rounds_elapsed(&self) -> u16 {
         self.rounds_elapsed
     }

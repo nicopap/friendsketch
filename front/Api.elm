@@ -41,6 +41,7 @@ module.
 
 -}
 
+import Dict exposing (Dict)
 import List.Nonempty as NE
 import Color exposing (Color)
 import ColorMath exposing (hexToColor, colorToHex)
@@ -286,7 +287,7 @@ type alias GameState =
     }
 
 type GameScreen
-    = Summary
+    = Summary Int (Dict String ())
     | RoundScores
     | Round RoundState
     | Lobby Name
@@ -303,7 +304,11 @@ decoderGameState =
 decoderGameScreen : Decoder GameScreen
 decoderGameScreen =
     oneOf
-        [ "endsummary" :- Summary
+        [ "endsummary" := Summary
+            <*| 0 :^ Dec.int
+            |*| 1 :^ Dec.map
+                (Dict.fromList << List.map (\x-> (x,())))
+                (Dec.list Dec.string)
         , "scores" :- RoundScores
         , "round" := Round <*| decoderRoundState
         , "lobby" := Lobby <*| "master" :* decoderName
@@ -454,6 +459,7 @@ type VisibleEvent
     | EvStart Name
     | EvOver String
     | EvComplete
+    | EvVoted Name
 
 
 type HiddenEvent
@@ -464,7 +470,7 @@ type HiddenEvent
     | EhOver String (List (Name, RoundScore))
     | EhStart RoundStart
     | EhReveal Int Char
-    | EhComplete Scoreboard
+    | EhComplete Int Scoreboard
 
 
 decoderVisibleEvent : Decoder VisibleEvent
@@ -477,6 +483,7 @@ decoderVisibleEvent =
         , "syncstart" := EvStart <*| decoderName
         , "syncover" := EvOver <*| Dec.string
         , "synccomplete" :- EvComplete
+        , "voted" := EvVoted <*| decoderName
         ]
 
 decoderHiddenEvent : Decoder HiddenEvent
@@ -499,5 +506,7 @@ decoderHiddenEvent =
             , "reveal" := EhReveal
                 <*| 0 :^ Dec.int
                 |*| 1 :^ (Dec.andThen decoderChar Dec.string)
-            , "complete" := EhComplete <*| decoderScoreboard
+            , "complete" := EhComplete
+                <*| 0 :^ Dec.int
+                |*| 1 :^ decoderScoreboard
             ]

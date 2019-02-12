@@ -149,10 +149,6 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 
 
 
-#finalscores + #artcontainer {
-	display: none;
-}
-
 #canvas {
 	width: 600px;
 	border-top: 3px solid #ededf0;
@@ -216,7 +212,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 .leave.message::before {content: "←"; color:#282c34a0; margin:0 5px}
 .over.message, .start.message { background: #cce9b6 }
 .ghost.message { filter: opacity(30%) }
-.guessed { background: #f9f1a5 }
+.guessed, .vote.message { background: #f9f1a5 }
 .complete.message { font-weight: bold; text-align: center;font-size:17px}
 
 
@@ -368,8 +364,8 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 .tally {
 	display: flex;
 	transition: all 2s;
-    height: 30px;
-    position: relative;
+  height: 30px;
+  position: relative;
 }
 .tally-name {
 	width: 180px;
@@ -423,3 +419,39 @@ th.total {
 td {text-align: left; width: 40px}
 td.colon{width:5px;padding-right:10px}
 td.artist {color: #619140}
+
+/* Votes */
+
+#vote-container {
+	display:flex;
+	justify-content: center;
+	align-items: center;
+}
+#vote-button {
+	text-align:right;
+	background-color: #cce9b6;
+	border: solid black 1px;
+  width: 180px;
+	margin:30px;
+	font-size:16px;
+	font-weight: bold;
+	border-radius: 6px;
+}
+#vote-button:disabled {
+	background-color: #f9f1a5;
+	color:#282c34a0;
+}
+#vote-count {
+	font-size:26px;
+	margin-left:12px;
+	position: relative;
+	top: 3px;
+}
+#vote-timer {
+	background-image: url("/friendk/icons/timer.svg");
+	background-size:contain;
+	text-align: center;
+	height:50px;
+	width:50px;
+	font-size: 30px;
+}

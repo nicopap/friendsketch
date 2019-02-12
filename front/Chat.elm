@@ -17,6 +17,7 @@ type Message
     | Guessed String
     | Correct String
     | Complete
+    | Vote String
 
 
 type alias Chat =
@@ -61,6 +62,7 @@ into event =
         Api.EvStart artist    -> Start <| Api.showName artist
         Api.EvGuessed guesser -> Guessed <| Api.showName guesser
         Api.EvComplete -> Complete
+        Api.EvVoted voter -> Vote <| Api.showName voter
 
 
 messageView : String -> Message -> Html msg
@@ -97,6 +99,9 @@ messageView self message =
 
             Complete ->
                 genericMessage "complete" "The game is over!"
+
+            Vote name ->
+                genericMessage "vote" (name ++ " voted rematch")
 
 
 new : Api.Name -> List Api.VisibleEvent -> Chat

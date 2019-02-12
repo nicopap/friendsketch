@@ -201,7 +201,7 @@ pub struct Stroke(pub Point, pub Vec<Point>, pub Color, pub Size);
 #[serde(rename_all = "lowercase")]
 pub enum GameScreen {
     Scores,
-    EndSummary,
+    EndSummary(i16, Vec<Name>),
     Round {
         drawing: Vec<Stroke>,
         artist:  Name,
@@ -276,6 +276,7 @@ pub enum VisibleEvent {
     SyncStart(Name),
     SyncOver(String),
     SyncComplete,
+    Voted(Name),
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -292,7 +293,7 @@ pub enum HiddenEvent {
     Over(String, Vec<(Name, RoundScore)>),
     Start(RoundStart),
     Reveal(usize, char),
-    Complete(Scoreboard),
+    Complete(i16, Scoreboard),
 }
 
 #[derive(Debug, Deserialize)]
