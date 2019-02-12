@@ -82,12 +82,13 @@ body { font-family: sans-serif; color: #282c34 }
 }
 .empty.colorbox {
 	background-image: url("/friendk/icons/stripbg.svg");
-	background-size: 65%;
+	background-size: 100%;
 }
 input[type=color].colorbox {
-	padding: 11px 11px;
-	width:1px;
-	height:1px;
+	padding:10px;
+	width:25px;
+	height:25px;
+	box-sizing:border-box;
 }
 
 
@@ -355,21 +356,23 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 	color: #f0f0f0;
 	height:495px;
 	border-top: 3px solid #ededf0;
-	padding: 30px 50px;
+	padding: 15px 50px;
 	box-sizing: border-box;
 	font-size: 23px;
-	transition: background 0.5s;
+	transition: background 0.5s linear;
 	z-index:5;
 }
 .tally {
 	display: flex;
-	transition: all 2s;
-  height: 30px;
+	transition: all 1s linear;
+  height: 35px;
   position: relative;
+	line-height: .8;
 }
 .tally-name {
-	width: 180px;
+	width: 260px;
 	margin-right:10px;
+	word-break:break-all;
 	display: block;
 	text-align: right;
 }

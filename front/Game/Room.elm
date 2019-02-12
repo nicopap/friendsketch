@@ -306,7 +306,7 @@ playerTally showDiff offset name { score } =
             (h::_, True) -> roundAsInt h
             _ -> 0
 
-        styleOffset = style [("top", toString (offset * 30) ++ "px")]
+        styleOffset = style [("top", toString (offset * 35) ++ "px")]
 
         totalScore = toString <| scoreAsInt score
         viewScore =
