@@ -1,5 +1,5 @@
 BROWSER ?= firefox
-BUILD_DIR = build/friendk
+BUILD_DIR = build
 NET_DIR = assets
 LOG_LEVEL ?= info
 elm19 = ~/.local/bin/elm
@@ -50,7 +50,7 @@ release-backend : $(RUST_SOURCE)
 	cargo build --release
 
 experiment : backend frontend
-	$(BROWSER) "http://localhost:8080/friendk/lobby" &
+	$(BROWSER) "http://localhost:8080/lobby" &
 	RUST_BACKTRACE=1 RUST_LOG=$(LOG_LEVEL) ./target/debug/friendsketch
 
 

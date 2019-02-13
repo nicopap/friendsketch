@@ -362,7 +362,7 @@ requestJoin { name , roomid } =
                 Err err -> ServerError <| interpretError err
     in
         Http.post
-            { url = "/friendk/rooms/join"
+            { url = "/rooms/join"
             , body = Http.jsonBody encodeJoin
             , expect = expectString decodeJoin
             }
@@ -383,7 +383,7 @@ requestCreate name settings =
                 Err err -> ServerError <| interpretError err
     in
         Http.post
-            { url = "/friendk/rooms/create"
+            { url = "/rooms/create"
             , body = Http.jsonBody encodeCreate
             , expect = expectString decodeCreate
             }
@@ -436,7 +436,7 @@ update msg model =
 
         JoinResponse {name, connid, roomid} ->
             ( model
-            , Ports.stashAndOpen ("/friendk/games/classic/",
+            , Ports.stashAndOpen ("/games/classic/",
                 [ ("connid", Enc.string connid)
                 , ("roomid", Enc.string roomid)
                 , ("username", Enc.string name)

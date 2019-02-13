@@ -81,7 +81,7 @@ body { font-family: sans-serif; color: #282c34 }
 	width: 82%;
 }
 .empty.colorbox {
-	background-image: url("/friendk/icons/stripbg.svg");
+	background-image: url("/icons/stripbg.svg");
 	background-size: 100%;
 }
 input[type=color].colorbox {
@@ -160,7 +160,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 #tally-box + #artcontainer #canvas { filter: blur(5px) grayscale(75%) }
 #roomid-mod + #artcontainer #canvas { height: 355px }
 .artist-empty #canvas, .pregame #canvas {
-	background-image: url('/friendk/icons/stripbg.svg');
+	background-image: url('/icons/stripbg.svg');
 	background-size: 128px;
 }
 
@@ -240,7 +240,7 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 	height: 25px;
 }
 #timer::before {
-	background-image:url("/friendk/icons/timer.svg");
+	background-image:url("/icons/timer.svg");
 	display:block;
 	background-size:contain;
 	content:"";
@@ -335,10 +335,10 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 	width: 25px;
 	background-size: contain;
 	display: inline-block;
-	background-image: url("/friendk/icons/show.svg");
+	background-image: url("/icons/show.svg");
 }
 .toggle [type=checkbox]:checked + span::before {
-	background-image: url("/friendk/icons/hide.svg");
+	background-image: url("/icons/hide.svg");
 }
 
 
@@ -451,7 +451,7 @@ td.artist {color: #619140}
 	top: 3px;
 }
 #vote-timer {
-	background-image: url("/friendk/icons/timer.svg");
+	background-image: url("/icons/timer.svg");
 	background-size:contain;
 	text-align: center;
 	height:50px;

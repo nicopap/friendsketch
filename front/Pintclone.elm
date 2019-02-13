@@ -259,7 +259,7 @@ view pintclone =
                     [ h1 [] [ text title ]
                     , p [] [ text firstParagraph ]
                     , H.a
-                        [ href "/friendk/lobby/index.html"]
+                        [ href "/lobby/index.html"]
                         [ H.button [] [ text "Join a different game" ] ]
                     , p [] [ text secondParagraph ]
                     , p [] [ text thirdParagraph ]

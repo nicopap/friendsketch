@@ -44,13 +44,13 @@ fn main() {
                 .and_then($handler)
         )
     }
-    let join_form = url! {("friendk"/"join"/"*"/JoinId), handle_join_form};
-    let join_redirect = url! {("friendk"/"join"/RoomId), handle_join_redirect};
+    let join_form = url! {("join"/"*"/JoinId), handle_join_form};
+    let join_redirect = url! {("join"/RoomId), handle_join_redirect};
 
-    let join = url! {("friendk"/"rooms"/"join"), handle_join, b!(json)};
-    let create = url! {("friendk"/"rooms"/"create"), handle_create, b!(json)};
-    let ws_url = url! {("friendk"/"ws"/ConnId), accept_conn, warp::ws2()};
-    let report = path!("friendk" / "report")
+    let join = url! {("rooms"/"join"), handle_join, b!(json)};
+    let create = url! {("rooms"/"create"), handle_create, b!(json)};
+    let ws_url = url! {("ws"/ConnId), accept_conn, warp::ws2()};
+    let report = path!("report")
         .and(b!(concat))
         .and_then(handle_report);
 

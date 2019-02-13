@@ -4,10 +4,10 @@
 	<meta charset="utf-8"/>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes"/>
 	<title>Join a friendsketch game</title>
-	<link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
+	<link rel="stylesheet" type="text/css" href="/stylesheet.css">
 	<link rel="shortcut icon" type="image/png" href="/favicon.png">
-	<script src="/friendk/ports.js"></script>
-	<script src="/friendk/script-join.js"></script>
+	<script src="/ports.js"></script>
+	<script src="/script-join.js"></script>
 	<script>
 	window.addEventListener("load", function() {
 		var form = document.getElementById("request");
@@ -22,7 +22,7 @@
 <div id="error-display" style="display:none;">
 	<h1>The requested room doesn't exist anymore</h1>
 	<p>Maybe the game is over, or you want to create a new game room. You can create a new game room at the following page:</p>
-	<a href="/friendk/lobby/"><input type="button" value="Create a new game room"></a>
+	<a href="/lobby/"><input type="button" value="Create a new game room"></a>
 </div>
 <form id="request"><div id="name-field"><label for="name-input">Display name:</label><input id="name-input" name="username" autocomplete="off" value=""></div><input type="submit" value="Join game"></form>
 </body>

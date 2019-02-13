@@ -6,13 +6,13 @@ function sendJoinRequest(roomToJoin) {
 		username: inputUsername
 	});
 
-	xmlHttp.open('POST', "/friendk/rooms/join", true);
+	xmlHttp.open('POST', "/rooms/join", true);
 	xmlHttp.onreadystatechange = function() {
 		if (xmlHttp.readyState === 4) {
 			switch (xmlHttp.status) {
 			case 200 :
 				var connectionId = xmlHttp.response;
-				stashAndOpen(["/friendk/games/classic/index.html", [
+				stashAndOpen(["/games/classic/index.html", [
 					[ "roomid", roomToJoin ],
 					[ "connid", connectionId ],
 					[ "username", inputUsername ],

@@ -79,7 +79,7 @@ reportError error_msg =
     let
         request =
             Http.post
-                "/friendk/report"
+                "/report"
                 (Http.stringBody "plain/text" error_msg)
                 (Dec.succeed ())
     in
@@ -118,7 +118,7 @@ showRoomID (RoomID_ stringrep) =
 
 showRoomLink : RoomID -> String
 showRoomLink (RoomID_ roomid) =
-    "http://localhost:8080/friendk/join/" ++ roomid
+    "http://localhost:8080/join/" ++ roomid
 
 showGame : Game -> String
 showGame game =
@@ -163,7 +163,7 @@ extractInitFlags flags =
 -}
 wsSend : ConnId -> GameReq -> Cmd msg
 wsSend (ConnId_ connid) =
-    let address = "ws://localhost:8080/friendk/ws" +/+ connid
+    let address = "ws://localhost:8080/ws" +/+ connid
     in  NeatSocket.send address << Enc.encode 0 << encoderGameReq
 
 type ListenError
@@ -174,7 +174,7 @@ type ListenError
 -}
 wsListen : ConnId -> (Result ListenError GameMsg -> msg) -> Sub msg
 wsListen (ConnId_ connid) continuation =
-    let address = "ws://localhost:8080/friendk/ws" +/+ connid
+    let address = "ws://localhost:8080/ws" +/+ connid
 
         withNiceError serverResponse =
             case serverResponse of
