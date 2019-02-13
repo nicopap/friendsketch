@@ -26,6 +26,12 @@ quick_error! {
         InvalidFormat(err: Utf8Error) {
             display("broken encoding")
         }
+        InvalidSetCount {
+            display("impossible to play a negative amount of sets")
+        }
+        InvalidRoundLength {
+            display("the round length should be between 10 and 600 seconds")
+        }
     }
 }
 
@@ -298,10 +304,43 @@ pub enum HiddenEvent {
 
 #[derive(Debug, Deserialize)]
 pub struct Setting {
-    #[serde(default = "defaults::round_duration")]
+    #[serde(
+        default = "defaults::round_duration",
+        deserialize_with = "validate::round_duration"
+    )]
     pub round_duration: i16,
-    #[serde(default = "defaults::set_count")]
+    #[serde(
+        default = "defaults::set_count",
+        deserialize_with = "validate::set_count"
+    )]
     pub set_count: u8,
+}
+
+mod validate {
+    use super::RequestError;
+    use serde::{de, Deserialize, Deserializer};
+    pub(super) fn round_duration<'de, D>(d: D) -> Result<i16, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Deserialize::deserialize(d)?;
+        if value > 600 || value <= 0 {
+            Err(de::Error::custom(RequestError::InvalidRoundLength))
+        } else {
+            Ok(value)
+        }
+    }
+    pub(super) fn set_count<'de, D>(d: D) -> Result<u8, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Deserialize::deserialize(d)?;
+        if value > 10 || value == 0 {
+            Err(de::Error::custom(RequestError::InvalidSetCount))
+        } else {
+            Ok(value)
+        }
+    }
 }
 
 #[cfg(all(debug_assertions, not(test)))]

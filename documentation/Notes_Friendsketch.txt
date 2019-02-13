@@ -34,8 +34,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Display game settings on join page
 
-> Validate roud length and set count in backend
-
 ===== Current roadmap =====
 * Add tests
 * Better random words
