@@ -12,12 +12,12 @@ function sendJoinRequest(roomToJoin) {
 			switch (xmlHttp.status) {
 			case 200 :
 				var connectionId = xmlHttp.response;
-				stashAndOpen([[
+				stashAndOpen(["/friendk/games/classic/index.html", [
 					[ "roomid", roomToJoin ],
 					[ "connid", connectionId ],
 					[ "username", inputUsername ],
 					[ "retries", 0 ],
-				], "/friendk/games/classic/index.html"]);
+				]]);
 				break;
 			case 409 :
 				var field = document.getElementById("name-field");

@@ -4,30 +4,11 @@
 <meta charset="UTF-8">
 <title>Create a Friendsketch room</title>
 <link rel="stylesheet" type="text/css" href="/friendk/stylesheet.css">
-<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="icon" type="image/png" href="/friendk/favicon.png">
+<script src="code.js"></script>
 <script src="/friendk/ports.js"></script>
-<script src="/friendk/script-create.js"></script>
-<script src="/friendk/script-join.js"></script>
-<script>
-window.addEventListener("load", function() {
-	var form = document.getElementById("request");
-	form.addEventListener("submit", function(event) {
-		event.preventDefault();
-		sendCreateRequest();
-	})
-})
-</script>
-</head>
-<body>
-<div id="error-display" style="display:none;">
-	<h1>Couldn't create the room</h1>
-	<p>This is probably a server error. Try the following:</p>
-	<ul>
-		<li>Refresh the page and retry;</li>
-		<li>Refresh your cache by using ctrl+F5 or the equivalent on your platform, then retry;</li>
-		<li>If none of the above work, please get in touch, because that's definitively on our end.</li>
-	</ul>
-</div>
-<form id="request"><div id="name-field"><label for="name-input">Display name:</label><input id="name-input" name="username" autocomplete="off" value=""></div><input type="submit" value="Create a new room"></form>
-</body>
-</html>
+</head><body>
+<main></main>
+<script>var app = Elm.Main.init({ node: document.querySelector('main') });
+app.ports.stashAndOpen.subscribe(stashAndOpen)</script>
+</body></html>

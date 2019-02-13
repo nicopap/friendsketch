@@ -130,11 +130,11 @@ showGame game =
 reopenGame : RoomID -> Name -> Int -> Cmd msg
 reopenGame (RoomID_ roomid) (Name_ username) retries =
     Ports.stashAndOpen
-        ( [ ("roomid", Enc.string roomid)
+        ( "."
+        , [ ("roomid", Enc.string roomid)
           , ("username", Enc.string username)
           , ("retries", Enc.int (retries + 1))
           ]
-        , "."
         )
 
 

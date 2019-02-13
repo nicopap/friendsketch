@@ -6,7 +6,7 @@ import Json.Encode exposing (Value)
 port openLink : String -> Cmd msg
 
 
-port stashAndOpen : ( List ( String, Value ), String ) -> Cmd msg
+port stashAndOpen : ( String, List ( String, Value ) ) -> Cmd msg
 
 
 port selectRoomid : () -> Cmd msg

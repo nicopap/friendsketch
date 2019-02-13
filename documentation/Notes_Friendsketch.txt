@@ -26,12 +26,15 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
-> Possible optimisation: serialize ''GameEvent'' when adding them to game log
-
 > Give feedback (like ''ghost'' in chat) when drawing.
 
-> Give an estimated game length based on settings used in creation page
+> Isolate user-displayed strings into its own module and import them for displaying (setup internationalization)
 
+> optimze delivered javascript
+
+> Display game settings on join page
+
+> Validate roud length and set count in backend
 
 ===== Current roadmap =====
 * Add tests

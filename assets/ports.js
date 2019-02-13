@@ -1,6 +1,6 @@
 function stashAndOpen(args) {
-    var stashList = args[0];
-    var link = args[1];
+    var stashList = args[1];
+    var link = args[0];
     stashList.forEach(function(stash) {
         sessionStorage.setItem(stash[0], stash[1]);
     });
