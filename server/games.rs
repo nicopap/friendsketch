@@ -324,7 +324,6 @@ where
                         _ => true,
                     })
                 })
-                // TODO: make sure the `Leaves` event is only sent once
                 .chain(stream::once(Ok(Game(Leaves(id)))))
                 .forward(sink_to_manager.sink_map_err(|_| ()))
                 .map(|_| ()),

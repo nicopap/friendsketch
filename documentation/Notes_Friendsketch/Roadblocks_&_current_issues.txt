@@ -15,6 +15,7 @@ Created Tuesday 26 September 2017
 * Use unified font, for better cross browser aspect
 * Highlight leading score players
 * Display current round and total round somewhere (starting to draw message + round result)
+* Investigate why frontend closes, then reconnects and finally closes when closing a websocket.
 
 ==== Server ====
 

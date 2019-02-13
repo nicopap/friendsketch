@@ -5,7 +5,7 @@
 
 use super::scores::ScoreKeeper;
 use crate::api::{self, Name};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use std::{fmt, iter::repeat};
 
@@ -229,7 +229,7 @@ impl Party {
             }
         }
         if let Some(single) = self.one_remaining() {
-            self.complete();
+            self.reset();
             return Err(GameEnding::OneRemaining(single));
         }
         self.round_scores.clear();
@@ -323,7 +323,7 @@ impl Party {
             if self.players.is_empty() {
                 EmptyParty
             } else if let Some(single) = self.one_remaining() {
-                self.complete();
+                self.reset();
                 OneRemaining(left, single)
             } else if let Some(Artist(_)) = self.round_scores.get(id) {
                 WasArtist(left)
@@ -337,8 +337,25 @@ impl Party {
         }
     }
 
-    /// Sets the game as "Complete"
+    /// Resets the game to an initial state
+    fn reset(&mut self) {
+        self.players.iter_mut().for_each(|(_, player)| {
+            player.score.clear();
+            player.set_drawn = false;
+        });
+        self.game_results = GameResults::Starting;
+        self.round_scores.clear();
+        self.current_set = 1;
+        self.rounds_elapsed = 0;
+    }
+
+    /// Sets the game as "Complete". If the game didn't start yet, does
+    /// nothing.
     fn complete(&mut self) -> api::Scoreboard {
+        if let GameResults::Starting = self.game_results {
+            warn!("Trying to complete a game that didn't start");
+            return Vec::new();
+        }
         let mut ret = Vec::with_capacity(self.players.len());
         self.players.iter_mut().for_each(|(_, player)| {
             let score = player.score.drain(..).map(Into::into).collect();
