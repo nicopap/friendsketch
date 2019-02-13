@@ -103,7 +103,7 @@ new flags =
 
 delay : Time -> Msg -> Cmd Msg
 delay by msg =
-    Process.sleep (2.4 * second) |> Task.perform (always msg)
+    Process.sleep by |> Task.perform (always msg)
 
 update : Msg -> Pintclone -> ( Pintclone, Cmd Msg )
 update msg ({ roomid, username, openGameRetries, wssend } as pintclone) =

@@ -1,5 +1,5 @@
 #!/bin/bash
-touch frontend/Pintclone.elm
+touch front/Pintclone.elm
 touch lobby/Main.elm
 make release-frontend
 ssh nicola@pi 'rm -r /home/nicola/server-setup/friendsketch/*'
