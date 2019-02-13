@@ -6,14 +6,14 @@ elm19 = ~/.local/bin/elm
 
 # --- Goals ---
 .DEFAULT_GOAL = experiment
-.PHONY: clean experiment backend frontend debug always release
+.PHONY: clean experiment backend frontend debug release
 
 debug : ELM_FLAGS = --debug
 debug : LOG_LEVEL = debug
 debug : experiment
 debug-frontend : ELM_FLAGS = --debug
 debug-frontend : frontend
-release : ELM_FLAGS = --optimize
+release : release-frontend release-backend $(CONTENT)
 
 # --- Static content ---
 CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(shell find $(NET_DIR) -type f))
@@ -34,6 +34,20 @@ JS_TARGETS = $(BUILD_DIR)/games/classic/code.js $(BUILD_DIR)/lobby/code.js
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 	(cd $(NET_DIR) && cp --parents $(patsubst $(NET_DIR)/%,%,$<) ../$(BUILD_DIR))
 
+release-frontend : lobby/Main.elm $(ELM_SOURCE)
+	$(elm19) make --optimize --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
+	uglifyjs $(BUILD_DIR)/lobby/code.js \
+		--compress 'pure_funcs="F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters=true,keep_fargs=false,unsafe_comps=true,unsafe=true,passes=2' \
+		--output=$(BUILD_DIR)/lobby/code.js \
+		&& uglifyjs $(BUILD_DIR)/lobby/code.js --mangle --output=$(BUILD_DIR)/lobby/code.js
+	elm-make --warn front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
+	uglifyjs $(BUILD_DIR)/games/classic/code.js \
+		--compress 'pure_funcs="F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters=true,keep_fargs=false,unsafe_comps=true,unsafe=true,passes=2' \
+		--output=$(BUILD_DIR)/games/classic/code.js \
+		&& uglifyjs $(BUILD_DIR)/games/classic/code.js --mangle --output=$(BUILD_DIR)/games/classic/code.js
+
+release-backend : $(RUST_SOURCE)
+	cargo build --release
 
 experiment : backend frontend
 	$(BROWSER) "http://localhost:8080/friendk/lobby" &

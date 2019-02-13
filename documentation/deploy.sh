@@ -1,5 +1,7 @@
 #!/bin/bash
-make frontend
+touch frontend/Pintclone.elm
+touch lobby/Main.elm
+make release-frontend
 ssh nicola@pi 'rm -r /home/nicola/server-setup/friendsketch/*'
 scp -rC build/* nicola@pi:/home/nicola/server-setup/friendsketch/
 cargo build --release --target armv7-unknown-linux-gnueabihf
