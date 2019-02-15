@@ -25,10 +25,11 @@ input:focus {border-color:#b7eaf8}
 input.invalid:focus, .invalid input:focus {border-color:#d19a66}
 input:disabled {color:#767b87}
 
-input {
-    padding: 5px 0;
+input, select, option {
+    padding: 5px;
     border-radius: 3px;
-    border: solid #ccc 1px;
+    margin:5px;
+    border: solid #cfd6e6 1px;
 }
 
 
@@ -44,37 +45,54 @@ button, input[type="button"], input[type="submit"] {
     border: 0;
     padding: 5px 10%;
 }
-#toggle *:hover {
+#toggle button:hover, option:hover, select:hover {
     cursor:pointer;
-    background: #dbdbe1;
+    background-color: white;
+    border-color:#b7eaf8;
 }
-#toggle * {
-    border: 4px solid #ededf0;
-    border-bottom: none;
-    border-radius: 10px 10px 0 0;
-    box-shadow: 0 -2px 0 2px #ccc;
-    width:100%;
-    background: #ededf0;
+#toggle{
+    display:flex;
+    justify-content:center;
+}
+option, select {
+    background: transparent;
+    -moz-appearance:none;
+    -webkit-appearance: none;
+    color:#282c34;
+}
+select {
+  background: url("icons/select-arrow.svg") no-repeat;
+  background-position:right;
+  padding-right:25px;
+  background-origin: padding-box;
+}
+#toggle button{
+    background: #fbfbfc;
+    border: 1px solid #cfd6e6;
+    padding: 5px;
+    box-sizing:border-box;
+    border-radius: 3px;
+    padding: 5px 10%;
+    margin: 10px;
+}
+#settings {
+    border-top: 1px solid #cdcdcd;
 }
 #settings, .descr {transition: max-height 1s ease 0s; overflow:hidden}
-#settings {
-    border: 4px solid #ededf0;
-    border-radius: 0 0 10px 10px;
-    box-shadow: 0 0 0 2px #ccc;
-}
+
 .descr p {
-    line-height: 1.2;
-    margin:10px 0;
+    line-height: 1.4;
+    margin: 0;
 }
 .title {
     font-size:22px;
-    margin: 20px 0 0 0;
+    margin: 25px 0 10px 0;
     display:flex;
     align-items: center;
     height:35px
 }
 .seconds {font-size:10px}
-.title label {margin-right: 10px}
+
 .title input, .title p {display:inline}
 .title input {
     font-size: 19px;
@@ -95,7 +113,7 @@ div button#create {margin: 20px}
     padding: 5px;
     border: 4px solid #ededf0;
     border-radius: 10px;
-    box-shadow: 0 0 0 2px #ccc;
+    box-shadow: 0 0 0 2px #cfd6e6;
     background: #f9f1a5;
 }
 #server-error::before {content: "⚠"}

@@ -282,7 +282,22 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 
 
 
-
+#roomid-mod button:hover:not(:disabled), #roomid-border:hover {
+    cursor:pointer;
+    background-color: white;
+    border-color:#b7eaf8;
+}
+#roomid-mod button, #roomid-border {
+	background: #fbfbfc;
+	border: 1px solid #cfd6e6;
+	border-radius: 3px;
+}
+#roomid-mod button {
+	-webkit-appearance: none;
+  -moz-appearance: none;
+	margin: auto;
+	padding: 2px 15px;
+}
 #roomid-mod {
 	z-index: 2;
 	background-color: #f9f1a5;
@@ -297,16 +312,10 @@ input[type=range]::-webkit-slider-runnable-track { width:100%; height:3px; backg
 
 #roomid-mod h3 { margin:0 }
 #roomid-mod p { margin:0; line-height: 1 }
-#roomid-mod button {
-	margin: auto;
-	padding: 1px 10px;
-}
+
 #roomid-mod button:disabled { filter:opacity(70%) }
 
 #roomid-border {
-	border: #ededf0 solid 1px;
-	border-radius: 4px;
-	background: white;
 	margin: 5px;
 	padding:0;
 	width: 400px;

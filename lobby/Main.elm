@@ -134,13 +134,13 @@ initEntries =
                     [ (Quadratic, "Quadratic", quadraticDescr)
                     , (Linear, "Linear", linearDescr)
                     ]
-                , description = [ text "Determine how points are attributed to players for guessing correctly." ]
+                , description = [ text "Determines how points are attributed to players for guessing correctly." ]
                 }
 
         roundLength =
             { name = "Round duration"
             , value = Duration 10 600 <| Ok 90
-            , description = [ text "Determine how much time is available to the guessers to find the word being drawn." ]
+            , description = [ text "Determines how much time is available to the guessers to find the word being drawn." ]
             }
 
         setCount =
@@ -252,8 +252,7 @@ viewEntry : Bool -> Entry a -> Html ChoiceMsg
 viewEntry descrVisible { name, value, description } =
     let
         descrStyle =
-            [ style "max-height" (if descrVisible then "110px" else "110px")
-            , style "overflow" "hidden"
+            [ style "overflow" "hidden"
             , class "descr"
             ]
 
@@ -454,8 +453,9 @@ viewEstimate maybeEstimate =
     let
         anEstimate mul flavor =
             p []
-                [ b [] [ text <| "max " ++ String.fromInt (ceiling mul) ]
-                , text (" minutes " ++ flavor)
+                [ text "max "
+                , b [] [ text <| String.fromInt (ceiling mul)  ++ " minutes" ]
+                , text flavor
                 ]
 
         allEstimates value =
@@ -528,7 +528,7 @@ view model =
                 [ id "toggle" ]
                 [ button [ onClick ToggleSetting ] [ text "View settings" ] ]
             , Html.map EntryMsg <| div
-                [ style "max-height" (if model.showSettings then "1000px" else "0")
+                [ style "max-height" (if model.showSettings then "1000px" else "1px")
                 , id "settings"
                 ]
                 (viewEntries model.entries)
