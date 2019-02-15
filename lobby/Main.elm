@@ -439,6 +439,7 @@ update msg model =
                 [ ("connid", Enc.string connid)
                 , ("roomid", Enc.string roomid)
                 , ("username", Enc.string name)
+                , ("retries", Enc.int 0)
                 ])
             )
 
