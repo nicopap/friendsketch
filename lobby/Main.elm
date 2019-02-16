@@ -1,4 +1,5 @@
 import String exposing (trim)
+import String.UTF8 as UTF8
 import Array exposing (Array)
 import Browser
 import Html exposing (Html, a, b, p, text, div, select, option, button, input, label, sup)
@@ -101,7 +102,8 @@ init : Model
 init =
     { entries = initEntries
     , name = ("", Just NoInput)
-    , estimateTime = Maybe.map estimate <| querrySettings initEntries
+    , estimateTime = Maybe.map estimate <|
+        Result.toMaybe (querrySettings initEntries)
     , showSettings = False
     , serverError = Nothing
     }
@@ -320,13 +322,37 @@ queryValue value =
         _ -> Nothing
 
 
-querrySettings : Entries -> Maybe Settings
-querrySettings { gameType, scoreScheme, roundLength, setCount } =
-    Maybe.map4 Settings
-        (queryValue gameType.value)
-        (queryValue scoreScheme.value)
-        (queryNumValue roundLength.value)
-        (queryNumValue setCount.value)
+querrySettings : Entries -> Result String Settings
+querrySettings entries =
+    let
+        collect
+            : (Choice a -> Maybe b)
+            -> Entry a -> List String
+            -> (Maybe b, List String)
+        collect collecter { name, value } existing =
+            case collecter value of
+                Nothing -> (Nothing, name :: existing)
+                Just val -> (Just val, existing)
+
+        andThen : (a -> (b, a)) -> (c, a) -> ((b, c), a)
+        andThen f (xc, xa) = let (fb, fa) = f xa in ((fb, xc), fa)
+
+        ((setCount, (roundLength, (scoreScheme, gameType))), invalidFields) =
+            collect queryValue entries.gameType []
+                |> andThen (collect queryValue entries.scoreScheme)
+                |> andThen (collect queryNumValue entries.roundLength)
+                |> andThen (collect queryNumValue entries.setCount)
+                |> Tuple.mapSecond displayErrorList
+
+        displayErrorList e =
+            case e of
+                [] -> ""
+                single :: [] -> single ++ " is invalid"
+                head :: tail ->
+                    String.join ", " tail ++ " and " ++ head ++  " are invalid"
+    in
+        Maybe.map4 Settings gameType scoreScheme roundLength setCount
+            |> Result.fromMaybe invalidFields
 
 interpretError : Http.Error -> ServerError
 interpretError err =
@@ -391,7 +417,7 @@ validateName : String -> (String, Maybe NameError)
 validateName toValidate =
     if toValidate == "" then
         ("", Just Empty)
-    else if String.length toValidate >= 30 then
+    else if UTF8.length toValidate >= 30 then
         (toValidate, Just TooLong)
     else if trim toValidate /= toValidate then
         (toValidate, Just Whitespaces)
@@ -414,24 +440,27 @@ update msg model =
         EntryMsg msg_ ->
             let
                 newEntries = updateEntries msg_ model.entries
-                newEstimate = Maybe.map estimate <| querrySettings newEntries
+                newEstimate = Maybe.map estimate <|
+                    Result.toMaybe (querrySettings newEntries)
             in
               ( { model | entries = newEntries, estimateTime = newEstimate }
               , Cmd.none
               )
 
         ServerError NameInvalid ->
-            ( { model | name =
-                  Tuple.mapSecond (always (Just Invalid)) model.name
-              }
-            , Cmd.none
-            )
+            let (nameVal, _) = model.name
+            in  ( { model | name = (nameVal, (Just Invalid)) } , Cmd.none )
 
         ServerError (Problem description) ->
             ( { model | serverError = Just description } , Cmd.none )
 
         ToggleSetting ->
-            ( { model | showSettings = not model.showSettings } , Cmd.none )
+            let settingsProblem = case querrySettings model.entries of
+                    Ok _ -> False
+                    Err _ -> True
+                shouldShow = not model.showSettings || settingsProblem
+            in
+                ( { model | showSettings = shouldShow } , Cmd.none )
 
         JoinResponse {name, connid, roomid} ->
             ( model
@@ -486,6 +515,14 @@ viewEstimate maybeEstimate =
 view : Model -> Html Msg
 view model =
     let
+        nameErrReason error =
+            case error of
+                NoInput -> "is required"
+                TooLong -> "should be at most 30 characters"
+                Whitespaces -> "should not start or end with spaces"
+                Empty -> "is required"
+                Invalid -> "is refused by the server."
+
         (nameText, nameError) = model.name
 
         invalidAttr msg = [ attribute "data-errmsg" msg, class "invalid" ]
@@ -494,10 +531,9 @@ view model =
             case nameError of
                 Nothing -> []
                 Just NoInput -> []
-                Just TooLong -> invalidAttr "Too long (more than 30 characters)"
-                Just Whitespaces -> invalidAttr "Starts or ends with spaces"
-                Just Empty -> invalidAttr "Required"
-                Just Invalid -> invalidAttr "Refused by server (probably too long)"
+                Just anyelse ->
+                    invalidAttr <| "This " ++ nameErrReason anyelse
+
 
         nameView =
             div (id "name-field" :: extraAttrs)
@@ -505,14 +541,30 @@ view model =
                 , input [ Attr.value nameText, onInput NameInput ] []
                 ]
 
+        combineReasons name settings =
+            let nameErr = "Your display name " ++ nameErrReason name
+            in nameErr ++ "; " ++ settings
+
         validButton =
             case (model.name, querrySettings model.entries) of
-                ((validName, Nothing), Just validSettings) ->
+                ((validName, Nothing), Ok validSettings) ->
                     [ onClick <| CreateRoom validName validSettings
                     , Attr.disabled False
                     ]
-                _ ->
-                    [ Attr.disabled True ]
+                ((_, Nothing), Err settingsFailure) ->
+                    [ Attr.disabled True
+                    , Attr.title settingsFailure
+                    ]
+                ((_, Just nameFailure), Ok _) ->
+                    [ Attr.disabled True
+                    , Attr.title <|
+                        "Your display name " ++ nameErrReason nameFailure
+                    ]
+                ((_, Just nameFailure), Err settingsFailure) ->
+                    [ Attr.disabled True
+                    , Attr.title <|
+                        combineReasons nameFailure settingsFailure
+                    ]
 
         viewServerError =
             case model.serverError of
