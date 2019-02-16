@@ -452,10 +452,19 @@ estimate { roundLength, setCount } =
 viewEstimate : Maybe Float -> Html msg
 viewEstimate maybeEstimate =
     let
+        toMinutes : Int -> String
+        toMinutes time =
+            if time < 1 then
+                "less than a minute"
+            else if time == 1 then
+                "one minute"
+            else
+                String.fromInt time ++ " minutes"
+
         anEstimate mul flavor =
             p []
                 [ text "max "
-                , b [] [ text <| String.fromInt (ceiling mul)  ++ " minutes" ]
+                , b [] [ text <| toMinutes (ceiling mul) ]
                 , text flavor
                 ]
 

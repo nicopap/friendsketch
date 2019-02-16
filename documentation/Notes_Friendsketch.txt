@@ -30,7 +30,9 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Isolate user-displayed strings into its own module and import them for displaying (setup internationalization)
 
-> optimze delivered javascript
+> Display why "create" button is disabled in tooltip (title attribute)
+
+> Rethink design of colored buttons
 
 > Display game settings on join page
 
