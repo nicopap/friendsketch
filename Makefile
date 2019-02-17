@@ -8,11 +8,9 @@ elm19 = ~/.local/bin/elm
 .DEFAULT_GOAL = experiment
 .PHONY: clean experiment backend frontend debug release
 
-debug : ELM_FLAGS = --debug
 debug : LOG_LEVEL = debug
-debug : experiment
-debug-frontend : ELM_FLAGS = --debug
-debug-frontend : frontend
+debug : debug-frontend experiment
+
 release : release-frontend release-backend $(CONTENT)
 
 # --- Static content ---
@@ -23,7 +21,7 @@ ELM_SOURCE = $(shell find front -type f)
 RUST_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/classic/code.js : front/Pintclone.elm $(ELM_SOURCE)
-	elm-make --warn $(ELM_FLAGS) $< --output $@
+	elm-make --warn $< --output $@
 $(BUILD_DIR)/lobby/code.js : lobby/Main.elm
 	$(elm19) make $< --output=$@
 
@@ -33,6 +31,10 @@ JS_TARGETS = $(BUILD_DIR)/games/classic/code.js $(BUILD_DIR)/lobby/code.js
 # copy assets into the server filesystem
 $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 	(cd $(NET_DIR) && cp --parents $(patsubst $(NET_DIR)/%,%,$<) ../$(BUILD_DIR))
+
+debug-frontend :
+	$(elm19) make --debug --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
+	elm-make --warn --debug front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
 
 release-frontend : lobby/Main.elm $(ELM_SOURCE)
 	$(elm19) make --optimize --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
