@@ -441,17 +441,23 @@ td.artist {color: #619140}
 }
 #vote-button {
 	text-align:right;
+	color: #314820;
 	background-color: #cce9b6;
-	border: solid black 1px;
+	border: solid #314820 1px;
   width: 180px;
 	margin:30px;
 	font-size:16px;
 	font-weight: bold;
 	border-radius: 6px;
 }
-#vote-button:disabled {
-	background-color: #f9f1a5;
-	color:#282c34a0;
+#vote-button:hover {
+	background-color: #e5f4da;
+	border-color: #98c379;
+}
+#vote-button:disabled, #vote-button:disabled:hover {
+	background-color: #e5c07b;
+	color:#d19a66;
+	border-color: #d19a66;
 }
 #vote-count {
 	font-size:26px;

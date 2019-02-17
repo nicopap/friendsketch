@@ -1,64 +1,70 @@
 html {
 	background-color: white;
 	color: #282c34;
-    font-family: "Nimbus Sans", sans-serif;
-    font-size: 16px;
+	font-family: "Nimbus Sans", sans-serif;
+	font-size: 16px;
 }
-
 body {
-    max-width: 350px;
-    margin: auto;
-    margin-top: 20px;
+	max-width: 350px;
+	margin: auto;
+	margin-top: 20px;
 }
-input.invalid, .invalid input { box-shadow: 0 0 2px #be5046; border: solid #be5046 1px;}
-.invalid::after {
-    position: relative;
-    font-size:12px;
-    color:#be5046;
-}
+a:link { text-decoration: none }
+
+input.invalid, .invalid input {border: solid #be5046 1px;}
 #name-field.invalid::after {
-    content: attr(data-errmsg);
-    position: absolute;
-    line-height: 2.5;
+	content: attr(data-errmsg);
+	position: absolute;
+	line-height: 3.2;
+	font-size:12px;
+	color:#be5046;
 }
 input:focus {border-color:#b7eaf8}
 input.invalid:focus, .invalid input:focus {border-color:#d19a66}
 input:disabled {color:#767b87}
 
 input, select, option {
-    padding: 5px;
-    border-radius: 3px;
-    margin:5px;
-    border: solid #cfd6e6 1px;
+	box-shadow: none;
+	padding: 5px;
+	border-radius: 3px;
+	margin:5px;
+	border: solid #cfd6e6 1px;
 }
 
-
-button:hover, input[type="button"]:hover, input[type="submit"]:hover { background-color: #acc996; }
-button:disabled { background-color: #e9b7b6; color: #767b87; }
-
-a:link { text-decoration: none }
+button:disabled, button:disabled:hover {
+	background-color: #e5c07b;
+	color:#d19a66;
+	border-color: #d19a66;
+	cursor: default;
+}
+button:hover, input[type="button"]:hover, input[type="submit"]:hover {
+	background-color: #e5f4da;
+	border-color: #98c379;
+	cursor: pointer;
+}
 button, input[type="button"], input[type="submit"] {
-    background-color: #cce9b6;
-    color: black;
-    padding: 5px;
-    border-radius: 3px;
-    border: 0;
-    padding: 5px 10%;
+	background-color: #cce9b6;
+	color: #314820;
+	border: 1px solid #314820;
+	padding: 5px;
+	border-radius: 3px;
+	padding: 5px 10%;
 }
 #toggle button:hover, option:hover, select:hover {
-    cursor:pointer;
-    background-color: white;
-    border-color:#b7eaf8;
+	cursor:pointer;
+	color: #282c34;
+	background-color: white;
+	border-color:#b7eaf8;
 }
 #toggle{
-    display:flex;
-    justify-content:center;
+	display:flex;
+	justify-content:center;
 }
 option, select {
-    background: transparent;
-    -moz-appearance:none;
-    -webkit-appearance: none;
-    color:#282c34;
+	background: transparent;
+	-moz-appearance:none;
+	-webkit-appearance: none;
+	color:#282c34;
 }
 select {
   background: url("icons/select-arrow.svg") no-repeat;
@@ -67,56 +73,54 @@ select {
   background-origin: padding-box;
 }
 #toggle button{
-    background: #fbfbfc;
-    border: 1px solid #cfd6e6;
-    padding: 5px;
-    box-sizing:border-box;
-    border-radius: 3px;
-    padding: 5px 10%;
-    margin: 10px;
+	color: #282c34;
+	background: #fbfbfc;
+	border: 1px solid #cfd6e6;
+	box-sizing:border-box;
+	margin: 10px;
 }
 #settings {
-    border-top: 1px solid #cdcdcd;
+	border-top: 1px solid #cdcdcd;
 }
 #settings, .descr {transition: max-height 1s ease 0s; overflow:hidden}
 
 .descr p {
-    line-height: 1.4;
-    margin: 0;
+	line-height: 1.4;
+	margin: 0;
 }
 .title {
-    font-size:22px;
-    margin: 25px 0 10px 0;
-    display:flex;
-    align-items: center;
-    height:35px
+	font-size:22px;
+	margin: 25px 0 10px 0;
+	display:flex;
+	align-items: center;
+	height:35px
 }
 .seconds {font-size:10px}
 
 .title input, .title p {display:inline}
 .title input {
-    font-size: 19px;
-    max-width:100px;
+	font-size: 19px;
+	max-width:100px;
 }
 .title select {font-size: 19px}
 #estimate {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin: 10px 0;
-    height:80px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin: 10px 0;
+	height:80px;
 }
 #estimate * {margin: 2px}
 div button#create {margin: 20px}
 #server-error {
-    margin: 20px 0;
-    padding: 5px;
-    border: 4px solid #ededf0;
-    border-radius: 10px;
-    box-shadow: 0 0 0 2px #cfd6e6;
-    background: #f9f1a5;
+	margin: 20px 0;
+	padding: 5px;
+	border: 4px solid #ededf0;
+	border-radius: 10px;
+	box-shadow: 0 0 0 2px #cfd6e6;
+	background: #f9f1a5;
 }
 #server-error::before {content: "⚠"}
 #server-error * {
-    margin: 0;
+	margin: 0;
 }
