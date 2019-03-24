@@ -1,9 +1,9 @@
 module Difficulty exposing (view, new, Msg, Difficulty(..))
 
-import Svg exposing (text, svg, rect)
-import Html exposing (Html, p, label, text, div)
+import Svg exposing (text, svg, rect, text_)
+import Html as H exposing (Html, p, label, div)
 import Html.Attributes as HA exposing (href)
-import Svg.Attributes exposing (width, height, x, y, class, rx, ry)
+import Svg.Attributes exposing (width, height, x, y, class, rx, ry, fill, textLength, style, viewBox, textAnchor, id, clipPath)
 
 type Difficulty = Difficulty Float Float Float
 
@@ -17,37 +17,49 @@ new =
 sliderView : Difficulty -> Html Msg
 sliderView (Difficulty e n h) =
     let
-        genRect class_ x_ width_ =
-            rect
-                [ percent width width_
-                , percent x x_
-                , height "100%"
-                , rx "4"
-                , ry "4"
+        percent x = ceiling <| x * 100 / (e + n + h)
+        easyOffset = percent e
+        hardOffset = percent (e + n)
+
+        percentView val =
+            text_ [ textLength "100%" ] [ text <| formatpc val ]
+
+        genRect class_ val offset =
+            [ rect
+                [ width <| formatpc (val - 2)
+                , x <| formatpc offset
+                , y "45%" , height "55%" , rx "4" , ry "4"
                 , class class_
                 ] []
+            , Svg.clipPath [ id class_ ]
+                [ rect
+                    [ width <| formatpc (val - 2)
+                    , x <| formatpc offset, height "100%"
+                    ] []
+                ]
+            , text_
+                [ x <| formatpc <| offset + (val // 2) - 1
+                , textAnchor "middle"
+                , y "82%"
+                , style "font:25px sans-serif;fill:#282c34;"
+                , clipPath <| "url(#" ++ class_ ++ ")"
+                ] [ text <| formatpc val ]
+            , text_
+                [ x <| formatpc offset
+                , y "30%"
+                , clipPath <| "url(#" ++ class_ ++ ")"
+                ] [ text class_ ]
+            ]
 
-        percent f val =
-            f (String.fromInt val ++ "%")
+        formatpc val =
+            String.fromInt val ++ "%"
 
-        leftDongle offset =
-            e * 100 / (e + n + h)
-                |> ceiling
-                |> (+) offset
-
-        rightDongle offset =
-            (e + n) * 100 / (e + n + h)
-                |> ceiling
-                |> (+) offset
-
-        easySquare =
-            genRect "easy" 0 (leftDongle -1)
-        normalSquare =
-            genRect "normal" (leftDongle 1) (rightDongle -1 - leftDongle 1)
-        hardSquare =
-            genRect "hard" (rightDongle 1) (100 - rightDongle 1)
+        easySquare   = genRect "easy"   (percent e) 0
+        normalSquare = genRect "normal" (percent n) easyOffset
+        hardSquare   = genRect "hard"   (percent h) hardOffset
     in
-        svg [ class "dslider" ] [ easySquare, normalSquare, hardSquare ]
+        svg [ class "dslider", viewBox "0 0 380 80" ]  <|
+            easySquare ++ normalSquare ++ hardSquare
 
 view : Difficulty -> Html Msg
 view d =
@@ -55,8 +67,8 @@ view d =
         slider = sliderView d
     in
         div []
-            [ p [ HA.class "title" ] [ label [] [ text "Difficulty:" ] ]
+            [ p [ HA.class "title" ] [ label [] [ H.text "Difficulty:" ] ]
             , slider
             , div [ HA.class "descr" ]
-                [ text "Each category has different pools of words for easy, normal and hard words. You can choose how often difficult words show up." ]
+                [ H.text "Each category has different pools of words for easy, normal and hard words. You can choose how often difficult words show up." ]
             ]

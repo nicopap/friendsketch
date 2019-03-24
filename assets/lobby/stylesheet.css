@@ -19,11 +19,14 @@ label.deck {
   margin:3px;
   background:#ededf0;
   border-radius: 3px;
+  cursor: pointer;
 }
 label.deck.selected {
   background: #b7eaf8
 }
 svg.dslider {
-  height:40px;
   padding-bottom: 10px;
+}
+rect text {
+  fill:#282c34;
 }

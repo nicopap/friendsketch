@@ -118,7 +118,7 @@ fromApiDecks decks =
         collection =
             List.foldl addDeck Dict.empty decks
     in
-        ( Collection collection, Difficulty 0.1 0.33 0.13 )
+        ( Collection collection, Difficulty 0.03 0.33 0.13 )
 
 
 intoApiDeck : Deck -> List Api.Deck
