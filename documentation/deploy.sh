@@ -12,5 +12,6 @@ cargo build --release --target armv7-unknown-linux-gnueabihf
 /usr/bin/arm-linux-gnueabihf-strip -s target/armv7-unknown-linux-gnueabihf/release/friendsketch
 ssh nicola@pi 'rm /home/nicola/server-setup/friendsketch-bin'
 scp -C target/armv7-unknown-linux-gnueabihf/release/friendsketch nicola@pi:/home/nicola/server-setup/friendsketch-bin
+scp -rC words nicola@pi:/home/nicola
 ssh nicola@pi 'systemctl --user restart friendsketch.service'
 
