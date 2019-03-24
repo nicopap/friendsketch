@@ -18,11 +18,12 @@ CONTENT = $(patsubst $(NET_DIR)/%,$(BUILD_DIR)/%,$(shell find $(NET_DIR) -type f
 
 # --- Javascript content ---
 ELM_SOURCE = $(shell find front -type f)
+LOBBY_SOURCE = $(shell find lobby -type f)
 RUST_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/classic/code.js : front/Pintclone.elm $(ELM_SOURCE)
 	elm-make --warn $< --output $@
-$(BUILD_DIR)/lobby/code.js : lobby/Main.elm
+$(BUILD_DIR)/lobby/code.js : lobby/Main.elm  $(LOBBY_SOURCE)
 	$(elm19) make $< --output=$@
 
 # List of target files to build
@@ -36,7 +37,7 @@ debug-frontend :
 	$(elm19) make --debug --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
 	elm-make --warn --debug front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
 
-release-frontend : lobby/Main.elm $(ELM_SOURCE)
+release-frontend : $(LOBBY_SOURCE) $(ELM_SOURCE)
 	$(elm19) make --optimize --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
 	uglifyjs $(BUILD_DIR)/lobby/code.js \
 		--compress 'pure_funcs="F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters=true,keep_fargs=false,unsafe_comps=true,unsafe=true,passes=2' \

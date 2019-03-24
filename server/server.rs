@@ -1,11 +1,12 @@
 //! Manage game rooms and dynamically generated endpoints
 
 use crate::{
-    api::{Name, RoomId, Setting},
+    api::{Deck, Name, RoomId, Setting},
     games::{GameRoom, Id, ManagerResponse},
+    words,
 };
 use chashmap::CHashMap;
-use log::{debug, info};
+use log::{debug, error, info};
 use quick_error::quick_error;
 use slotmap::{new_key_type, Key, SlotMap};
 use std::{
@@ -99,7 +100,7 @@ impl<K: Key, T: Clone> IdStore<K, T> {
     }
 
     fn get(&self, id: K) -> Option<T> {
-        self.0.read().unwrap().get(id).map(Clone::clone)
+        self.0.read().unwrap().get(id).cloned()
     }
 
     /// Get associated item and remove it from the store
@@ -109,9 +110,10 @@ impl<K: Key, T: Clone> IdStore<K, T> {
 }
 
 pub struct ServerState {
-    rooms:      CHashMap<RoomId, GameRoom>,
-    conn_links: IdStore<ConnId, (Id, RoomId)>,
-    join_links: IdStore<JoinId, RoomId>,
+    rooms:        CHashMap<RoomId, GameRoom>,
+    conn_links:   IdStore<ConnId, (Id, RoomId)>,
+    join_links:   IdStore<JoinId, RoomId>,
+    deck_manager: &'static words::DeckManager,
 }
 
 pub enum ExpectFailure {
@@ -120,11 +122,35 @@ pub enum ExpectFailure {
 }
 
 impl ServerState {
+    /// Instantiate a new global server state.
+    /// # Panics
+    /// If the deck couldn't be initialized
+    /// # Notes
+    /// The deck manager pointer is leaked. Meaning that it will survive the
+    /// whole program lifespan. If many `ServerState` are produced (a good
+    /// heuristic is counting how many times this function is called), it will
+    /// clog server memory space and eventually be killed by the OOM reaper.
     pub fn new() -> ServerState {
+        let deck_manager = {
+            let path = std::path::PathBuf::from("words");
+            let (deck_manager, errors) = words::DeckManager::new(path);
+            if !errors.is_empty() {
+                error!("some errors occured during deck initialization");
+                errors.iter().for_each(|err| error!("{}", err));
+            }
+            deck_manager.expect(
+                "As a result, the server cannot be initialized, because the \
+                 deck manager couldn't be created.",
+            )
+        };
+        // the server state is expected to survive the whole process, so in
+        // fact we aren't even leaking anything at thi
+        let deck_manager = Box::leak(Box::new(deck_manager));
         ServerState {
-            rooms:      CHashMap::new(),
+            rooms: CHashMap::new(),
             conn_links: IdStore::new(),
             join_links: IdStore::new(),
+            deck_manager,
         }
     }
 
@@ -135,7 +161,7 @@ impl ServerState {
             let roomid = RoomId::new_random();
             if !self.rooms.contains_key(&roomid) {
                 break (roomid.clone(), roomid);
-            } else if self.rooms.len() >= std::usize::MAX / 2 {
+            } else if self.rooms.len() >= std::usize::MAX / 8 {
                 panic!("Too many rooms present on server")
             };
         };
@@ -145,7 +171,9 @@ impl ServerState {
             self_ref.remove(&roomid_copy);
         };
         info!("Creating {} with settings: {:?}", roomid, cfg);
-        let game = GameRoom::new(roomid.to_string(), cfg, on_empty);
+        let deck_manager = &self.deck_manager;
+        let game =
+            GameRoom::new(roomid.to_string(), cfg, deck_manager, on_empty);
         self.rooms.insert(roomid.clone(), game);
         roomid
     }
@@ -198,6 +226,10 @@ impl ServerState {
 
     pub fn consume(&self, joinid: JoinId) -> Option<RoomId> {
         self.join_links.take(joinid)
+    }
+
+    pub fn decks(&self) -> Vec<Deck> {
+        self.deck_manager.decks()
     }
 }
 

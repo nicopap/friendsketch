@@ -3,15 +3,17 @@ use super::{
     game,
     party::{Challenge, GameEnding, Guess, Party, Remove},
 };
-use crate::api::{
-    self, ChatMsg,
-    GameMsg::{self, HiddenEvent, VisibleEvent},
-    Name, Stroke,
+use crate::{
+    api::{
+        self, ChatMsg,
+        GameMsg::{self, HiddenEvent, VisibleEvent},
+        Name, Stroke,
+    },
+    words::{self, Word},
 };
 use arraydeque::{ArrayDeque, Wrapping};
 use log::{debug, error, info, warn};
 use quick_error::quick_error;
-use rand::seq::IteratorRandom;
 use slotmap::SecondaryMap;
 use std::time::{Duration, Instant};
 
@@ -54,7 +56,7 @@ quick_error! {
     }
 }
 
-enum Game_ {
+enum Game_<'a> {
     Empty,
     Lobby {
         leader: Id,
@@ -64,7 +66,7 @@ enum Game_ {
     Playing {
         drawing: Vec<Stroke>,
         artist:  Id,
-        word:    &'static str,
+        word:    Word<'a>,
         lap:     Instant,
     },
     EndResults(Instant, SecondaryMap<Id, ()>),
@@ -88,12 +90,13 @@ enum Feedback_ {
 
 type RoundId = (u8, u16);
 
-pub struct Game {
-    state:          Game_,
+pub struct Game<'a> {
+    state:          Game_<'a>,
     players:        Party,
     game_log:       ArrayDeque<[api::VisibleEvent; 20], Wrapping>,
     round_duration: i16,
     start_id:       u8,
+    collection:     words::Collection<'a>,
 }
 
 type Broadcast = game::Broadcast<Id, GameMsg>;
@@ -122,7 +125,7 @@ fn count_votes(votes: &SecondaryMap<Id, ()>, party: &Party) -> bool {
     votes.len() > party.len() / 2
 }
 
-impl Game {
+impl<'a> Game<'a> {
     fn round_challenge(&self) -> RoundId {
         (self.start_id, self.players.rounds_elapsed())
     }
@@ -157,7 +160,7 @@ impl Game {
                 ref drawing,
                 artist,
                 lap,
-                word,
+                ref word,
             } => {
                 let word = if let Some(player) = to {
                     if player == artist {
@@ -274,7 +277,10 @@ impl Game {
             }
             Ok(x) => x,
         };
-        let word = WORD_LIST[rand::random::<u8>() as usize];
+        // collection is an infinite iterator
+        let word = self.collection.next().unwrap().2;
+        let word_len = word.len() as u16;
+        let word_rep = word.to_string();
         self.state = Game_::Playing {
             drawing: vec![],
             artist,
@@ -291,8 +297,8 @@ impl Game {
                 word,
             }))
         };
-        let msg = make_msg(Guess(word.len() as u16));
-        let artist_msg = make_msg(Artist(word.to_string()));
+        let msg = make_msg(Guess(word_len));
+        let artist_msg = make_msg(Artist(word_rep));
 
         let round_length = Duration::from_secs(self.round_duration as u64);
         Ok((
@@ -310,8 +316,11 @@ impl Game {
     /// `None`. If all players have guessed, returns `Some(true)`.
     fn guesses(&mut self, player: Id, message: &[u8]) -> Option<bool> {
         use self::api::VisibleEvent::Guessed;
-        if let Game_::Playing { artist, word, .. } = self.state {
-            if word.as_bytes() == message {
+        if let Game_::Playing {
+            artist, ref word, ..
+        } = self.state
+        {
+            if word == *message {
                 match self.players.correct(artist, player) {
                     Guess::Cannot => None,
                     Guess::Confirmed => {
@@ -337,12 +346,13 @@ impl Game {
     /// End the round and broadcast the score values for that round
     fn end_round(&mut self) -> Result<(Broadcast, Cmd), GameErr> {
         use api::{HiddenEvent::Over, VisibleEvent::SyncOver};
-        if let Game_::Playing { word, .. } = self.state {
+        if let Game_::Playing { ref word, .. } = self.state {
+            let word_rep = word.to_string();
             info!("Ending round {}", self.players.rounds_elapsed());
             let round_scores = self.players.current_standings();
             self.state = Game_::RoundResults;
-            self.game_log.push_front(SyncOver(word.to_string()));
-            let send = Over(word.to_string(), round_scores);
+            self.game_log.push_front(SyncOver(word_rep.clone()));
+            let send = Over(word_rep, round_scores);
             let msg = self.make_feedback(Feedback_::NextRound);
             let cmd = game::Cmd::In(consts::TALLY_LENGTH, msg);
             Ok((broadcast!(to_all, HiddenEvent(send)), cmd))
@@ -480,14 +490,15 @@ impl Game {
                 )),
             },
             GameReq::Chat(msg) => match self.state {
-                Game_::Playing { word, .. } => {
+                Game_::Playing { ref word, .. } => {
                     use self::{game::Cmd, Feedback_::EndRound};
                     use api::{HiddenEvent::Correct, VisibleEvent::Guessed};
+                    let word_rep = word.to_string();
                     if let Some(complete) = self.guesses(player, msg.as_bytes())
                     {
                         let guesser = self.players.name_of(player);
                         let msg = VisibleEvent(Guessed(guesser));
-                        let correct = HiddenEvent(Correct(word.to_string()));
+                        let correct = HiddenEvent(Correct(word_rep));
                         let cmd = if complete {
                             let end_round = self.make_feedback(EndRound);
                             Cmd::Immediately(end_round)
@@ -544,16 +555,17 @@ impl Game {
                 Ok((broadcast!(to_unique, id, msg), game::Cmd::None))
             }
             (Playing { word, artist, .. }, RevealLetter(r)) if r == cr => {
-                let artist = *artist;
-                let mut rng = rand::thread_rng();
-                let (index, letter) =
-                    word.chars().enumerate().choose(&mut rng).unwrap();
-                let msg = HiddenEvent(Reveal(index, letter));
-                let cmd = self.make_feedback(RevealLetter);
-                Ok((
-                    broadcast!(to_all_but, artist, msg, None),
-                    game::Cmd::In(consts::REVEAL_INTERVAL, cmd),
-                ))
+                if let Some((index, letter)) = word.next_letter() {
+                    let artist = *artist;
+                    let msg = HiddenEvent(Reveal(index, letter));
+                    let cmd = self.make_feedback(RevealLetter);
+                    Ok((
+                        broadcast!(to_all_but, artist, msg, None),
+                        game::Cmd::In(consts::REVEAL_INTERVAL, cmd),
+                    ))
+                } else {
+                    Ok((broadcast!(nothing), game::Cmd::None))
+                }
             }
             (Playing { .. }, EndRound(r)) if r == cr => self.end_round(),
             (Playing { lap, .. }, TickTimeout(r)) if r == cr => {
@@ -593,17 +605,22 @@ impl Game {
         }
     }
 
-    pub fn new(round_duration: i16, set_count: u8) -> Self {
+    pub fn new(
+        round_duration: i16,
+        set_count: u8,
+        collection: words::Collection<'a>,
+    ) -> Self {
         Game {
             state: Game_::Empty,
             players: Party::new(0, set_count),
             game_log: ArrayDeque::new(),
             start_id: 0,
             round_duration,
+            collection,
         }
     }
 }
-impl game::Game<Id> for Game {
+impl<'a> game::Game<Id> for Game<'a> {
     type Error = GameErr;
     type Feedback = Feedback;
     type Request = api::GameReq;
@@ -659,6 +676,3 @@ impl game::Game<Id> for Game {
         }
     }
 }
-
-#[rustfmt::skip]
-static WORD_LIST: [&str; 256] = [ "Aardvark", "Albatross", "Alligator", "Alpaca", "Ant", "Anteater", "Antelope", "Ape", "Armadillo", "Baboon", "Badger", "Barracuda", "Bat", "Bear", "Beaver", "Bee", "Beetle", "Bird", "Bison", "Boar", "Bobcat", "Buffalo", "Bull", "Butterfly", "Camel", "Caribou", "Cassowary", "Cat", "Caterpillar", "Cattle", "Chameleon", "Chamois", "Cheetah", "Chicken", "Chimpanzee", "Chinchilla", "Chipmunk", "Chough", "Civet", "Coati", "Cobra", "Cockroach", "Cod", "Cormorant", "Cougar", "Cow", "Coyote", "Crab", "Crane", "Crocodile", "Crow", "Cuckoo", "Curlew", "Deer", "Dinosaur", "Doe", "Dog", "Dogfish", "Dolphin", "Donkey", "Dotterel", "Dove", "Dragonfly", "Dromedary", "Duck", "Dugong", "Dunlin", "Eagle", "Echidna", "Eel", "Eland", "Elephant", "ElephantSeal", "Elk", "Emu", "Falcon", "Ferret", "Finch", "Fish", "Flamingo", "Fly", "Fox", "Frog", "Gaur", "Gazelle", "Gerbil", "GiantPanda", "Giraffe", "Gnat", "Gnu", "Goat", "Goldfinch", "Goosander", "Goose", "Gorilla", "Goshawk", "Grasshopper", "Grouse", "Guanaco", "GuineaFowl", "GuineaPig", "Gull", "Hamster", "Hare", "Hawk", "Hedgehog", "Heron", "Herring", "Hippo", "Hornet", "Horse", "Hummingbird", "Hyena", "Ibex", "Ibis", "Impala", "Jackal", "Jaguar", "Jay", "Jellyfish", "Kangaroo", "Kinkajou", "Kitten", "Kiwi", "Koala", "KomodoDragon", "Kouprey", "Kudu", "Ladybug", "Lapwing", "Lark", "Lemur", "Leopard", "Lion", "Lizard", "Llama", "Lobster", "Locust", "Loris", "Louse", "Lynx", "Lyrebird", "Magpie", "Mallard", "Mammoth", "Manatee", "Mandrill", "Marmoset", "Mink", "Mole", "Mongoose", "Monkey", "Moose", "Mosquito", "Moth", "Mouse", "Narwhal", "Newt", "Nightlingale", "Ocelot", "Octopus", "Okapi", "Opossum", "Ostrich", "Otter", "Owl", "Oyster", "Panda", "Panther", "Parrot", "Partridge", "Peafowl", "Pelican", "Penguin", "Pheasant", "Pig", "Pigeon", "Pika", "PolarBear", "Polecat", "Pony", "Porcupine", "Porpoise", "PrairieDog", "Pug", "Puma", "Puppy", "Quail", "Quelea", "Quetzal", "Rabbit", "Raccoon", "Ram", "Rat", "Raven", "RedDeer", "RedPanda", "Reindeer", "Rhinoceros", "Rook", "Rooster", "Salamander", "Salmon", "SandDollar", "Sandpiper", "Sardine", "SeaLion", "Seahorse", "Seal", "Shark", "Sheep", "Shrew", "Siamang", "Skunk", "Sloth", "Slug", "Snail", "Snake", "Snowshoe", "Sow", "Sparrow", "Spider", "Squid", "Squirrel", "Stalion", "Starling", "Stegosaurus", "Stoat", "Swan", "Tapir", "Tarsier", "Termite", "Tiger", "Toad", "Tortoise", "Turkey", "Turtle", "Vicuna", "Viper", "Vole", "Vulture", "Wallaby", "Walrus", "Wasp", "WaterBuffalo", "Weasel", "Whale", "Wolf", "Wolverine", "Wombat", "Woodpecker", "Worm", "Wren", "Yak", "Zebra", "Zebu" ];

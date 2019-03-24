@@ -1,6 +1,7 @@
 mod api;
 mod games;
 mod server;
+mod words;
 
 use bytes::buf::Buf;
 use std::sync::Arc;
@@ -50,11 +51,11 @@ fn main() {
     let join = url! {("rooms"/"join"), handle_join, b!(json)};
     let create = url! {("rooms"/"create"), handle_create, b!(json)};
     let ws_url = url! {("ws"/ConnId), accept_conn, warp::ws2()};
-    let report = path!("report")
-        .and(b!(concat))
-        .and_then(handle_report);
+    let report = path!("report").and(b!(concat)).and_then(handle_report);
+    let decks = url! {("decks"/"en"), handle_decks};
 
     let routes = ws_url
+        .or(decks)
         .or(join)
         .or(create)
         .or(report)
@@ -77,6 +78,11 @@ macro_rules! respond {
     (@ $val:ident html) => ($val.header("Content-Type","text/html"));
     (@ $val:ident text) => ($val.header("Content-Type","text/plain"));
     (@ $val:ident Location($loc:expr)) => ($val.header("Location",$loc));
+}
+
+fn handle_decks(server: Server) -> Result<impl Reply, Rejection> {
+    let ret = serde_json::to_string(&server.decks()).unwrap();
+    respond!(StatusCode::OK, ret, json)
 }
 
 fn handle_join_form(

@@ -22,6 +22,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Backend leave handling]]
 
+[[+Word management]]
+
 [[+Game testing]]
 
 [[+Devlog]]
@@ -30,11 +32,12 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 > Isolate user-displayed strings into its own module and import them for displaying (setup internationalization)
 
-> Rethink design of colored buttons
+> Implement client-side websocket in Rust (optimize message size and code size)
 
 > Display game settings on join page
 
 ===== Current roadmap =====
 * Add tests
-* Better random words
+* Setup accounts and feedback infrastructure
+* Setup translation infrastructure
 

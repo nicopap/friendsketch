@@ -14,13 +14,22 @@ Created Tuesday 26 September 2017
 
 * Use unified font, for better cross browser aspect
 * Highlight leading score players
-* Display current round and total round somewhere (starting to draw message + round result)
 * Investigate why frontend closes, then reconnects and finally closes when closing a websocket.
+
+* gameplay
+	* Display word category
+	* display current round and estimated total rounds (for exemple at round result screen and in round start message)
+* lobby
+	* implement difficulty slider 
+	* Invent a metric to tell what is too little (hint: nbr of rounds vs. nbr of words)
 
 ==== Server ====
 
-* Create special structure to hold words to guess, implement management of words lists etc
-	* related to: take random character from UTF string, display non-letter characters,
+* Enable runtime update of decks
+* Words
+	* show non-letter chars
+	* more leaniant comparison between word and guess
+	* Test random words sequence (non-duplicate, panic-freeness, etc)
 
 ===== Game Event Log =====
 

@@ -4,6 +4,7 @@ mod roomids;
 use quick_error::quick_error;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{
+    default::Default,
     fmt,
     str::{from_utf8, from_utf8_unchecked, FromStr, Utf8Error},
 };
@@ -29,9 +30,28 @@ quick_error! {
         InvalidSetCount {
             display("impossible to play a negative amount of sets")
         }
+        InvalidDistribution {
+            display("cannot use a negative/zero distribution")
+        }
         InvalidRoundLength {
             display("the round length should be between 10 and 600 seconds")
         }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct TopicId(pub usize);
+
+#[derive(Clone, Serialize)]
+pub struct Topic {
+    pub id:          TopicId,
+    pub name:        String,
+    pub description: String,
+}
+
+impl fmt::Debug for Topic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(T#{})", self.name)
     }
 }
 
@@ -298,22 +318,82 @@ pub enum HiddenEvent {
     Mastery,
     Over(String, Vec<(Name, RoundScore)>),
     Start(RoundStart),
-    Reveal(usize, char),
+    Reveal(u8, char),
     Complete(i16, Scoreboard),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScoreScheme {
+    Quadratic,
+    Linear,
+}
+impl Default for ScoreScheme {
+    fn default() -> Self {
+        ScoreScheme::Quadratic
+    }
+}
+
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Difficulty {
+    Easy,
+    Normal,
+    Hard,
+}
+impl std::str::FromStr for Difficulty {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Difficulty, ()> {
+        match s {
+            "easy" => Ok(Difficulty::Easy),
+            "normal" => Ok(Difficulty::Normal),
+            "hard" => Ok(Difficulty::Hard),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeckId {
+    pub difficulty: Difficulty,
+    pub topic:      TopicId,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UserCollection {
+    pub decks: Vec<DeckId>,
+    #[serde(deserialize_with = "validate::distrs")]
+    pub distrs: (f32, f32, f32),
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Setting {
-    #[serde(
-        default = "defaults::round_duration",
-        deserialize_with = "validate::round_duration"
-    )]
+    #[serde(deserialize_with = "validate::round_duration")]
     pub round_duration: i16,
-    #[serde(
-        default = "defaults::set_count",
-        deserialize_with = "validate::set_count"
-    )]
+    #[serde(deserialize_with = "validate::set_count")]
     pub set_count: u8,
+    #[serde(rename = "score_scheme")]
+    _score_scheme: ScoreScheme,
+    pub collection: UserCollection,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Deck {
+    pub difficulty: Difficulty,
+    pub topic:      Topic,
+    pub word_count: u16,
 }
 
 mod validate {
@@ -341,6 +421,18 @@ mod validate {
             Ok(value)
         }
     }
+    pub(super) fn distrs<'de, D>(d: D) -> Result<(f32, f32, f32), D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (e, n, h) = Deserialize::deserialize(d)?;
+        let total_distr = e + n + h;
+        if e < 0.0 || n < 0.0 || h < 0.0 || total_distr <= 0.0 {
+            Err(de::Error::custom("invalid distribution"))
+        } else {
+            Ok((e, n, h))
+        }
+    }
 }
 
 #[cfg(all(debug_assertions, not(test)))]
@@ -360,6 +452,7 @@ mod defaults {
 #[cfg(not(any(test, debug_assertions)))]
 #[rustfmt::skip]
 mod defaults {
+    pub(super) const fn difficulty_distribution() -> (f32,f32,f32) { (1.0,1.0,1.0) }
     pub(super) const fn set_count() -> u8 { 2 }
     pub(super) const fn round_duration() -> i16 { 80 }
 }

@@ -8,12 +8,15 @@ import Html.Events exposing (onInput, onClick, onFocus)
 import Json.Decode as Dec exposing (decodeString)
 import Json.Encode as Enc
 import Http exposing (expectString)
+import Collection exposing (Collection, intoApiCollection)
+import Difficulty exposing (Difficulty)
+import Api
 import Ports
 
 
 main : Program () Model Msg
 main = Browser.element
-    { init = always ( init, Cmd.none )
+    { init = always ( init, Collection.new AvailableCollections )
     , update = update
     , view = view
     , subscriptions = always Sub.none
@@ -40,6 +43,7 @@ type Msg
     | JoinResponse { name : String, roomid : String, connid : String }
     | ServerError ServerError
     | ToggleSetting
+    | AvailableCollections (Result Http.Error (Collection, Difficulty))
 
 
 type NameError
@@ -82,12 +86,16 @@ type ChoiceMsg
 
 type EntriesMsg
     = EntriesMsg WhichEntry ChoiceMsg
+    | CollectionMsg Collection.Msg
+    | DifficultyMsg Difficulty.Msg
 
 type alias Settings =
     { gameType: GameType
     , scoreScheme : ScoreScheme
     , roundLength : Int
     , setCount : Int
+    , decks : Collection
+    , difficulty : Difficulty
     }
 
 type alias Entries =
@@ -95,6 +103,8 @@ type alias Entries =
     , scoreScheme : Entry ScoreScheme
     , roundLength : Entry Never
     , setCount : Entry Never
+    , decks : Maybe Collection
+    , difficulty : Maybe Difficulty
     , focused : Maybe WhichEntry
     }
 
@@ -152,9 +162,11 @@ initEntries =
             }
     in
         { gameType = gameType
-        , scoreScheme = scoreScheme
         , roundLength = roundLength
         , setCount = setCount
+        , decks = Nothing
+        , difficulty = Nothing
+        , scoreScheme = scoreScheme
         , focused = Nothing
         }
 
@@ -271,8 +283,13 @@ viewEntry descrVisible { name, value, description } =
             ]
 
 viewEntries : Entries -> List (Html EntriesMsg)
-viewEntries { gameType, scoreScheme, roundLength, setCount, focused } =
+viewEntries { gameType, scoreScheme, roundLength, setCount, decks, difficulty, focused } =
     let
+        viewMaybe tagger view_ val =
+            case val of
+                Just val_ -> Html.map tagger <| view_ val_
+                Nothing -> div [] [ text "loading..." ]
+
         ((foGT, foSch), (foRlen, foSet)) =
             case focused of
                 Just EnGameType -> ((True, False), (False, False))
@@ -285,9 +302,11 @@ viewEntries { gameType, scoreScheme, roundLength, setCount, focused } =
             Html.map (EntriesMsg tagger) << viewEntry isFocused
     in
         [ adapt EnGameType foGT gameType
-        , adapt EnScoreScheme foSch scoreScheme
+        , viewMaybe CollectionMsg Collection.view decks
+        , viewMaybe DifficultyMsg Difficulty.view difficulty
         , adapt EnRoundLength foRlen roundLength
         , adapt EnSetcount foSet setCount
+        , adapt EnScoreScheme foSch scoreScheme
         ]
 
 updateEntries : EntriesMsg -> Entries -> Entries
@@ -303,6 +322,13 @@ updateEntries msg entries =
             { entries | roundLength = setNumValue val entries.roundLength }
         EntriesMsg EnSetcount (NewIntegral val) ->
             { entries | setCount = setNumValue val entries.setCount }
+        DifficultyMsg msg_ ->
+            entries
+        CollectionMsg msg_ ->
+            let
+                decks = Maybe.map (Collection.update msg_) entries.decks
+            in
+                { entries | decks = decks }
         _ ->
             entries
 
@@ -325,6 +351,12 @@ queryValue value =
 querrySettings : Entries -> Result String Settings
 querrySettings entries =
     let
+        mcoll : String -> Maybe a -> List String -> (Maybe a, List String)
+        mcoll name maybeA others =
+            case maybeA of
+                Just val -> (Just val, others)
+                Nothing -> (Nothing, name :: others)
+
         collect
             : (Choice a -> Maybe b)
             -> Entry a -> List String
@@ -337,11 +369,13 @@ querrySettings entries =
         andThen : (a -> (b, a)) -> (c, a) -> ((b, c), a)
         andThen f (xc, xa) = let (fb, fa) = f xa in ((fb, xc), fa)
 
-        ((setCount, (roundLength, (scoreScheme, gameType))), invalidFields) =
+        ((difficulty, (decks, (setCount, (roundLength, (scoreScheme, gameType))))), invalidFields) =
             collect queryValue entries.gameType []
                 |> andThen (collect queryValue entries.scoreScheme)
                 |> andThen (collect queryNumValue entries.roundLength)
                 |> andThen (collect queryNumValue entries.setCount)
+                |> andThen (mcoll "selected word decks" entries.decks)
+                |> andThen (mcoll "difficulty" entries.difficulty)
                 |> Tuple.mapSecond displayErrorList
 
         displayErrorList e =
@@ -350,8 +384,15 @@ querrySettings entries =
                 single :: [] -> single ++ " is invalid"
                 head :: tail ->
                     String.join ", " tail ++ " and " ++ head ++  " are invalid"
+
+        maybeThen arg = Maybe.andThen (\f -> Maybe.map f arg)
     in
-        Maybe.map4 Settings gameType scoreScheme roundLength setCount
+        Maybe.map Settings gameType
+            |> maybeThen scoreScheme
+            |> maybeThen roundLength
+            |> maybeThen setCount
+            |> maybeThen decks
+            |> maybeThen difficulty
             |> Result.fromMaybe invalidFields
 
 interpretError : Http.Error -> ServerError
@@ -393,12 +434,17 @@ requestJoin { name , roomid } =
             }
 
 requestCreate : String -> Settings -> Cmd Msg
-requestCreate name settings =
+requestCreate name ({decks, difficulty} as settings) =
     let
+        coll =
+            intoApiCollection (decks ,difficulty)
+
         encodeCreate =
             Enc.object
                 [ ("round_duration", Enc.int settings.roundLength)
                 , ("set_count", Enc.int settings.setCount)
+                , ("collection", Api.encodeCollection coll)
+                , ("score_scheme", Enc.string "linear")
                 ]
 
         decodeCreate_ roomid = { name = name, roomid = roomid }
@@ -461,6 +507,19 @@ update msg model =
                 shouldShow = not model.showSettings || settingsProblem
             in
                 ( { model | showSettings = shouldShow } , Cmd.none )
+
+        AvailableCollections (Ok (decks, difficulty)) ->
+            let
+                entries = model.entries
+                newEntries =
+                    { entries | decks = Just decks, difficulty = Just difficulty }
+            in
+                ( { model | entries = newEntries }, Cmd.none )
+
+        AvailableCollections (Err _) ->
+            ( { model | serverError = Just "Couldn't fetch available decks" }
+            , Cmd.none
+            )
 
         JoinResponse {name, connid, roomid} ->
             ( model
@@ -590,7 +649,7 @@ view model =
                 [ id "toggle" ]
                 [ button [ onClick ToggleSetting ] [ text "View settings" ] ]
             , Html.map EntryMsg <| div
-                [ style "max-height" (if model.showSettings then "1000px" else "1px")
+                [ style "max-height" (if model.showSettings then "2000px" else "1px")
                 , id "settings"
                 ]
                 (viewEntries model.entries)

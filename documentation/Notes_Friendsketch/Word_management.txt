@@ -1,0 +1,70 @@
+Content-Type: text/x-zim-wiki
+Wiki-Format: zim 0.4
+Creation-Date: 2019-02-08T16:35:35+01:00
+
+====== Word management ======
+Created Friday 08 February 2019
+
+
+==== Lists of words aka "Decks" ====
+* Metadata:
+	* Localisation
+	* Difficulty
+	* Topic
+	* Word count
+* Difficulty: What enters into the difficulty of a deck?
+	* How well the concept is represented by a drawing, how obvious what to draw is based on the word
+	* How many people knows the word and can tell based on a drawing.
+
+
+=== Problems ===
+
+* User preferences, Customization
+* Issue detection on decks — most of those won't be detectable programmatically: 
+	* Deck too small,
+	* similar words, 
+	* duplicate words,  ⇒ Should not happen, run some validity checking before adding or updating decks.
+	* spelling mistakes, 
+	* inconsistency in capitalization, etc
+
+ 
+
+==== "Merged decks" aka collections ====
+
+* Metrics on collections
+* Compatibility of collections (duplicate words,etc)
+	* Collections should only feature decks from the same language
+	* How to handle duplicate words from various decks? ⇒ Should not happen, run some validity checking before adding or updating decks
+* How to manage likelyness of words?
+	* Should all decks have equal chance, regardless of size? → If so, will make some words more likely than others
+	* What about difficulty then? → Feel like this should be user-set, while topics should not matter in likelyness
+* Necessitate user-reported bugs.
+
+==== User interface ====
+
+* Display word count, categories of words, difficulty
+	* Word count per deck + word count for the collection being built
+* User should be able to select which Decks they want in the games they create
+* Also display during gameplay from which category the word comes from, possibly the difficulty level (might hinder replayability if decks are small → decks won't be small)
+* **Concider taking into account the difficulty for scoring**
+
+==== Management of decks ====
+* Should be possible to update decks at runtime and not cause issues:
+	* Detect when a deck has been updated → Should not hinder running games.
+	* Detect when new decks are available
+* Ideally, nothing should be done beside putting the new deck in the directory for it to work
+* Can compromise with IPC, so as to tell the running program to check for deck updates
+
+* How to handle decks with same topic in different languages/difficulty?
+	* Introduce language in directory name while using topic as file name?
+	* What about ''lang/difficulty/topic/deck-{1,2,3,4}.txt'' ? → **great idea**
+
+===== What needs to be done =====
+* System to explore a given directory and build a data sctructure holding **words** associated with given **deck**
+	* This system needs to verify that the constructed decks are valid
+	* This system needs to be able to update valid decks
+* System to communicate **deck** availability, and **deck metadata** **for creation page communication.**
+* System to "create" a collection based on given specification.
+* System to select random words **from a collection.**
+	* Tells if given word is equal to arbitrary messages
+	* Choose intelligently words, manage difficulty etc...

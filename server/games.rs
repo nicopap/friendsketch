@@ -22,6 +22,7 @@ use crate::{
         game::{Broadcast, Cmd, Game, Request},
         tugofsketch::{Feedback, GameErr},
     },
+    words,
 };
 pub use tugofsketch::Id;
 
@@ -189,17 +190,35 @@ impl GameRoom {
         api::Setting {
             round_duration,
             set_count,
+            collection,
+            ..
         }: api::Setting,
+        deck_manager: &'static words::DeckManager,
         on_empty: impl FnOnce() + Send + 'static,
     ) -> Self {
         let (manager_sink, receiv_chan) = mpsc::channel(64);
         let (respond, recv_manager) = sync::mpsc::sync_channel(8);
+        let api::UserCollection {
+            decks: deck_ids,
+            distrs: (e, n, h),
+        } = collection;
+        let distrs = (e, n, h);
+        let to_topics = |id| {
+            let &api::DeckId {
+                difficulty,
+                ref topic,
+            } = id;
+            let topic = deck_manager.to_topic(topic)?;
+            Some((difficulty, topic))
+        };
+        let adapted_deck_ids = deck_ids.iter().filter_map(to_topics);
+        let collection = deck_manager.build_deck(distrs, adapted_deck_ids);
         let manager = ConnectionManager {
             room_name: room_name.clone(),
             respond,
             connections: SecondaryMap::with_capacity(16),
             manager_sink: manager_sink.clone(),
-            game: tugofsketch::Game::new(round_duration, set_count),
+            game: tugofsketch::Game::new(round_duration, set_count, collection),
         };
         warp::spawn(
             receiv_chan

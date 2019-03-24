@@ -1,0 +1,29 @@
+/*Difficulty slider*/
+rect.normal {
+  fill:#f9f1a5
+}
+rect.hard {
+  fill:#e9b7b6
+}
+rect.easy {
+  fill:#cce9b6
+}
+/*deck labels*/
+.collection {
+  display: flex;
+  flex-wrap: wrap;
+  margin:10px 5px;
+}
+label.deck {
+  padding:2px 10px;
+  margin:3px;
+  background:#ededf0;
+  border-radius: 3px;
+}
+label.deck.selected {
+  background: #b7eaf8
+}
+svg.dslider {
+  height:40px;
+  padding-bottom: 10px;
+}
