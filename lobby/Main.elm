@@ -112,11 +112,20 @@ init : Model
 init =
     { entries = initEntries
     , name = ("", Just NoInput)
-    , estimateTime = Maybe.map estimate <|
-        Result.toMaybe (querrySettings initEntries)
+    , estimateTime = Maybe.map estimate <| querryEstimatable initEntries
     , showSettings = False
     , serverError = Nothing
     }
+
+querryEstimatable : Entries -> Maybe { roundLength : Int, setCount : Int }
+querryEstimatable { roundLength, setCount } =
+    let
+        maybeLength = queryNumValue roundLength.value
+        maybeCount = queryNumValue setCount.value
+    in
+        Maybe.map2
+            (\x y -> { roundLength = x, setCount = y })
+            maybeLength maybeCount
 
 initEntries : Entries
 initEntries =
@@ -486,8 +495,7 @@ update msg model =
         EntryMsg msg_ ->
             let
                 newEntries = updateEntries msg_ model.entries
-                newEstimate = Maybe.map estimate <|
-                    Result.toMaybe (querrySettings newEntries)
+                newEstimate = Maybe.map estimate <| querryEstimatable newEntries
             in
               ( { model | entries = newEntries, estimateTime = newEstimate }
               , Cmd.none
@@ -551,7 +559,7 @@ viewEstimate maybeEstimate =
 
         anEstimate mul flavor =
             p []
-                [ text "max "
+                [ text "~"
                 , b [] [ text <| toMinutes (ceiling mul) ]
                 , text flavor
                 ]
@@ -592,7 +600,6 @@ view model =
                 Just NoInput -> []
                 Just anyelse ->
                     invalidAttr <| "This " ++ nameErrReason anyelse
-
 
         nameView =
             div (id "name-field" :: extraAttrs)
