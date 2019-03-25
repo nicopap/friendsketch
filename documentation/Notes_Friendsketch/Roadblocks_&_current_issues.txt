@@ -20,7 +20,6 @@ Created Tuesday 26 September 2017
 	* Display word category
 	* display current round and estimated total rounds (for exemple at round result screen and in round start message)
 * lobby
-	* implement difficulty slider 
 	* Invent a metric to tell what is too little (hint: nbr of rounds vs. nbr of words)
 
 ==== Server ====

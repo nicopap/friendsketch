@@ -332,7 +332,12 @@ updateEntries msg entries =
         EntriesMsg EnSetcount (NewIntegral val) ->
             { entries | setCount = setNumValue val entries.setCount }
         DifficultyMsg msg_ ->
-            entries
+            let
+                difficulty =
+                    Maybe.map (Difficulty.update msg_) entries.difficulty
+            in
+                { entries | difficulty = difficulty }
+
         CollectionMsg msg_ ->
             let
                 decks = Maybe.map (Collection.update msg_) entries.decks

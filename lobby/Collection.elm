@@ -6,7 +6,7 @@ import Html.Events exposing (onClick)
 import Html.Attributes exposing (class, title, classList)
 import Dict exposing (Dict)
 import Http
-import Difficulty exposing (Difficulty(..))
+import Difficulty exposing (Difficulty)
 import Array exposing (Array)
 import Api exposing (Topic)
 
@@ -118,7 +118,7 @@ fromApiDecks decks =
         collection =
             List.foldl addDeck Dict.empty decks
     in
-        ( Collection collection, Difficulty 0.03 0.33 0.13 )
+        ( Collection collection, Difficulty.new)
 
 
 intoApiDeck : Deck -> List Api.Deck
@@ -142,14 +142,14 @@ intoApiDeck { topic, easy, normal, hard, wordCount } =
 
 
 intoApiCollection : (Collection, Difficulty) -> Api.Collection
-intoApiCollection (Collection collection, Difficulty e n h) =
+intoApiCollection (Collection collection, difficulty) =
     let
         decks =
             Dict.values collection
                 |> List.map Tuple.second
                 |> List.concatMap intoApiDeck
     in
-        { decks = decks , distrs = (e,n,h) }
+        { decks = decks , distrs = Difficulty.distrs difficulty }
 
 -- (Res Er a -> msg) -> D a -> Exp msg
 -- (a -> C) | ((a -> C) -> Res Er a -> Res Er C) | (Res Er a -> Res Er C)

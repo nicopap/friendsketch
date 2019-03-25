@@ -28,8 +28,6 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+Devlog]]
 
-> Give feedback (like ''ghost'' in chat) when drawing.
-
 > Isolate user-displayed strings into its own module and import them for displaying (setup internationalization)
 
 > Implement client-side websocket in Rust (optimize message size and code size)

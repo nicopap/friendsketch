@@ -26,6 +26,7 @@ label.deck.selected {
 }
 svg.dslider {
   padding-bottom: 10px;
+  margin:0 5px;
 }
 rect text {
   fill:#282c34;
