@@ -80,12 +80,16 @@ view (Collection decks) =
 
 
 update : Msg -> Collection -> Collection
-update msg (Collection decks) =
+update (ToggleDeck id) (Collection decks) =
     let
         maybeToggle = Maybe.map (\(x,y) -> (not x, y))
+        updated = Dict.update id maybeToggle decks
+        allOff = not <| List.any Tuple.first <| Dict.values updated
     in
-        case msg of
-            ToggleDeck id -> Collection (Dict.update id maybeToggle decks)
+        if allOff then
+            Collection decks
+        else
+            Collection updated
 
 -- Build dictionary TopicId -> Deck
 fromApiDecks : List Api.Deck -> (Collection, Difficulty)
