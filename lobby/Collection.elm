@@ -100,20 +100,22 @@ fromApiDecks decks =
             let
                 defaultDeck =
                     { topic = topic
-                    , wordCount = wordCount
+                    , wordCount = 0
                     , hard = False
                     , normal = False
                     , easy = False
                     }
 
-                modify =
-                    Tuple.mapSecond <| case difficulty of
-                        Api.Easy   -> (\d -> { d | easy = True})
-                        Api.Normal -> (\d -> { d | normal = True})
-                        Api.Hard   -> (\d -> { d | hard = True})
+                modify deck =
+                    let updatedCount =
+                            { deck | wordCount = deck.wordCount + wordCount }
+                    in  case difficulty of
+                            Api.Easy   -> { updatedCount | easy = True}
+                            Api.Normal -> { updatedCount | normal = True}
+                            Api.Hard   -> { updatedCount | hard = True}
             in
                 Maybe.withDefault (True, defaultDeck) maybeUpdate
-                        |> modify
+                        |> Tuple.mapSecond modify
                         |> Just
 
         addDeck deck acc =
