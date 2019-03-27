@@ -152,6 +152,7 @@ intoApiCollection (Collection collection, difficulty) =
     let
         decks =
             Dict.values collection
+                |> List.filter Tuple.first
                 |> List.map Tuple.second
                 |> List.concatMap intoApiDeck
     in
