@@ -4,8 +4,7 @@ import Svg exposing (text, svg, rect, text_, image)
 import Html as H exposing (Html, p, label, div)
 import Html.Attributes as HA
 import Svg.Attributes exposing (width, height, x, y, class, rx, ry, fill, textLength, style, viewBox, textAnchor, id, clipPath, xlinkHref)
-import Html.Events.Extra.Pointer as Pointer
-import Html.Events.Extra.Mouse exposing (Event)
+import Html.Events.Extra.Mouse as Pointer exposing (Event)
 
 type Difficulty =
     Difficulty
@@ -23,7 +22,7 @@ type Msg
     | Up
 
 sliderWidth : number
-sliderWidth = 380
+sliderWidth = 340
 
 new : Difficulty
 new = Difficulty
@@ -94,8 +93,8 @@ sliderView (Difficulty { distribution }) =
         pointerScreen =
             rect
                 [ width "100%", height "60%", fill "transparent",  y "40%"
-                , Pointer.onDown <| Down << Tuple.first << .offsetPos << .pointer
-                , Pointer.onMove <| Move << Tuple.first << .offsetPos << .pointer
+                , Pointer.onDown <| Down << Tuple.first << .offsetPos
+                , Pointer.onMove <| Move << Tuple.first << .offsetPos
                 , Pointer.onUp <| always Up
                 , Pointer.onLeave <| always Up
                 ] []
