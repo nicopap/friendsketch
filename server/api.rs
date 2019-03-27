@@ -18,6 +18,9 @@ quick_error! {
         Empty {
             display("required")
         }
+        EmptyCollection {
+            display("The game needs at least one deck to work properly")
+        }
         InvalidName {
             display("blank characters at beginning or end")
         }
@@ -373,6 +376,7 @@ pub struct DeckId {
 
 #[derive(Debug, Deserialize)]
 pub struct UserCollection {
+    #[serde(deserialize_with = "validate::decks")]
     pub decks: Vec<DeckId>,
     #[serde(deserialize_with = "validate::distrs")]
     pub distrs: (f32, f32, f32),
@@ -397,8 +401,9 @@ pub struct Deck {
 }
 
 mod validate {
-    use super::RequestError;
+    use super::{DeckId, RequestError};
     use serde::{de, Deserialize, Deserializer};
+
     pub(super) fn round_duration<'de, D>(d: D) -> Result<i16, D::Error>
     where
         D: Deserializer<'de>,
@@ -410,6 +415,7 @@ mod validate {
             Ok(value)
         }
     }
+
     pub(super) fn set_count<'de, D>(d: D) -> Result<u8, D::Error>
     where
         D: Deserializer<'de>,
@@ -421,6 +427,7 @@ mod validate {
             Ok(value)
         }
     }
+
     pub(super) fn distrs<'de, D>(d: D) -> Result<(f32, f32, f32), D::Error>
     where
         D: Deserializer<'de>,
@@ -431,6 +438,18 @@ mod validate {
             Err(de::Error::custom("invalid distribution"))
         } else {
             Ok((e, n, h))
+        }
+    }
+
+    pub(super) fn decks<'de, D>(d: D) -> Result<Vec<DeckId>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let decks: Vec<DeckId> = Deserialize::deserialize(d)?;
+        if decks.is_empty() {
+            Err(de::Error::custom(RequestError::EmptyCollection))
+        } else {
+            Ok(decks)
         }
     }
 }
