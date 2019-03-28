@@ -12,6 +12,10 @@ Created Tuesday 26 September 2017
 
 ==== Client ====
 
+* **Pointer events do not work under webkit**, add polyfill or similar
+	* https://github.com/mpizenberg/elm-pep
+	* Investigate why touch-based dragging doesn't work
+
 * Use unified font, for better cross browser aspect
 * Highlight leading score players
 * Investigate why frontend closes, then reconnects and finally closes when closing a websocket.
@@ -19,8 +23,6 @@ Created Tuesday 26 September 2017
 * gameplay
 	* Display word category
 	* display current round and estimated total rounds (for exemple at round result screen and in round start message)
-* lobby
-	* Invent a metric to tell what is too little (hint: nbr of rounds vs. nbr of words)
 
 ==== Server ====
 

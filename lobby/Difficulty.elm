@@ -47,19 +47,19 @@ sliderView (Difficulty { distribution }) =
 
         genRect class_ val offset =
             [ rect
-                [ width <| formatpc (val - 2)
+                [ width <| formatpc <| max 0 <| val - 2
                 , x <| formatpc offset
                 , y "45%" , height "50%" , rx "4" , ry "4"
                 , class class_
                 ] []
             , Svg.clipPath [ id class_ ]
                 [ rect
-                    [ width <| formatpc (val - 2)
+                    [ width <| formatpc <| max 0 <| val - 2
                     , x <| formatpc offset, height "100%"
                     ] []
                 ]
             , text_
-                [ x <| formatpc <| offset + (val // 2) - 1
+                [ x <| formatpc <| max 0 <| offset + (val // 2) - 1
                 , textAnchor "middle"
                 , y "82%"
                 , style "font:25px sans-serif;fill:#282c34;"
@@ -134,7 +134,7 @@ moveDongle location (Difficulty d) =
                     else
                         (locDistr, totalDistr - h - locDistr, h)
                 Just Right ->
-                    if locDistr - e < 0 then
+                    if locDistr - e < 0 || totalDistr - locDistr < 0 then
                         d.distribution
                     else
                         (e, locDistr - e, totalDistr - locDistr)
