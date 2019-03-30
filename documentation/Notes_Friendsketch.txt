@@ -14,7 +14,7 @@ Some sections relates to the design and the choices behind it, other to the expe
 
 [[+sketchfighters game design]]
 
-[[+Backend API specification]]
+[[+HTTP API specification]]
 
 [[+Roadblocks & current issues]]
 
@@ -27,6 +27,8 @@ Some sections relates to the design and the choices behind it, other to the expe
 [[+Game testing]]
 
 [[+Devlog]]
+
+[[+Backend system]]
 
 > Isolate user-displayed strings into its own module and import them for displaying (setup internationalization)
 

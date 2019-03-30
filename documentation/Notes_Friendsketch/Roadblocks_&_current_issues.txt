@@ -28,7 +28,7 @@ Created Tuesday 26 September 2017
 
 * Enable runtime update of decks
 * Words
-	* show non-letter chars
+	* show non-letter chars (or should we?)
 	* more leaniant comparison between word and guess
 	* Test random words sequence (non-duplicate, panic-freeness, etc)
 

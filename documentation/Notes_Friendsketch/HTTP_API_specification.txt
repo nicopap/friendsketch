@@ -2,7 +2,7 @@ Content-Type: text/x-zim-wiki
 Wiki-Format: zim 0.4
 Creation-Date: 2017-09-12T17:58:20+02:00
 
-====== Backend API specification ======
+====== HTTP API specification ======
 Created Tuesday 12 September 2017
 
 ====== Summary ======
