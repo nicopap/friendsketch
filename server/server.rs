@@ -143,8 +143,8 @@ impl ServerState {
                  deck manager couldn't be created.",
             )
         };
-        // the server state is expected to survive the whole process, so in
-        // fact we aren't even leaking anything at thi
+        // the server state is expected to survive the whole process, so it is
+        // unlikely to survive longer than it should
         let deck_manager = Box::leak(Box::new(deck_manager));
         ServerState {
             rooms: CHashMap::new(),
@@ -155,7 +155,7 @@ impl ServerState {
     }
 
     /// Create a new game room and returns its Id.
-    /// panics if there are more than usize::MAX / 2 rooms on the server
+    /// panics if there are more than usize::MAX / 8 rooms on the server
     pub fn create_room(self: Arc<Self>, cfg: Setting) -> RoomId {
         let (roomid, roomid_copy) = loop {
             let roomid = RoomId::new_random();
