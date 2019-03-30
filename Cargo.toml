@@ -10,22 +10,22 @@ path = "server/main.rs"
 name = "friendsketch"
 
 [dependencies]
-itertools = "0.6.5"
+itertools = "0.6"
 base64 = "0.10"
 bytes = "0.4"
-bincode = "1.0.1"
-string-interner = "0.7.0"
-walkdir = "2.2.7"
-tokio-timer = "0.2.8"
-quick-error = "1.2.2"
-lazy_static = { version = "1.2.0", features = ["nightly"] }
+bincode = "1"
+string-interner = "0.7"
+walkdir = "2"
+tokio-timer = "0.2"
+quick-error = "1"
+lazy_static = { version = "1", features = ["nightly"] }
 arraydeque = "0.4"
-bart = "0.1.4"
-bart_derive = "0.1.4"
-fxhash = "0.2.1"
+bart = "0.1"
+bart_derive = "0.1"
+fxhash = "0.2"
 slotmap = { version = "0.3", features = ["unstable", "serde"] }
 rand = "0.6"
-chashmap = "2.2"
+chashmap = "2"
 warp = "0.1"
 futures = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -35,7 +35,7 @@ log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"
 pretty_env_logger = "0.3"
 
 [dev-dependencies]
-pretty_assertions = "0.4.0"
+pretty_assertions = "0.4"
 
 [profile.release]
 lto = true
