@@ -22,7 +22,7 @@ LOBBY_SOURCE = $(shell find lobby -type f)
 RUST_SOURCE = $(shell find server -type f)
 # Rules
 $(BUILD_DIR)/games/classic/code.js : front/Pintclone.elm $(ELM_SOURCE)
-	elm-make --warn $< --output $@
+	elm make  $< --output $@
 $(BUILD_DIR)/lobby/code.js : lobby/Main.elm  $(LOBBY_SOURCE)
 	$(elm19) make $< --output=$@
 
@@ -35,7 +35,7 @@ $(CONTENT) : $(BUILD_DIR)/% : $(NET_DIR)/%
 
 debug-frontend :
 	$(elm19) make --debug --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
-	elm-make --warn --debug front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
+	elm make  --debug front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
 
 release-frontend : $(LOBBY_SOURCE) $(ELM_SOURCE) $(CONTENT)
 	$(elm19) make --optimize --output=$(BUILD_DIR)/lobby/code.js lobby/Main.elm
@@ -43,7 +43,7 @@ release-frontend : $(LOBBY_SOURCE) $(ELM_SOURCE) $(CONTENT)
 		--compress 'pure_funcs="F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters=true,keep_fargs=false,unsafe_comps=true,unsafe=true,passes=2' \
 		--output=$(BUILD_DIR)/lobby/code.js \
 		&& uglifyjs $(BUILD_DIR)/lobby/code.js --mangle --output=$(BUILD_DIR)/lobby/code.js
-	elm-make --warn front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
+	elm make  front/Pintclone.elm --output $(BUILD_DIR)/games/classic/code.js
 	uglifyjs $(BUILD_DIR)/games/classic/code.js \
 		--compress 'pure_funcs="F2,F3,F4,F5,F6,F7,F8,F9,A2,A3,A4,A5,A6,A7,A8,A9",pure_getters=true,keep_fargs=false,unsafe_comps=true,unsafe=true,passes=2' \
 		--output=$(BUILD_DIR)/games/classic/code.js \

@@ -142,14 +142,12 @@ impl Serialize for Name {
         serializer.serialize_str(unchecked_str)
     }
 }
-
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text = unsafe { from_utf8_unchecked(&self.0) };
         f.pad(text)
     }
 }
-
 impl fmt::Debug for Name {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "(N#{})", self)
@@ -163,7 +161,6 @@ pub fn name_from_string(name: String) -> Name {
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct RoomId(roomids::RoomId);
-
 impl RoomId {
     pub fn new_random() -> Self {
         RoomId(roomids::gen())
@@ -187,7 +184,6 @@ impl<'de> Deserialize<'de> for RoomId {
         <RoomId>::from_str(d).map_err(de::Error::custom)
     }
 }
-
 impl fmt::Display for RoomId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text_rep: String = (&self.0).into();

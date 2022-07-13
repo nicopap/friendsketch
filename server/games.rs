@@ -339,7 +339,7 @@ where
                 })
                 .take_while(move |msg| {
                     Ok(match msg {
-                        Game(Leaves(id_)) => &id != id_,
+                        Game(Leaves(id_)) => id != *id_,
                         _ => true,
                     })
                 })
